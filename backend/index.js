@@ -6267,7 +6267,7 @@ app.put('/api/notifications/:notificationId/read', verifyToken, async (req, res)
 
 
 // By using "server.listen", you enable both your API routes and the real-time chat.
-server.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server is running on port ${PORT} and is now accessible on your network.`);
     // You can add your IP address reminder here if you like, for example:
     // console.log(`   On your phone, use the IP Address: http://192.168.1.4:${PORT}`);
