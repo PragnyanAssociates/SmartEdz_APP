@@ -16,6 +16,9 @@ const { Client } = require("@googlemaps/google-maps-services-js");
 const googleMapsClient = new Client({});
 // const { OpenAI } = require('openai');
 
+// ✅ ADD THIS BLOCK
+const PERSISTENT_UPLOADS_DIR = '/data/uploads';
+
 // ★★★ NEW IMPORTS FOR REAL-TIME CHAT ★★★
 const http = require('http');
 const { Server } = require("socket.io");
@@ -34,11 +37,12 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/public', express.static(path.join(__dirname, 'public')));
+// ✅ AFTER
+// Serve files from the persistent volume's 'uploads' folder
+app.use('/uploads', express.static(PERSISTENT_UPLOADS_DIR));
 
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => { cb(null, 'uploads/'); },
+    destination: (req, file, cb) => { cb(null, PERSISTENT_UPLOADS_DIR); },
     filename: (req, file, cb) => {
         cb(null, `profile-${Date.now()}${path.extname(file.originalname)}`);
     }
@@ -47,9 +51,7 @@ const upload = multer({ storage: storage });
 
 // Multer storage configuration specifically for the Gallery
 const galleryStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/'); // Assumes 'uploads' folder exists in your backend root
-    },
+    destination: (req, file, cb) => { cb(null, PERSISTENT_UPLOADS_DIR); },
     filename: (req, file, cb) => {
         // Creates a unique filename like 'gallery-media-1678886400000.jpg'
         cb(null, `gallery-media-${Date.now()}${path.extname(file.originalname)}`);
