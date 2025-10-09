@@ -4087,11 +4087,19 @@ app.delete('/api/homework/submission/:submissionId', async (req, res) => {
 // --- GALLERY API ROUTES ---
 // ==========================================================
 
+// Helper function to build the correct filesystem path from a URL path
+// This assumes your 'uploads' folder is inside a 'public' directory at your project root. Adjust if needed.
+const getFileSystemPath = (urlPath) => {
+    // urlPath will be like '/uploads/filename.jpg'
+    // We need to convert it to './public/uploads/filename.jpg'
+    if (!urlPath) return null;
+    return path.join(__dirname, '..', 'public', urlPath);
+};
+
 // DELETE: Delete an entire album by its title
 app.delete('/api/gallery/album', async (req, res) => {
-    const { title, role } = req.body; // Get title and role from the request body
+    const { title, role } = req.body;
 
-    // Security check: Only admins can delete albums
     if (role !== 'admin') {
         return res.status(403).json({ message: "Forbidden: Requires Admin Role." });
     }
@@ -4104,7 +4112,6 @@ app.delete('/api/gallery/album', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        // Step 1: Find all file paths associated with the album title before deleting records
         const [items] = await connection.query('SELECT file_path FROM gallery_items WHERE title = ?', [title]);
         
         if (items.length === 0) {
@@ -4112,20 +4119,21 @@ app.delete('/api/gallery/album', async (req, res) => {
             return res.status(404).json({ message: "Album not found." });
         }
 
-        // Step 2: Delete all database records for that album
         await connection.query('DELETE FROM gallery_items WHERE title = ?', [title]);
 
-        // Step 3: Asynchronously delete each associated file from the server's storage
-        items.forEach(item => {
+        // ★★★ FIX 3: Correctly delete files from the filesystem ★★★
+        const deletePromises = items.map(item => {
             if (item.file_path) {
-                fs.unlink(item.file_path, (err) => {
-                    if (err) {
-                        // Log the error but don't stop the process, as the DB record is already gone
-                        console.error(`Failed to delete file from disk: ${item.file_path}`, err);
-                    }
+                const fsPath = getFileSystemPath(item.file_path); // Convert URL path to filesystem path
+                return fs.promises.unlink(fsPath).catch(err => {
+                    // Log error if a file is missing but don't fail the whole operation
+                    console.error(`Warning: Failed to delete file ${fsPath}:`, err.message);
                 });
             }
+            return Promise.resolve();
         });
+        
+        await Promise.all(deletePromises); // Wait for all file deletions
 
         await connection.commit();
         res.status(200).json({ message: `Album "${title}" and all its items have been deleted successfully.` });
@@ -4176,6 +4184,7 @@ app.post('/api/gallery/upload', galleryUpload.single('media'), async (req, res) 
         await connection.beginTransaction();
 
         const file_type = file.mimetype.startsWith('image') ? 'photo' : 'video';
+        // ★★★ FIX 4: Ensure the path stored is a clean URL path ★★★
         const file_path = `/uploads/${file.filename}`; 
         const query = 'INSERT INTO gallery_items (title, event_date, file_path, file_type, uploaded_by) VALUES (?, ?, ?, ?, ?)';
         const [result] = await connection.query(query, [title, event_date, file_path, file_type, adminId]);
@@ -4210,6 +4219,7 @@ app.post('/api/gallery/upload', galleryUpload.single('media'), async (req, res) 
 
     } catch (error) {
         await connection.rollback();
+        // This part is okay because `file.path` from multer is the correct full filesystem path
         if (file) fs.unlinkSync(file.path);
         console.error("POST /api/gallery/upload Error:", error);
         res.status(500).json({ message: "Failed to save gallery item to database." });
@@ -4217,6 +4227,7 @@ app.post('/api/gallery/upload', galleryUpload.single('media'), async (req, res) 
         connection.release();
     }
 });
+
 
 // PUT: Update a gallery item's info (Checks for role='admin' in body)
 app.put('/api/gallery/:id', async (req, res) => {
@@ -4245,7 +4256,7 @@ app.put('/api/gallery/:id', async (req, res) => {
     }
 });
 
-// DELETE: Delete a gallery item (Checks for role='admin' in body)
+// DELETE: Delete a gallery item
 app.delete('/api/gallery/:id', async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
@@ -4263,15 +4274,19 @@ app.delete('/api/gallery/:id', async (req, res) => {
             await connection.rollback();
             return res.status(404).json({ message: "Item not found." });
         }
-        const filePath = rows[0].file_path;
+        const urlPath = rows[0].file_path;
 
         await connection.query('DELETE FROM gallery_items WHERE id = ?', [id]);
         
-        fs.unlink(filePath, (err) => {
-            if (err) {
-                console.error(`Failed to delete file from disk: ${filePath}`, err);
+        // ★★★ FIX 5: Correctly delete the single file from the filesystem ★★★
+        if (urlPath) {
+            const fsPath = getFileSystemPath(urlPath); // Convert URL path to filesystem path
+            try {
+                await fs.promises.unlink(fsPath);
+            } catch (err) {
+                console.error(`Warning: Failed to delete file ${fsPath}:`, err.message);
             }
-        });
+        }
         
         await connection.commit();
         res.status(200).json({ message: "Item deleted successfully." });
