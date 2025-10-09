@@ -750,6 +750,7 @@ app.get('/api/attendance/sheet', async (req, res) => {
     }
 });
 
+// ★★★★★ START: FINAL AND ROBUST POST ATTENDANCE ROUTE ★★★★★
 app.post('/api/attendance', async (req, res) => {
     const { class_group, subject_name, period_number, date, teacher_id, attendanceData } = req.body;
     const connection = await db.getConnection();
@@ -758,50 +759,56 @@ app.post('/api/attendance', async (req, res) => {
             return res.status(400).json({ message: 'All fields are required, and attendanceData must be an array.' });
         }
         
-        if (attendanceData.length > 0 && attendanceData.some(record => !record.student_id || !['Present', 'Absent'].includes(record.status))) {
-            return res.status(400).json({ message: 'Each attendance record must have a valid student_id and status (Present or Absent).' });
-        }
-        
-        // ★★★★★ START: ROBUST DAY OF WEEK CALCULATION ★★★★★
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        const dayIndex = new Date(date).getDay();
-        const dayOfWeek = days[dayIndex];
-        // This is now 100% reliable and does not depend on server locale
-        // ★★★★★ END: ROBUST DAY OF WEEK CALCULATION ★★★★★
+        const dayOfWeek = days[new Date(date).getDay()];
         
         const [timetableSlot] = await connection.query(
             'SELECT teacher_id FROM timetables WHERE class_group = ? AND day_of_week = ? AND period_number = ?',
             [class_group, dayOfWeek, period_number]
         );
+
         if (!timetableSlot.length || timetableSlot[0].teacher_id !== parseInt(teacher_id, 10)) {
-            return res.status(403).json({ message: `You are not assigned to the first period for this class today (${dayOfWeek}).` });
+            return res.status(403).json({ message: `You are not assigned to the first period for this class on ${dayOfWeek}.` });
         }
         
-        await connection.beginTransaction();
-        const studentIds = attendanceData.map(r => r.student_id);
-
-        if (studentIds.length > 0) {
-            await connection.execute('DELETE FROM attendance_records WHERE student_id IN (?) AND attendance_date = ?', [studentIds, date]);
-            
-            const query = `INSERT INTO attendance_records (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status) VALUES ?;`;
-            
-            const valuesToInsert = attendanceData.map(record => [
-                record.student_id, teacher_id, class_group, subject_name, date, period_number, record.status
-            ]);
-
-            await connection.query(query, valuesToInsert);
+        if (attendanceData.length === 0) {
+            return res.status(200).json({ message: 'No attendance data to save.' });
         }
+
+        await connection.beginTransaction();
+
+        // This single, atomic query will INSERT a new record if it doesn't exist,
+        // or UPDATE the status if a record for that student on that date already exists.
+        // This is the most reliable way to handle this operation.
+        const query = `
+            INSERT INTO attendance_records 
+                (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status) 
+            VALUES ? 
+            ON DUPLICATE KEY UPDATE 
+                status = VALUES(status), 
+                teacher_id = VALUES(teacher_id), 
+                subject_name = VALUES(subject_name);
+        `;
+
+        const valuesToInsert = attendanceData.map(record => [
+            record.student_id, teacher_id, class_group, subject_name, date, period_number, record.status
+        ]);
+        
+        await connection.query(query, [valuesToInsert]);
         
         await connection.commit();
         res.status(201).json({ message: 'Attendance saved successfully!' });
+
     } catch (error) {
         await connection.rollback();
         console.error("POST /api/attendance Error:", error);
-        res.status(500).json({ message: 'Error saving attendance.' });
+        res.status(500).json({ message: 'An internal server error occurred while saving attendance.' });
     } finally {
         connection.release();
     }
 });
+// ★★★★★ END: FINAL AND ROBUST POST ATTENDANCE ROUTE ★★★★★
+
 
 // --- Student History Endpoint Logic ---
 const getStudentHistory = async (studentId, viewMode) => {
