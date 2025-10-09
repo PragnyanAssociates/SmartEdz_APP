@@ -43,8 +43,6 @@ const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
 // --- MODIFIED: Component for Rendering a Day's Attendance ---
 const HistoryDayCard = ({ item }) => {
-    // The component now receives a single record per day, not a group of periods.
-    // e.g., item = { attendance_date: "...", status: "Present" }
     const isPresent = item.status === 'Present';
     const dayStatus = isPresent ? 'Present' : 'Absent';
     const statusColor = isPresent ? GREEN : RED;
@@ -55,7 +53,6 @@ const HistoryDayCard = ({ item }) => {
                 <Text style={styles.historyDate}>{new Date(item.attendance_date).toDateString()}</Text>
                 <Text style={[styles.historyStatus, { color: statusColor }]}>{dayStatus}</Text>
             </View>
-            {/* No period indicators are needed anymore */}
         </View>
     );
 };
@@ -105,7 +102,6 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     }, [studentId, viewMode]);
 
     const percentage = useMemo(() => {
-        // --- MODIFIED: Calculate percentage based on days, not periods ---
         if (!data.summary?.total_days || data.summary.total_days === 0) return '0.0';
         return ((data.summary.present_days / data.summary.total_days) * 100).toFixed(1);
     }, [data.summary]);
@@ -137,14 +133,12 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
 
             {isLoading ? <ActivityIndicator style={styles.loaderContainer} size="large" color={PRIMARY_COLOR} /> : (
                 <>
-                    {/* --- MODIFIED: Updated summary card labels --- */}
                     <View style={styles.summaryContainer}>
                         <SummaryCard label="Overall" value={`${percentage}%`} color={BLUE} />
                         <SummaryCard label="Days Present" value={data.summary.present_days || 0} color={GREEN} />
                         <SummaryCard label="Days Absent" value={data.summary.absent_days || 0} color={RED} />
                     </View>
                     <FlatList
-                        // --- MODIFIED: Use history directly from API ---
                         data={data.history}
                         keyExtractor={(item) => item.attendance_date}
                         renderItem={({ item }) => <HistoryDayCard item={item} />}
@@ -231,7 +225,6 @@ const GenericSummaryView = ({
                     keyExtractor={(item) => item.student_id.toString()}
                     ListHeaderComponent={renderSummaryCards}
                     renderItem={({ item }) => {
-                        // --- MODIFIED: Use 'days' instead of 'periods' for calculation and display ---
                         const studentPercentage = item.total_days > 0 ? (item.present_days / item.total_days) * 100 : 0;
                         const percentageColor = studentPercentage >= 75 ? GREEN : studentPercentage >= 50 ? YELLOW : RED;
                         return (
@@ -348,7 +341,7 @@ const TeacherSummaryView = ({ teacher }) => {
 
 // --- Admin Attendance View ---
 const AdminAttendanceView = () => {
-  const [selectedClass, setSelectedClass] = useState(CLASS_GROUPS[9]); // Default to Class 10
+  const [selectedClass, setSelectedClass] = useState(CLASS_GROUPS[9]);
   const [subjects, setSubjects] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState('');
   const [summaryData, setSummaryData] = useState(null);
@@ -434,25 +427,23 @@ const AdminAttendanceView = () => {
   );
 };
 
-// --- MODIFIED: Teacher Live Attendance View ---
+// --- Teacher Live Attendance View ---
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
-  const { class_group, subject_name, period_number, date } = route?.params || {};
+  const { class_group, subject_name, date } = route?.params || {};
   const [students, setStudents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  // --- MODIFIED: Always get the time for the 1st period ---
   const periodInfo = PERIOD_DEFINITIONS.find(p => p.period === 1);
   const periodTime = periodInfo ? periodInfo.time : `Period 1`;
 
   useEffect(() => {
     const fetchAttendanceSheet = async () => {
-      if (!class_group || !date || !period_number) {
+      if (!class_group || !date) {
         Alert.alert('Error', 'Missing parameters.');
         setIsLoading(false);
         return;
       }
       try {
-        // --- MODIFIED: The backend will handle period_number=1 for daily attendance logic ---
         const response = await apiClient.get(`/attendance/sheet?class_group=${class_group}&date=${date}&period_number=1`);
         const studentsWithStatus = response.data.map(s => ({ ...s, status: s.status || 'Present' }));
         setStudents(studentsWithStatus);
@@ -460,7 +451,7 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
       finally { setIsLoading(false); }
     };
     fetchAttendanceSheet();
-  }, [class_group, date, period_number]);
+  }, [class_group, date]);
 
   const handleMarkAttendance = (studentId, newStatus) => {
     setStudents(prev => prev.map(s => (s.id === studentId ? { ...s, status: newStatus } : s)));
@@ -471,10 +462,24 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
     if (attendanceData.length === 0) return;
     setIsSaving(true);
     try {
-      // --- MODIFIED: Always submit as period 1 ---
-      await apiClient.post('/attendance', { class_group, subject_name, period_number: 1, date, teacher_id: teacher.id, attendanceData });
+      await apiClient.post('/attendance', { 
+        class_group, 
+        subject_name, 
+        period_number: 1, // Always submit as period 1
+        date, 
+        teacher_id: teacher.id, 
+        attendanceData 
+      });
       Alert.alert('Success', 'Attendance saved!');
-    } catch (error: any) { Alert.alert('Error', 'Failed to save attendance.'); }
+    } catch (error: any) { 
+      // ★★★★★ START: IMPROVED ERROR HANDLING ★★★★★
+      // Log the full error to the console for debugging
+      console.error("Failed to save attendance:", JSON.stringify(error.response?.data || error.message, null, 2));
+      // Show a more informative error to the user
+      const errorMessage = error.response?.data?.message || 'Failed to save attendance. Please contact support.';
+      Alert.alert('Error', errorMessage);
+      // ★★★★★ END: IMPROVED ERROR HANDLING ★★★★★
+    }
     finally { setIsSaving(false); }
   };
 
@@ -482,7 +487,6 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* --- MODIFIED: Updated header for clarity --- */}
       <View style={styles.centeredHeader}>
         <Text style={styles.headerTitle}>Daily Attendance</Text>
         <Text style={styles.headerSubtitle}>{`${class_group} - ${subject_name}`}</Text>

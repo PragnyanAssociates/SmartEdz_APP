@@ -641,7 +641,7 @@ app.post('/api/timetable', async (req, res) => { const { class_group, day_of_wee
 app.get('/api/subjects/:class_group', async (req, res) => { try { const { class_group } = req.params; if (!class_group) { return res.status(400).json({ message: 'Class group is required.' }); } const query = `SELECT DISTINCT subject_name FROM timetables WHERE class_group = ? ORDER BY subject_name;`; const [subjects] = await db.query(query, [class_group]); res.status(200).json(subjects.map(s => s.subject_name)); } catch (error) { console.error("GET /api/subjects/:class_group Error:", error); res.status(500).json({ message: 'Could not fetch subjects for the class.' }); }});
 app.get('/api/teacher-assignments/:teacherId', async (req, res) => { try { const { teacherId } = req.params; if (!teacherId) { return res.status(400).json({ message: 'Teacher ID is required.' }); } const query = `SELECT DISTINCT class_group, subject_name FROM timetables WHERE teacher_id = ? ORDER BY class_group, subject_name;`; const [assignments] = await db.query(query, [teacherId]); res.status(200).json(assignments); } catch (error) { console.error("GET /api/teacher-assignments/:teacherId Error:", error); res.status(500).json({ message: 'Could not fetch teacher assignments.' }); }});
 
-// --- MODIFIED: Rewritten Summary Endpoint Logic for Daily Attendance ---
+// --- Summary Endpoint Logic for Daily Attendance ---
 const getAttendanceSummary = async (filters) => {
     let dateFilter = '';
     const { viewMode } = filters;
@@ -664,8 +664,6 @@ const getAttendanceSummary = async (filters) => {
     }
 
     const baseQuery = `FROM attendance_records ar WHERE ${whereClause} ${dateFilter}`;
-
-    // --- MODIFIED: Overall Summary Calculations based on daily records ---
     let overallSummary;
     if (viewMode === 'daily') {
         const summaryQuery = `
@@ -692,8 +690,6 @@ const getAttendanceSummary = async (filters) => {
         `;
          [[overallSummary]] = await db.query(summaryQuery, [...queryParams, ...queryParams]);
     }
-
-    // --- MODIFIED: Student-by-Student Details Calculation (now using daily counts) ---
     const studentDetailsQuery = `
         SELECT 
             u.id AS student_id, 
@@ -708,7 +704,6 @@ const getAttendanceSummary = async (filters) => {
     `;
     const studentDetailsParams = [...queryParams, filters.classGroup];
     const [studentDetails] = await db.query(studentDetailsQuery, studentDetailsParams);
-
     return { overallSummary, studentDetails };
 };
 
@@ -740,90 +735,72 @@ app.get('/api/attendance/admin-summary', async (req, res) => {
     }
 });
 
+// ★★★★★ START: CORRECTED GET ATTENDANCE SHEET ROUTE ★★★★★
 app.get('/api/attendance/sheet', async (req, res) => { 
-    const { class_group, date } = req.query; 
+    // This now correctly reads all required parameters from the request query
+    const { class_group, date, period_number } = req.query; 
     try { 
-        if (!class_group || !date) { 
-            return res.status(400).json({ message: 'Class group and date are required.' }); 
+        if (!class_group || !date || !period_number) { 
+            return res.status(400).json({ message: 'Class group, date, and period number are required.' }); 
         } 
-        const periodNum = 1; // Always fetch for period 1 for daily attendance
         const query = `SELECT u.id, u.full_name, ar.status FROM users u LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ar.attendance_date = ? AND ar.period_number = ? WHERE u.role = 'student' AND u.class_group = ? ORDER BY u.full_name;`; 
-        const [students] = await db.query(query, [date, periodNum, class_group]); 
+        const [students] = await db.query(query, [date, period_number, class_group]); 
         res.status(200).json(students); 
     } catch (error) { 
         console.error("GET /api/attendance/sheet Error:", error); 
         res.status(500).json({ message: 'Error fetching attendance sheet.' }); 
     }
 });
+// ★★★★★ END: CORRECTED GET ATTENDANCE SHEET ROUTE ★★★★★
 
-// ★★★★★ START: CORRECTED AND STABILIZED POST ATTENDANCE ROUTE ★★★★★
+// ★★★★★ START: CORRECTED POST ATTENDANCE ROUTE ★★★★★
 app.post('/api/attendance', async (req, res) => {
-    const { class_group, subject_name, date, teacher_id, attendanceData } = req.body;
+    // This now correctly reads all fields from the request body, including period_number
+    const { class_group, subject_name, period_number, date, teacher_id, attendanceData } = req.body;
     const connection = await db.getConnection();
     try {
-        // --- Validation Step 1: Check for required fields ---
-        if (!class_group || !subject_name || !date || !teacher_id || !Array.isArray(attendanceData)) {
+        if (!class_group || !subject_name || !period_number || !date || !teacher_id || !Array.isArray(attendanceData)) {
             return res.status(400).json({ message: 'All fields are required, and attendanceData must be an array.' });
         }
         
-        // --- Hardcode period number for daily attendance logic ---
-        const periodNum = 1;
-
-        // --- Validation Step 2: Check the contents of the array ---
         if (attendanceData.length > 0 && attendanceData.some(record => !record.student_id || !['Present', 'Absent'].includes(record.status))) {
             return res.status(400).json({ message: 'Each attendance record must have a valid student_id and status (Present or Absent).' });
         }
         
-        // --- Validation Step 3: Check if the teacher is assigned to this period ---
         const dayOfWeek = new Date(date).toLocaleString('en-US', { weekday: 'long' });
         const [timetableSlot] = await connection.query(
             'SELECT teacher_id FROM timetables WHERE class_group = ? AND day_of_week = ? AND period_number = ?',
-            [class_group, dayOfWeek, periodNum]
+            [class_group, dayOfWeek, period_number]
         );
         if (!timetableSlot.length || timetableSlot[0].teacher_id !== parseInt(teacher_id, 10)) {
             return res.status(403).json({ message: 'You are not assigned to the first period for this class today.' });
         }
-
-        // --- Database Transaction: Perform the update atomically ---
+        
         await connection.beginTransaction();
-
         const studentIds = attendanceData.map(r => r.student_id);
 
         if (studentIds.length > 0) {
-             // 1. Delete any pre-existing records for these students on this day to prevent conflicts.
-            await connection.execute(
-                'DELETE FROM attendance_records WHERE student_id IN (?) AND attendance_date = ?', 
-                [studentIds, date]
-            );
-
-            // 2. Insert the new, updated records.
+            await connection.execute('DELETE FROM attendance_records WHERE student_id IN (?) AND attendance_date = ?', [studentIds, date]);
             const query = `INSERT INTO attendance_records (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status) VALUES ?;`;
             const valuesToInsert = attendanceData.map(record => [
-                record.student_id,
-                teacher_id,
-                class_group,
-                subject_name,
-                date,
-                periodNum,
-                record.status
+                record.student_id, teacher_id, class_group, subject_name, date, period_number, record.status
             ]);
             await connection.query(query, [valuesToInsert]);
         }
         
         await connection.commit();
         res.status(201).json({ message: 'Attendance saved successfully!' });
-
     } catch (error) {
-        await connection.rollback(); // Rollback transaction on error
+        await connection.rollback();
         console.error("POST /api/attendance Error:", error);
         res.status(500).json({ message: 'Error saving attendance.' });
     } finally {
-        connection.release(); // Always release the connection
+        connection.release();
     }
 });
-// ★★★★★ END: CORRECTED AND STABILIZED POST ATTENDANCE ROUTE ★★★★★
+// ★★★★★ END: CORRECTED POST ATTENDANCE ROUTE ★★★★★
 
-// --- MODIFIED: Rewritten Student History Endpoint Logic ---
+// --- Student History Endpoint Logic ---
 const getStudentHistory = async (studentId, viewMode) => {
     let dateFilter = '';
     if (viewMode === 'daily') { dateFilter = 'AND attendance_date = CURDATE()'; } 
@@ -874,6 +851,7 @@ app.get('/api/attendance/student-history-admin/:studentId', async (req, res) => 
         res.status(500).json({ message: 'Could not fetch student history for admin.' });
     }
 });
+
 
 
 // 📂 File: backend/server.js  (Paste this code before the app.listen() call)
