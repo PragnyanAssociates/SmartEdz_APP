@@ -118,7 +118,7 @@ const GalleryNavigator = () => (
             name="GalleryAlbums"
             component={GalleryScreen}
             options={{ 
-              title: 'Photo & Video Albums',
+              title: 'Gallery ',
               // --- STYLES ADDED HERE ---
               headerStyle: {
                 backgroundColor: '#e0f2f7', // Light teal background from your dashboard
