@@ -27,11 +27,9 @@ const WHITE = '#FFFFFF';
 const ORANGE = '#FB8C00'; // For Mixed Attendance
 
 const CLASS_GROUPS = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
+// --- MODIFIED: Period definitions only needed for the live attendance header now ---
 const PERIOD_DEFINITIONS = [
-  { period: 1, time: '09:00-09:45' }, { period: 2, time: '09:45-10:30' },
-  { period: 3, time: '10:30-10:45', isBreak: true }, { period: 4, time: '10:45-11:30' },
-  { period: 5, time: '11:30-12:15' }, { period: 6, time: '12:15-01:00', isBreak: true },
-  { period: 7, time: '01:00-01:45' }, { period: 8, time: '01:45-02:30' },
+  { period: 1, time: '09:00-09:45' },
 ];
 
 const SummaryCard = ({ label, value, color }) => (
@@ -43,34 +41,21 @@ const SummaryCard = ({ label, value, color }) => (
 
 const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
-// --- Component for Rendering a Day's Attendance ---
+// --- MODIFIED: Component for Rendering a Day's Attendance ---
 const HistoryDayCard = ({ item }) => {
-    const { dayStatus, statusColor } = useMemo(() => {
-        const total = item.periods.length;
-        if (total === 0) return { dayStatus: 'No Records', statusColor: TEXT_COLOR_MEDIUM };
-        const presentCount = item.periods.filter(p => p.status === 'Present').length;
-
-        if (presentCount === total) return { dayStatus: 'Full Day Present', statusColor: GREEN };
-        if (presentCount === 0) return { dayStatus: 'Full Day Absent', statusColor: RED };
-        return { dayStatus: 'Mixed Attendance', statusColor: ORANGE };
-    }, [item.periods]);
+    // The component now receives a single record per day, not a group of periods.
+    // e.g., item = { attendance_date: "...", status: "Present" }
+    const isPresent = item.status === 'Present';
+    const dayStatus = isPresent ? 'Present' : 'Absent';
+    const statusColor = isPresent ? GREEN : RED;
 
     return (
         <View style={styles.historyDayCard}>
             <View style={styles.historyDayHeader}>
-                <Text style={styles.historyDate}>{new Date(item.date).toDateString()}</Text>
+                <Text style={styles.historyDate}>{new Date(item.attendance_date).toDateString()}</Text>
                 <Text style={[styles.historyStatus, { color: statusColor }]}>{dayStatus}</Text>
             </View>
-            <View style={styles.periodIndicatorContainer}>
-                {item.periods.map(period => (
-                    <View key={period.period_number} style={styles.periodDetail}>
-                        <Text style={styles.periodSubject}>{period.subject_name}</Text>
-                        <View style={[styles.periodIndicator, { backgroundColor: period.status === 'Present' ? GREEN : RED }]}>
-                            <Text style={styles.periodIndicatorText}>{`P${period.period_number}`}</Text>
-                        </View>
-                    </View>
-                ))}
-            </View>
+            {/* No period indicators are needed anymore */}
         </View>
     );
 };
@@ -93,7 +78,7 @@ const AttendanceScreen = ({ route }) => {
 };
 
 
-// --- Generic Student History Component (Used by Student and Admin) ---
+// --- MODIFIED: Generic Student History Component ---
 const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     const [viewMode, setViewMode] = useState('monthly');
     const [data, setData] = useState({ summary: {}, history: [] });
@@ -120,24 +105,11 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     }, [studentId, viewMode]);
 
     const percentage = useMemo(() => {
-        if (!data.summary?.total_periods) return '0.0';
-        return ((data.summary.present_periods / data.summary.total_periods) * 100).toFixed(1);
+        // --- MODIFIED: Calculate percentage based on days, not periods ---
+        if (!data.summary?.total_days || data.summary.total_days === 0) return '0.0';
+        return ((data.summary.present_days / data.summary.total_days) * 100).toFixed(1);
     }, [data.summary]);
-
-    const groupedHistory = useMemo(() => {
-        if (!data.history) return [];
-        const groups = data.history.reduce((acc, period) => {
-            const date = period.attendance_date.split('T')[0];
-            if (!acc[date]) {
-                acc[date] = { date, periods: [] };
-            }
-            acc[date].periods.push(period);
-            acc[date].periods.sort((a, b) => a.period_number - b.period_number);
-            return acc;
-        }, {});
-        return Object.values(groups).sort((a, b) => new Date(b.date) - new Date(a.date));
-    }, [data.history]);
-
+    
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -165,14 +137,16 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
 
             {isLoading ? <ActivityIndicator style={styles.loaderContainer} size="large" color={PRIMARY_COLOR} /> : (
                 <>
+                    {/* --- MODIFIED: Updated summary card labels --- */}
                     <View style={styles.summaryContainer}>
                         <SummaryCard label="Overall" value={`${percentage}%`} color={BLUE} />
-                        <SummaryCard label="Periods Present" value={data.summary.present_periods || 0} color={GREEN} />
-                        <SummaryCard label="Periods Absent" value={data.summary.absent_periods || 0} color={RED} />
+                        <SummaryCard label="Days Present" value={data.summary.present_days || 0} color={GREEN} />
+                        <SummaryCard label="Days Absent" value={data.summary.absent_days || 0} color={RED} />
                     </View>
                     <FlatList
-                        data={groupedHistory}
-                        keyExtractor={(item) => item.date}
+                        // --- MODIFIED: Use history directly from API ---
+                        data={data.history}
+                        keyExtractor={(item) => item.attendance_date}
                         renderItem={({ item }) => <HistoryDayCard item={item} />}
                         ListHeaderComponent={<Text style={styles.historyTitle}>Detailed History ({capitalize(viewMode)})</Text>}
                         ListEmptyComponent={<Text style={styles.noDataText}>No records found for this period.</Text>}
@@ -205,7 +179,7 @@ const AdminStudentDetailView = ({ student, onBack }) => {
     );
 };
 
-// --- Generic Summary View (for Admin and Teacher) ---
+// --- MODIFIED: Generic Summary View (for Admin and Teacher) ---
 const GenericSummaryView = ({
     picker1, picker2, listData,
     summaryData, isLoading, viewMode, setViewMode, onSelectStudent
@@ -257,14 +231,15 @@ const GenericSummaryView = ({
                     keyExtractor={(item) => item.student_id.toString()}
                     ListHeaderComponent={renderSummaryCards}
                     renderItem={({ item }) => {
-                        const studentPercentage = item.total_marked_periods > 0 ? (item.present_periods / item.total_marked_periods) * 100 : 0;
+                        // --- MODIFIED: Use 'days' instead of 'periods' for calculation and display ---
+                        const studentPercentage = item.total_days > 0 ? (item.present_days / item.total_days) * 100 : 0;
                         const percentageColor = studentPercentage >= 75 ? GREEN : studentPercentage >= 50 ? YELLOW : RED;
                         return (
                             <TouchableOpacity onPress={() => onSelectStudent && onSelectStudent(item)}>
                                 <View style={styles.summaryStudentRow}>
                                     <View style={{flex: 1}}>
                                         <Text style={styles.studentName}>{item.full_name}</Text>
-                                        <Text style={styles.studentDetailText}>Present: {item.present_periods} / {item.total_marked_periods}</Text>
+                                        <Text style={styles.studentDetailText}>Days Present: {item.present_days} / {item.total_days}</Text>
                                     </View>
                                     <Text style={[styles.percentageText, { color: percentageColor }]}>{studentPercentage.toFixed(0)}%</Text>
                                 </View>
@@ -459,14 +434,15 @@ const AdminAttendanceView = () => {
   );
 };
 
-// --- Teacher Live Attendance View ---
+// --- MODIFIED: Teacher Live Attendance View ---
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
   const { class_group, subject_name, period_number, date } = route?.params || {};
   const [students, setStudents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const periodInfo = PERIOD_DEFINITIONS.find(p => p.period === period_number);
-  const periodTime = periodInfo ? periodInfo.time : `Period ${period_number}`;
+  // --- MODIFIED: Always get the time for the 1st period ---
+  const periodInfo = PERIOD_DEFINITIONS.find(p => p.period === 1);
+  const periodTime = periodInfo ? periodInfo.time : `Period 1`;
 
   useEffect(() => {
     const fetchAttendanceSheet = async () => {
@@ -476,7 +452,8 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
         return;
       }
       try {
-        const response = await apiClient.get(`/attendance/sheet?class_group=${class_group}&date=${date}&period_number=${period_number}`);
+        // --- MODIFIED: The backend will handle period_number=1 for daily attendance logic ---
+        const response = await apiClient.get(`/attendance/sheet?class_group=${class_group}&date=${date}&period_number=1`);
         const studentsWithStatus = response.data.map(s => ({ ...s, status: s.status || 'Present' }));
         setStudents(studentsWithStatus);
       } catch (error: any) { Alert.alert('Error', 'Failed to load students.'); } 
@@ -494,7 +471,8 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
     if (attendanceData.length === 0) return;
     setIsSaving(true);
     try {
-      await apiClient.post('/attendance', { class_group, subject_name, period_number, date, teacher_id: teacher.id, attendanceData });
+      // --- MODIFIED: Always submit as period 1 ---
+      await apiClient.post('/attendance', { class_group, subject_name, period_number: 1, date, teacher_id: teacher.id, attendanceData });
       Alert.alert('Success', 'Attendance saved!');
     } catch (error: any) { Alert.alert('Error', 'Failed to save attendance.'); }
     finally { setIsSaving(false); }
@@ -504,10 +482,11 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* --- MODIFIED: Updated header for clarity --- */}
       <View style={styles.centeredHeader}>
-        <Text style={styles.headerTitle}>Mark Attendance</Text>
+        <Text style={styles.headerTitle}>Daily Attendance</Text>
         <Text style={styles.headerSubtitle}>{`${class_group} - ${subject_name}`}</Text>
-        <Text style={styles.headerSubtitleSmall}>{`Period ${period_number} (${periodTime}), ${date}`}</Text>
+        <Text style={styles.headerSubtitleSmall}>{`For ${date} (Based on 1st Period - ${periodTime})`}</Text>
       </View>
       <FlatList
         data={students}
@@ -574,14 +553,9 @@ const styles = StyleSheet.create({
   toggleButtonTextActive: { color: WHITE },
   historyTitle: { fontSize: 18, fontWeight: 'bold', paddingHorizontal: 20, marginTop: 15, marginBottom: 10, color: TEXT_COLOR_DARK },
   historyDayCard: { backgroundColor: WHITE, marginHorizontal: 15, marginVertical: 8, borderRadius: 8, elevation: 2, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 5 },
-  historyDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
+  historyDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
   historyDate: { fontSize: 16, fontWeight: '600', color: TEXT_COLOR_DARK },
   historyStatus: { fontSize: 14, fontWeight: 'bold' },
-  periodIndicatorContainer: { flexDirection: 'row', flexWrap: 'wrap', padding: 10 },
-  periodDetail: { alignItems: 'center', margin: 5, minWidth: 70},
-  periodSubject: { fontSize: 10, color: TEXT_COLOR_MEDIUM, marginBottom: 4 },
-  periodIndicator: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center'},
-  periodIndicatorText: { color: WHITE, fontSize: 12, fontWeight: 'bold' },
 });
 
 export default AttendanceScreen;

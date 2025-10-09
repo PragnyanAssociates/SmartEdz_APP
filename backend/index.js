@@ -593,6 +593,9 @@ app.delete('/api/calendar/:id', async (req, res) => { const { id } = req.params;
 app.get('/api/profiles/:userId', async (req, res) => { try { const { userId } = req.params; const sql = ` SELECT u.id, u.username, u.full_name, u.role, u.class_group, p.email, p.dob, p.gender, p.phone, p.address, p.profile_image_url, p.admission_date, p.roll_no FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ? `; const [rows] = await db.query(sql, [userId]); if (rows.length === 0) { return res.status(404).json({ message: 'User not found' }); } res.json(rows[0]); } catch (error) { console.error("GET Profile Error:", error); res.status(500).json({ message: 'Database error fetching profile' }); }});
 app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res) => { try { const userId = parseInt(req.params.userId, 10); if (isNaN(userId) || userId <= 0) { return res.status(400).json({ message: 'Invalid User ID provided.' }); } const { full_name, class_group, email, dob, gender, phone, address, admission_date, roll_no } = req.body; const [userCheck] = await db.query('SELECT id FROM users WHERE id = ?', [userId]); if (userCheck.length === 0) { return res.status(404).json({ message: `User with ID ${userId} not found.` }); } let new_profile_image_url = null; if (req.file) { new_profile_image_url = `/uploads/${req.file.filename}`; } else { const [existingProfile] = await db.query('SELECT profile_image_url FROM user_profiles WHERE user_id = ?', [userId]); if (existingProfile.length > 0) { new_profile_image_url = existingProfile[0].profile_image_url; } } if (full_name !== undefined || class_group !== undefined) { await db.query('UPDATE users SET full_name = ?, class_group = ? WHERE id = ?', [full_name, class_group, userId]); } const profileSql = ` INSERT INTO user_profiles ( user_id, email, dob, gender, phone, address, profile_image_url, admission_date, roll_no ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE email = VALUES(email), dob = VALUES(dob), gender = VALUES(gender), phone = VALUES(phone), address = VALUES(address), profile_image_url = VALUES(profile_image_url), admission_date = VALUES(admission_date), roll_no = VALUES(roll_no) `; const profileParams = [userId, email || null, dob || null, gender || null, phone || null, address || null, new_profile_image_url, admission_date || null, roll_no || null]; await db.query(profileSql, profileParams); res.status(200).json({ message: 'Profile updated successfully!', profile_image_url: new_profile_image_url }); } catch (error) { console.error("!!! SERVER ERROR IN PUT /api/profiles/:userId:", error); res.status(500).json({ message: 'An error occurred while updating the profile.' }); }});
 
+// ==========================================================
+// --- Timetable API ROUTES ---
+// ==========================================================
 // --- TIMETABLE API ROUTES ---
 app.get('/api/teachers', async (req, res) => { try { const [teachers] = await db.query("SELECT id, full_name, subjects_taught FROM users WHERE role = 'teacher'"); res.status(200).json(teachers); } catch (error) { console.error("GET /api/teachers Error:", error); res.status(500).json({ message: 'Could not fetch teachers.' }); }});
 app.get('/api/timetable/:class_group', async (req, res) => { try { const { class_group } = req.params; if (!class_group) { return res.status(400).json({ message: 'Class group is required.' }); } const query = `SELECT t.*, u.full_name as teacher_name FROM timetables t LEFT JOIN users u ON t.teacher_id = u.id WHERE t.class_group = ?`; const [slots] = await db.query(query, [class_group]); res.status(200).json(slots); } catch (error) { console.error("GET /api/timetable/:class_group Error:", error); res.status(500).json({ message: 'Could not fetch timetable.' }); }});
@@ -631,13 +634,14 @@ app.post('/api/timetable', async (req, res) => { const { class_group, day_of_wee
     await connection.commit(); res.status(201).json({ message: 'Timetable updated successfully!' }); } catch (error) { await connection.rollback(); console.error("POST /api/timetable Error:", error); res.status(500).json({ message: error.message || 'Error updating timetable.' }); } finally { connection.release(); }});
 
 
+
 // ==========================================================
 // --- ATTENDANCE API ROUTES ---
 // ==========================================================
 app.get('/api/subjects/:class_group', async (req, res) => { try { const { class_group } = req.params; if (!class_group) { return res.status(400).json({ message: 'Class group is required.' }); } const query = `SELECT DISTINCT subject_name FROM timetables WHERE class_group = ? ORDER BY subject_name;`; const [subjects] = await db.query(query, [class_group]); res.status(200).json(subjects.map(s => s.subject_name)); } catch (error) { console.error("GET /api/subjects/:class_group Error:", error); res.status(500).json({ message: 'Could not fetch subjects for the class.' }); }});
 app.get('/api/teacher-assignments/:teacherId', async (req, res) => { try { const { teacherId } = req.params; if (!teacherId) { return res.status(400).json({ message: 'Teacher ID is required.' }); } const query = `SELECT DISTINCT class_group, subject_name FROM timetables WHERE teacher_id = ? ORDER BY class_group, subject_name;`; const [assignments] = await db.query(query, [teacherId]); res.status(200).json(assignments); } catch (error) { console.error("GET /api/teacher-assignments/:teacherId Error:", error); res.status(500).json({ message: 'Could not fetch teacher assignments.' }); }});
 
-// --- Refactored and Corrected Summary Endpoint Logic ---
+// --- MODIFIED: Rewritten Summary Endpoint Logic for Daily Attendance ---
 const getAttendanceSummary = async (filters) => {
     let dateFilter = '';
     const { viewMode } = filters;
@@ -647,20 +651,21 @@ const getAttendanceSummary = async (filters) => {
         dateFilter = 'AND MONTH(ar.attendance_date) = MONTH(CURDATE()) AND YEAR(ar.attendance_date) = YEAR(CURDATE())';
     }
 
-    let whereClause = '';
-    let queryParams = [];
-
+    let whereClause = 'ar.class_group = ?';
+    let queryParams = [filters.classGroup];
+    
+    if (filters.subjectName) {
+        whereClause += ' AND ar.subject_name = ?';
+        queryParams.push(filters.subjectName);
+    }
     if (filters.teacherId) {
-        whereClause = 'ar.teacher_id = ? AND ar.class_group = ? AND ar.subject_name = ?';
-        queryParams = [filters.teacherId, filters.classGroup, filters.subjectName];
-    } else {
-        whereClause = 'ar.class_group = ? AND ar.subject_name = ?';
-        queryParams = [filters.classGroup, filters.subjectName];
+        whereClause += ' AND ar.teacher_id = ?';
+        queryParams.push(filters.teacherId);
     }
 
     const baseQuery = `FROM attendance_records ar WHERE ${whereClause} ${dateFilter}`;
 
-    // --- Dynamic Overall Summary Calculations ---
+    // --- MODIFIED: Overall Summary Calculations based on daily records ---
     let overallSummary;
     if (viewMode === 'daily') {
         const summaryQuery = `
@@ -673,37 +678,28 @@ const getAttendanceSummary = async (filters) => {
         [[overallSummary]] = await db.query(summaryQuery, queryParams);
     } else { // Monthly & Overall
         const summaryQuery = `
-            WITH StudentDaily AS (
-                SELECT
-                    student_id,
-                    attendance_date,
-                    -- A student is present for a day if they attended at least one period
-                    MAX(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) as is_present
-                ${baseQuery}
-                GROUP BY student_id, attendance_date
-            ),
-            StudentOverall AS (
+            WITH StudentStats AS (
                 SELECT 
                     student_id,
-                    (SUM(is_present) * 100 / COUNT(attendance_date)) as overall_perc
-                FROM StudentDaily
+                    (SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) * 100.0 / COUNT(id)) as percentage
+                ${baseQuery}
                 GROUP BY student_id
             )
             SELECT
-                COALESCE((SELECT (SUM(is_present) * 100 / COUNT(*)) FROM StudentDaily), 0) as avg_daily_attendance,
-                COALESCE((SELECT COUNT(*) FROM StudentOverall WHERE overall_perc < 75), 0) AS students_below_threshold,
-                COALESCE((SELECT (SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) * 100 / COUNT(id)) ${baseQuery}), 0) as overall_percentage
+                (SELECT COALESCE(AVG(percentage), 0) FROM StudentStats) as avg_daily_attendance,
+                (SELECT COUNT(*) FROM StudentStats WHERE percentage < 75) AS students_below_threshold,
+                (SELECT COALESCE(SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) * 100.0 / COUNT(id), 0) ${baseQuery}) as overall_percentage
         `;
          [[overallSummary]] = await db.query(summaryQuery, [...queryParams, ...queryParams]);
     }
 
-    // --- Student-by-Student Details Calculation (now using period counts) ---
+    // --- MODIFIED: Student-by-Student Details Calculation (now using daily counts) ---
     const studentDetailsQuery = `
         SELECT 
             u.id AS student_id, 
             u.full_name, 
-            COALESCE(SUM(CASE WHEN ar.status = 'Present' THEN 1 ELSE 0 END), 0) as present_periods, 
-            COUNT(ar.id) as total_marked_periods
+            COALESCE(SUM(CASE WHEN ar.status = 'Present' THEN 1 ELSE 0 END), 0) as present_days, 
+            COUNT(ar.id) as total_days
         FROM users u 
         LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ${whereClause} ${dateFilter}
         WHERE u.role = 'student' AND u.class_group = ?
@@ -744,24 +740,33 @@ app.get('/api/attendance/admin-summary', async (req, res) => {
     }
 });
 
-app.get('/api/attendance/sheet', async (req, res) => { const { class_group, date, period_number } = req.query; try { if (!class_group || !date || !period_number) { return res.status(400).json({ message: 'Class group, date, and period number are required.' }); } const periodNum = parseInt(period_number, 10); if (isNaN(periodNum) || periodNum < 1 || periodNum > 8) { return res.status(400).json({ message: 'Period number must be between 1 and 8.' }); } const query = `SELECT u.id, u.full_name, ar.status FROM users u LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ar.attendance_date = ? AND ar.period_number = ? WHERE u.role = 'student' AND u.class_group = ? ORDER BY u.full_name;`; const [students] = await db.query(query, [date, periodNum, class_group]); res.status(200).json(students); } catch (error) { console.error("GET /api/attendance/sheet Error:", error); res.status(500).json({ message: 'Error fetching attendance sheet.' }); }});
-app.post('/api/attendance', async (req, res) => { const { class_group, subject_name, period_number, date, teacher_id, attendanceData } = req.body; const connection = await db.getConnection(); try { if (!class_group || !subject_name || !period_number || !date || !teacher_id || !Array.isArray(attendanceData)) { return res.status(400).json({ message: 'All fields are required, and attendanceData must be an array.' }); } const periodNum = parseInt(period_number, 10); if (isNaN(periodNum) || periodNum < 1 || periodNum > 8) { return res.status(400).json({ message: 'Period number must be between 1 and 8.' }); } if (attendanceData.some(record => !record.student_id || !['Present', 'Absent'].includes(record.status))) { return res.status(400).json({ message: 'Each attendance record must have a valid student_id and status (Present or Absent).' }); } const dayOfWeek = new Date(date).toLocaleString('en-US', { weekday: 'long' }); const validDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']; if (!validDays.includes(dayOfWeek)) { return res.status(400).json({ message: 'Attendance can only be marked on school days (Monday to Saturday).' }); } const [timetableSlot] = await connection.query( 'SELECT teacher_id FROM timetables WHERE class_group = ? AND day_of_week = ? AND period_number = ?', [class_group, dayOfWeek, periodNum] ); if (!timetableSlot.length || timetableSlot[0].teacher_id !== parseInt(teacher_id)) { return res.status(403).json({ message: 'You are not assigned to this class period.' }); } await connection.beginTransaction(); const query = `INSERT INTO attendance_records (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE status = VALUES(status);`; for (const record of attendanceData) { await connection.execute(query, [ record.student_id, teacher_id, class_group, subject_name, date, periodNum, record.status ]); } await connection.commit(); res.status(201).json({ message: 'Attendance saved successfully!' }); } catch (error) { await connection.rollback(); console.error("POST /api/attendance Error:", error); res.status(500).json({ message: 'Error saving attendance.' }); } finally { connection.release(); }});
+app.get('/api/attendance/sheet', async (req, res) => { const { class_group, date } = req.query; try { if (!class_group || !date) { return res.status(400).json({ message: 'Class group and date are required.' }); } const periodNum = 1; /* MODIFIED: Always fetch for period 1 */ const query = `SELECT u.id, u.full_name, ar.status FROM users u LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ar.attendance_date = ? AND ar.period_number = ? WHERE u.role = 'student' AND u.class_group = ? ORDER BY u.full_name;`; const [students] = await db.query(query, [date, periodNum, class_group]); res.status(200).json(students); } catch (error) { console.error("GET /api/attendance/sheet Error:", error); res.status(500).json({ message: 'Error fetching attendance sheet.' }); }});
 
-// --- Student History Endpoints (for Student and Admin) ---
+app.post('/api/attendance', async (req, res) => { const { class_group, subject_name, date, teacher_id, attendanceData } = req.body; const connection = await db.getConnection(); try { if (!class_group || !subject_name || !date || !teacher_id || !Array.isArray(attendanceData)) { return res.status(400).json({ message: 'All fields are required, and attendanceData must be an array.' }); } const periodNum = 1; // --- MODIFIED: Enforce daily attendance via Period 1 --- if (attendanceData.some(record => !record.student_id || !['Present', 'Absent'].includes(record.status))) { return res.status(400).json({ message: 'Each attendance record must have a valid student_id and status (Present or Absent).' }); } const dayOfWeek = new Date(date).toLocaleString('en-US', { weekday: 'long' }); const [timetableSlot] = await connection.query( 'SELECT teacher_id FROM timetables WHERE class_group = ? AND day_of_week = ? AND period_number = ?', [class_group, dayOfWeek, periodNum] ); if (!timetableSlot.length || timetableSlot[0].teacher_id !== parseInt(teacher_id)) { return res.status(403).json({ message: 'You are not assigned to the first period for this class today.' }); } await connection.beginTransaction(); const studentIds = attendanceData.map(r => r.student_id); if (studentIds.length > 0) { await connection.execute('DELETE FROM attendance_records WHERE student_id IN (?) AND attendance_date = ?', [studentIds, date]); } const query = `INSERT INTO attendance_records (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status) VALUES (?, ?, ?, ?, ?, ?, ?);`; for (const record of attendanceData) { await connection.execute(query, [ record.student_id, teacher_id, class_group, subject_name, date, periodNum, record.status ]); } await connection.commit(); res.status(201).json({ message: 'Attendance saved successfully!' }); } catch (error) { await connection.rollback(); console.error("POST /api/attendance Error:", error); res.status(500).json({ message: 'Error saving attendance.' }); } finally { connection.release(); }});
+
+// --- MODIFIED: Rewritten Student History Endpoint Logic ---
 const getStudentHistory = async (studentId, viewMode) => {
     let dateFilter = '';
     if (viewMode === 'daily') { dateFilter = 'AND attendance_date = CURDATE()'; } 
     else if (viewMode === 'monthly') { dateFilter = 'AND MONTH(attendance_date) = MONTH(CURDATE()) AND YEAR(attendance_date) = YEAR(CURDATE())'; }
+    
     const queryBase = `FROM attendance_records WHERE student_id = ? ${dateFilter}`;
-    const summaryQuery = `SELECT COALESCE(SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END), 0) as present_periods, COUNT(*) as total_periods ${queryBase}`;
+    
+    const summaryQuery = `
+        SELECT 
+            COALESCE(SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END), 0) as present_days, 
+            COUNT(*) as total_days 
+        ${queryBase}`;
     const [[summary]] = await db.query(summaryQuery, [studentId]);
-    const historyQuery = `SELECT attendance_date, status, subject_name, period_number ${queryBase} ORDER BY attendance_date DESC, period_number DESC`;
+    
+    const historyQuery = `SELECT attendance_date, status, subject_name, period_number ${queryBase} ORDER BY attendance_date DESC`;
     const [history] = await db.query(historyQuery, [studentId]);
+    
     return {
         summary: {
-            present_periods: summary.present_periods || 0,
-            absent_periods: (summary.total_periods || 0) - (summary.present_periods || 0),
-            total_periods: summary.total_periods || 0,
+            present_days: summary.present_days || 0,
+            absent_days: (summary.total_days || 0) - (summary.present_days || 0),
+            total_days: summary.total_days || 0,
         },
         history
     };

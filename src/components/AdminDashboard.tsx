@@ -23,7 +23,7 @@ import AttendanceScreen from '../screens/AttendanceScreen';
 // import AdminHelpDeskScreen from '../screens/helpdesk/AdminHelpDeskScreen';
 // import TeacherAdminPTMScreen from '../screens/ptm/TeacherAdminPTMScreen';
 // import TeacherAdminLabsScreen from '../screens/labs/TeacherAdminLabsScreen';
-// import TeacherAdminHomeworkScreen from '../screens/homework/TeacherAdminHomeworkScreen';
+import TeacherAdminHomeworkScreen from '../screens/homework/TeacherAdminHomeworkScreen';
 // import TeacherAdminExamScreen from '../screens/exams_Schedule/TeacherAdminExamScreen';
 // import TeacherAdminExamsScreen from '../screens/exams/TeacherAdminExamsScreen';
 // import TeacherAdminMaterialsScreen from '../screens/study-materials/TeacherAdminMaterialsScreen';

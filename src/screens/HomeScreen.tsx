@@ -1,22 +1,109 @@
-import React from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, SafeAreaView, StatusBar } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  Image, 
+  SafeAreaView, 
+  StatusBar, 
+  Animated, 
+  Dimensions,
+  Pressable 
+} from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import LinearGradient from 'react-native-linear-gradient';
 
+// Define a consistent color palette
+const COLORS = {
+  primary: '#007AFF',
+  background: '#F7F9FC',
+  textPrimary: '#1D2A3F',
+  textSecondary: '#6C7A9C',
+  white: '#FFFFFF',
+  gradientStart: '#E0F7FA', // Light cyan for header/footer
+  gradientEnd: '#B2EBF2',   // Slightly darker cyan
+};
+
+// Get screen width for responsive card sizing
+const { width } = Dimensions.get('window');
+
+// Define navigation prop type for better TypeScript support
 type NavigationProp = {
   navigate: (screen: string, params?: { role: string } | object) => void;
 };
 
+// Define the structure for a role item
+type RoleItem = {
+  id: number;
+  name: string;
+  icon: string;
+  type: 'login' | 'navigate';
+  target: string;
+};
+
+// ====================================================================
+// Reusable, Animated RoleCard Component
+// ====================================================================
+const RoleCard = ({ item, index, onPress }: { item: RoleItem, index: number, onPress: () => void }) => {
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(opacityAnim, {
+      toValue: 1,
+      duration: 500,
+      delay: index * 150,
+      useNativeDriver: true,
+    }).start();
+    
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 5,
+      delay: index * 150,
+      useNativeDriver: true,
+    }).start();
+  }, [opacityAnim, scaleAnim, index]);
+
+  return (
+    <Animated.View style={{ opacity: opacityAnim, transform: [{ scale: scaleAnim }] }}>
+      <Pressable 
+        style={({ pressed }) => [
+          styles.card,
+          { transform: [{ scale: pressed ? 0.96 : 1 }] }
+        ]} 
+        onPress={onPress}
+      >
+        <Image source={{ uri: item.icon }} style={styles.cardIcon} resizeMode="contain" />
+        <Text style={styles.cardText}>{item.name}</Text>
+      </Pressable>
+    </Animated.View>
+  );
+};
+
+
+// ====================================================================
+// Main HomeScreen Component
+// ====================================================================
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const headerAnim = useRef(new Animated.Value(-200)).current;
 
-  const roles = [
-    { id: 2, name: "Admin",     icon: "https://cdn-icons-png.flaticon.com/512/17003/17003310.png", type: 'login',    target: 'admin' },
-    { id: 3, name: "Student",   icon: "https://cdn-icons-png.flaticon.com/128/2784/2784403.png", type: 'login',    target: 'student' },
-    { id: 4, name: "Teacher",   icon: "https://cdn-icons-png.freepik.com/256/14416/14416005.png?semt=ais_hybrid", type: 'login',    target: 'teacher' },
-    { id: 5, name: "Driver",    icon: "https://cdn-icons-png.flaticon.com/128/2798/2798177.png", type: 'login',    target: 'Driver' },
+  useEffect(() => {
+    Animated.timing(headerAnim, {
+      toValue: 0,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, [headerAnim]);
+
+  const roles: RoleItem[] = [
+    { id: 2, name: "Admin",   icon: "https://cdn-icons-png.flaticon.com/512/17003/17003310.png", type: 'login', target: 'admin' },
+    { id: 3, name: "Student", icon: "https://cdn-icons-png.flaticon.com/512/2784/2784403.png", type: 'login', target: 'student' },
+    { id: 4, name: "Teacher", icon: "https://cdn-icons-png.freepik.com/512/1995/1995574.png", type: 'login', target: 'teacher' },
+    { id: 5, name: "Driver",  icon: "https://cdn-icons-png.flaticon.com/512/2798/2798177.png", type: 'login', target: 'Driver' },
   ];
 
-  const handleRolePress = (item: typeof roles[0]) => {
+  const handleRolePress = (item: RoleItem) => {
     if (item.type === 'login') {
       navigation.navigate('Login', { role: item.target });
     } else if (item.type === 'navigate') {
@@ -25,87 +112,104 @@ export default function HomeScreen() {
   };
 
   return (
-    // SafeAreaView ensures content doesn't overlap with the status bar or notches
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#e0f2f7" />
-      <View style={styles.header}>
-        <Image 
-          source={require("../assets/pragnyan-logo.png")} 
-          style={styles.logo} 
-          resizeMode="contain" 
-        />
-        <Text style={styles.tagline}>Empowering Easy Institutional Management</Text>
-      </View>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.gradientStart} />
       
-      <View style={styles.content}>
-        <View style={styles.grid}>
-          {roles.map((roleItem) => (
-            <TouchableOpacity key={roleItem.id} style={styles.card} onPress={() => handleRolePress(roleItem)}>
-              <Image source={{ uri: roleItem.icon }} style={styles.cardIcon} resizeMode="contain" />
-              <Text style={styles.cardText}>{roleItem.name}</Text>
-            </TouchableOpacity>
+      <Animated.View style={{ transform: [{ translateY: headerAnim }] }}>
+        <LinearGradient
+          colors={[COLORS.gradientStart, COLORS.gradientEnd]}
+          style={styles.header}
+        >
+          <Image 
+            source={require("../assets/vspngo-logo.png")} 
+            style={styles.logo} 
+            resizeMode="contain" 
+          />
+          <Text style={styles.subtitle}>Empowering Easy Institutional Management</Text>
+        </LinearGradient>
+      </Animated.View>
+      
+      <View style={styles.contentWrapper}>
+        {/* CHANGE: Added the "Select your role" title here */}
+        <Text style={styles.roleTitle}>Select your role</Text>
+        
+        <View style={styles.gridContainer}>
+          {roles.map((roleItem, index) => (
+            <RoleCard 
+              key={roleItem.id} 
+              item={roleItem}
+              index={index}
+              onPress={() => handleRolePress(roleItem)}
+            />
           ))}
         </View>
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>© 2025 Pragnyan</Text>
+        <Text style={styles.footerText}>© 2025 Vivekananda Public School</Text>
       </View>
     </SafeAreaView>
   );
 }
 
+// ====================================================================
+// Enhanced StyleSheet
+// ====================================================================
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#f7f9fc" // Slightly cleaner background color
+    backgroundColor: COLORS.background,
   },
   header: { 
-    backgroundColor: "#e0f2f7", 
-    paddingVertical: 30, // Balanced vertical padding
+    paddingTop: 40,
+    paddingBottom: 80, // Adjusted padding for better balance with the new title
     alignItems: "center", 
     justifyContent: "center",
-    borderBottomLeftRadius: 30, // Added curve to the header
-    borderBottomRightRadius: 30,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
   },
-  // KEY CHANGE: Corrected the logo size to be proportional and not oversized.
   logo: { 
-    width: 200,
-    height: 200,
+    width: width * 0.7, 
+    height: 130, // Adjusted height for better proportion
     marginBottom: 10, 
   },
-  // KEY CHANGE: Better styling for the tagline for good hierarchy.
-  tagline: { 
-    fontSize: 18, 
-    color: "#005662", // A darker, more professional color
+  subtitle: {
+    fontSize: 18,
+    color: '#005662',
+    paddingTop: 30, 
+  },
+  contentWrapper: {
+    flex: 1, 
+  },
+  // CHANGE: Added style for the new title
+  roleTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
     textAlign: 'center',
+    marginTop: 30, // Space from the header
   },
-  content: { 
-    flex: 1, // This makes the content area take up all available space
-    justifyContent: 'center', // This centers the grid vertically in the content area
-    paddingHorizontal: 10,
-  },
-  grid: { 
+  gridContainer: { 
     flexDirection: "row", 
     flexWrap: "wrap", 
-    // KEY CHANGE: This distributes the cards evenly with space around them
     justifyContent: "space-around", 
-    alignItems: "center", 
+    paddingTop: 20, // Adjusted space from the new title
+    paddingHorizontal: 10,
   },
-  // KEY CHANGE: Adjusted card styling for better spacing.
   card: { 
-    width: "42%", // Slightly increased width
-    backgroundColor: "#fff", 
-    borderRadius: 15, // Softer corners
-    padding: 20, 
+    width: (width / 2) - 35, 
+    backgroundColor: COLORS.white, 
+    borderRadius: 16,
+    paddingVertical: 25,
+    paddingHorizontal: 15,
     alignItems: "center", 
-    // Replaced generic margin with marginBottom for consistent vertical spacing
-    marginBottom: 20,
+    justifyContent: "center",
+    marginBottom: 25,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 6,
   },
   cardIcon: { 
     width: 50, 
@@ -115,15 +219,17 @@ const styles = StyleSheet.create({
   cardText: { 
     fontSize: 16, 
     fontWeight: "600", 
-    color: "#333", 
+    color: COLORS.textPrimary,
+    textAlign: 'center',
   },
-  footer: { 
-    backgroundColor: "#e0f2f7", 
-    paddingVertical: 15, 
-    alignItems: "center", 
+  footer: {
+    backgroundColor: COLORS.gradientStart,
+    paddingVertical: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  footerText: { 
-    color: "#005662", 
+  footerText: {
     fontSize: 14,
+    color: '#005662',
   },
 });

@@ -1,94 +1,161 @@
-import React from 'react';
-// Make sure ImageBackground and Text are imported
-import { View, Text, TouchableOpacity, StyleSheet, Image, ImageBackground } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+// Make sure ImageBackground is imported
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  SafeAreaView,
+  Animated,
+  Dimensions,
+  ImageBackground 
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/AntDesign';
 
+// Get screen dimensions for responsive design
+const { width, height } = Dimensions.get('window');
+
 const WelcomePage = () => {
   const navigation = useNavigation();
+
+  // Animation values remain the same for a dynamic entry effect
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideUpAnim = useRef(new Animated.Value(50)).current;
+  const logoScaleAnim = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.stagger(200, [
+        Animated.spring(logoScaleAnim, {
+          toValue: 1,
+          friction: 4,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideUpAnim, {
+          toValue: 0,
+          friction: 5,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [fadeAnim, slideUpAnim, logoScaleAnim]);
+
 
   const handleGetStarted = () => {
     navigation.navigate('HomeScreen');
   };
 
+  // Animated styles remain the same
+  const animatedContainerStyle = {
+    opacity: fadeAnim,
+  };
+  const animatedLogoStyle = {
+    opacity: fadeAnim,
+    transform: [{ scale: logoScaleAnim }],
+  };
+  const animatedContentStyle = {
+    opacity: fadeAnim,
+    transform: [{ translateY: slideUpAnim }],
+  };
+
   return (
-    <ImageBackground
-      source={require('../assets/School_1.png')} // Make sure this path is correct
-      style={styles.backgroundImage}
-      resizeMode="cover"
-    >
-      <View style={styles.container}>
-        <Image
-          source={require("../assets/pragnyan-logo.png")} // Make sure this path is correct
-          style={styles.logo}
-          resizeMode="contain"
-        />
-        <Text style={styles.tagline}>
-          The unified platform to manage your institution's resources and operations.
-        </Text>
-        <TouchableOpacity style={styles.button} onPress={handleGetStarted}>
-          <View style={styles.buttonContent}>
-            <Text style={styles.buttonText}>Get Started</Text>
-            <Icon name="arrowright" size={22} color="#FFFFFF" style={styles.icon} />
-          </View>
-        </TouchableOpacity>
-      </View>
-    </ImageBackground>
+    <SafeAreaView style={styles.safeArea}>
+      <ImageBackground
+        source={require('../assets/background-4.jpg')}
+        style={styles.backgroundImage}
+        // resizeMode="cover"
+        // CHANGE: The 'blurRadius' property has been removed from here.
+      >
+        {/* The overlay is still here to ensure text readability */}
+        <Animated.View style={[styles.overlay, animatedContainerStyle]}>
+          <Animated.Image
+            source={require("../assets/vspngo-logo.png")}
+            style={[styles.logo, animatedLogoStyle]}
+            resizeMode="contain"
+          />
+          <Animated.Text style={[styles.tagline, animatedContentStyle]}>
+            The unified platform to manage your institution's resources and operations.
+          </Animated.Text>
+          <Animated.View style={animatedContentStyle}>
+            <TouchableOpacity style={styles.button} onPress={handleGetStarted} activeOpacity={0.8}>
+              <Text style={styles.buttonText}>Get Started</Text>
+              <Icon name="arrowright" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
+      </ImageBackground>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF', // Fallback color
+  },
   backgroundImage: {
     flex: 1,
     width: '100%',
     height: '100%',
   },
-  container: {
+  // This overlay sits on top of the background image
+  overlay: {
     flex: 1,
-    // KEY CHANGE: This will center the entire content block vertically on the screen.
-    justifyContent: 'center', 
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 20,
+    // A semi-transparent white background makes content pop
+    backgroundColor: 'rgba(255, 255, 255, 0.5)', 
   },
   logo: {
-    width: 800,
-    height: 300,
-    // Space between logo and tagline
-    marginBottom: -5, 
+    width: width * 0.8,
+    height: height * 0.15,
+    marginBottom: 25,
   },
   tagline: {
-    fontSize: 17,
-    color: '#FFFFFF',
+    fontSize: 18,
+    // Dark color for high contrast against the light overlay
+    color: '#333333', 
+    fontWeight: '500', // Slightly bolder for readability
     textAlign: 'center',
-    // KEY CHANGE: This is the main space between the text and the button. 
-    // Reduced from 100 to a more reasonable 40.
-    marginBottom: 160, 
-    paddingHorizontal: 15,
-    fontStyle:"italic",
+    lineHeight: 26,
+    maxWidth: '95%',
+    fontStyle: "italic",
+    marginBottom: 60,
+    // Adding a subtle text shadow to lift it off the background
+    textShadowColor: 'rgba(255, 255, 255, 0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   button: {
-    backgroundColor: '#007BFF',
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 20,
-    elevation: 5,
+    backgroundColor: '#007AFF',
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 0,
-    marginTop: -110,
-  },
-
-  buttonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    borderRadius: 30,
+    shadowColor: "#000000", // Shadow is more effective against an image
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 12,
   },
   buttonText: {
     color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: 'bold',
-  },
-  icon: {
-    marginLeft: 10,
+    fontWeight: '700',
+    marginRight: 12,
   },
 });
 

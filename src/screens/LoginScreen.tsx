@@ -1,25 +1,22 @@
-// 📂 File: src/screens/LoginScreen.tsx (NEW DYNAMIC DESIGN)
+// 📂 File: src/screens/LoginScreen.tsx (ENHANCED DYNAMIC VERSION)
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
-  View, Text, StyleSheet, TextInput, TouchableOpacity, Image, 
+  View, Text, StyleSheet, TextInput, Image, 
   Alert, ActivityIndicator, KeyboardAvoidingView, Platform, 
-  ScrollView, StatusBar, SafeAreaView 
+  ScrollView, StatusBar, SafeAreaView, Pressable, Animated 
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../../apiConfig';
 
-// --- (Optional) For a better visual, you need to install these packages ---
-// npm install react-native-linear-gradient
-// npm install react-native-vector-icons (or @expo/vector-icons)
 import LinearGradient from 'react-native-linear-gradient';
-import Feather from 'react-native-vector-icons/Feather'; // Using Feather icons for a clean look
+import Feather from 'react-native-vector-icons/Feather';
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 type LoginScreenProps = {
-  route: { params: { role: 'admin' | 'teacher' | 'student' | 'donor'; } }
+  route: { params: { role: 'admin' | 'teacher' | 'student' |  'Driver'; } }
 };
 
 type NavigationProp = {
@@ -34,10 +31,37 @@ export default function LoginScreen({ route }: LoginScreenProps) {
   const { login } = useAuth();
   const navigation = useNavigation<NavigationProp>();
 
+  // --- Animation Hooks ---
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const formAnim = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  // --- Focus State for Inputs ---
+  const [isUserFocused, setIsUserFocused] = useState(false);
+  const [isPassFocused, setIsPassFocused] = useState(false);
+
+  useEffect(() => {
+    // Staggered entry animation for a smooth, professional appearance
+    Animated.stagger(200, [
+      Animated.spring(headerAnim, { toValue: 1, useNativeDriver: true }),
+      Animated.spring(formAnim, { toValue: 1, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const triggerShake = () => {
+    shakeAnim.setValue(0); // Reset before shaking
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 10, duration: 80, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 80, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 10, duration: 80, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 80, useNativeDriver: true }),
+    ]).start();
+  };
+
   const handleLogin = async () => {
-    // ... (Your handleLogin logic remains exactly the same, no changes needed here)
     if (!username || !password) {
       Alert.alert("Input Required", "Please enter your details.");
+      triggerShake(); // Shake on validation error
       return;
     }
     setIsLoggingIn(true);
@@ -51,37 +75,44 @@ export default function LoginScreen({ route }: LoginScreenProps) {
       if (response.ok) {
         if (data.user.role !== role) {
           Alert.alert("Login Failed", `You are not registered as a ${role}.`);
-          setIsLoggingIn(false);
-          return;
+          triggerShake(); // Shake on role mismatch
+        } else {
+          await login(data.user, data.token);
         }
-        await login(data.user, data.token);
       } else {
         Alert.alert("Login Failed", data.message || "Invalid credentials.");
+        triggerShake(); // Shake on invalid credentials
       }
     } catch (error) {
       Alert.alert("An Error Occurred", "Could not connect to the server.");
+      triggerShake(); // Shake on network error
     } finally {
       setIsLoggingIn(false);
     }
   };
 
+  // --- Animated Styles ---
+  const headerStyle = { opacity: headerAnim, transform: [{ scale: headerAnim }] };
+  const formStyle = { opacity: formAnim, transform: [{ translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) }] };
+  const shakeStyle = { transform: [{ translateX: shakeAnim }] };
+
   return (
     <SafeAreaView style={{flex: 1}}>
-      <LinearGradient colors={['#E0F7FA', '#B2EBF2', '#f4bceeff']} style={styles.gradient}>
+      <LinearGradient colors={['#E0F7FA', '#B2EBF2', '#dd9eb2ff']} style={styles.gradient}>
         <StatusBar barStyle="dark-content" />
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.scrollContainer}>
             
-            <View style={styles.header}>
-              <Image source={require("../assets/pragnyan-logo.png")} style={styles.logo}/>
+            <Animated.View style={[styles.header, headerStyle]}>
+              <Image source={require("../assets/vspngo-logo.png")} style={styles.logo}/>
               <Text style={styles.welcomeText}>Welcome Back!</Text>
-            </View>
+            </Animated.View>
 
-            <View style={styles.formContainer}>
+            <Animated.View style={[styles.formContainer, formStyle, shakeStyle]}>
               <Text style={styles.title}>{capitalize(role)} Login</Text>
               
-              <View style={styles.inputContainer}>
-                <Feather name={role === 'student' ? 'hash' : 'user'} size={20} color="#888" style={styles.inputIcon} />
+              <View style={[styles.inputContainer, isUserFocused && styles.inputContainerFocused]}>
+                <Feather name={role === 'student' ? 'hash' : 'user'} size={20} color={isUserFocused ? "#007BFF" : "#888"} style={styles.inputIcon} />
                 <TextInput 
                   style={styles.input} 
                   placeholder={role === 'student' ? 'Student ID' : 'Username'} 
@@ -89,11 +120,13 @@ export default function LoginScreen({ route }: LoginScreenProps) {
                   onChangeText={setUsername} 
                   autoCapitalize="none" 
                   placeholderTextColor="#888"
+                  onFocus={() => setIsUserFocused(true)}
+                  onBlur={() => setIsUserFocused(false)}
                 />
               </View>
 
-              <View style={styles.inputContainer}>
-                <Feather name="lock" size={20} color="#888" style={styles.inputIcon} />
+              <View style={[styles.inputContainer, isPassFocused && styles.inputContainerFocused]}>
+                <Feather name="lock" size={20} color={isPassFocused ? "#007BFF" : "#888"} style={styles.inputIcon} />
                 <TextInput 
                   style={styles.input} 
                   placeholder="Password" 
@@ -101,27 +134,20 @@ export default function LoginScreen({ route }: LoginScreenProps) {
                   value={password} 
                   onChangeText={setPassword}
                   placeholderTextColor="#888"
+                  onFocus={() => setIsPassFocused(true)}
+                  onBlur={() => setIsPassFocused(false)}
                 />
               </View>
               
-              {role === 'donor' && (
-                <TouchableOpacity onPress={() => navigation.navigate('ForgotPasswordScreen')}>
-                    <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={isLoggingIn}>
+              {/* Optional links for donor */}
+              
+              <Pressable style={({ pressed }) => [styles.loginButton, { transform: [{scale: pressed ? 0.98 : 1}] }]} onPress={handleLogin} disabled={isLoggingIn}>
                 {isLoggingIn ? (<ActivityIndicator color="#fff" />) : (<Text style={styles.loginButtonText}>Login</Text>)}
-              </TouchableOpacity>
+              </Pressable>
 
-              {role === 'donor' && (
-                <TouchableOpacity onPress={() => navigation.navigate('DonorRegistration')}>
-                  <Text style={styles.registerText}>Don't have an account? <Text style={{fontWeight: 'bold', color: '#007BFF'}}>Register</Text></Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            </Animated.View>
             
-            <Text style={styles.footerText}>© 2025 Pragnyan</Text>
+            <Text style={styles.footerText}>© 2025 Vivekananda Public School</Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
@@ -129,14 +155,14 @@ export default function LoginScreen({ route }: LoginScreenProps) {
   );
 }
 
-// --- NEW DYNAMIC STYLES ---
+// --- YOUR ORIGINAL STYLES WITH DYNAMIC ENHANCEMENTS ---
 const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'space-between', // Pushes footer to the bottom
+    justifyContent: 'space-between', 
     alignItems: 'center',
     paddingVertical: 30,
   },
@@ -145,16 +171,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logo: {
-    width: 200,
-    height: 200,
+    width: 300, // Slightly adjusted for better balance
+    height: 250,
     resizeMode: "contain",
   },
   welcomeText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#370eedff', // A deep teal color
-    marginTop: 0,
-    marginBottom: 0,
+    color: '#005662', // Color matched with home screen
+    marginTop: -10,
   },
   formContainer: {
     width: '90%',
@@ -166,6 +191,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 8,
+    marginTop: -10,
   },
   title: {
     fontSize: 24,
@@ -181,6 +207,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 20,
     paddingHorizontal: 15,
+    borderWidth: 2,
+    borderColor: 'transparent', // Prepare for focus state
+  },
+  // NEW STYLE: For interactive focus effect
+  inputContainerFocused: {
+    borderColor: '#007BFF',
+    backgroundColor: '#fff',
   },
   inputIcon: {
     marginRight: 10,
@@ -193,12 +226,11 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     backgroundColor: "#007BFF",
-    height: 50,
+    height: 55, // Slightly taller for better touch target
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
     marginTop: 10,
-    marginBottom: 20,
     shadowColor: "#007BFF",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -210,20 +242,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
   },
-  forgotPasswordText: { 
-    textAlign: 'right', 
-    color: '#007BFF', 
-    marginBottom: 20, 
-    fontWeight: '600' 
-  },
-  registerText: { 
-    textAlign: 'center', 
-    color: '#555', 
-    fontSize: 16 
-  },
   footerText: {
-    color: '#070503ff',
-    fontSize: 14,
+    color: '#005662',
+    fontSize: 16,
     marginTop: 20,
   },
 });

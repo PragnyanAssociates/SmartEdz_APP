@@ -176,12 +176,19 @@ const TimetableScreen = () => {
       return;
     }
     
+    // --- MODIFIED: Enforce 1st Period Only Rule ---
+    if (periodNumber !== 1) {
+      Alert.alert('Attendance Rule', 'Attendance is only taken for the first period to mark the full day.');
+      return;
+    }
+    // --- END MODIFICATION ---
+    
     if (!user?.id) return;
 
     navigation.navigate('Attendance', {
       class_group: selectedClass,
       subject_name: subject,
-      period_number: periodNumber,
+      period_number: periodNumber, // This will always be 1 now
       date: today.toISOString().split('T')[0],
     });
   };
