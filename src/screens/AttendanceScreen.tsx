@@ -8,11 +8,15 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform, // --- NEW ---
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
+import { useNavigation } from '@react-navigation/native';
+// --- NEW ---
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // --- Constants (Shared across views) ---
 const PRIMARY_COLOR = '#008080';
@@ -24,10 +28,9 @@ const RED = '#E53935';
 const BLUE = '#1E88E5';
 const YELLOW = '#FDD835';
 const WHITE = '#FFFFFF';
-const ORANGE = '#FB8C00'; // For Mixed Attendance
+const ORANGE = '#FB8C00';
 
 const CLASS_GROUPS = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
-// --- MODIFIED: Period definitions only needed for the live attendance header now ---
 const PERIOD_DEFINITIONS = [
   { period: 1, time: '09:00-09:45' },
 ];
@@ -41,7 +44,6 @@ const SummaryCard = ({ label, value, color }) => (
 
 const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
-// --- MODIFIED: Component for Rendering a Day's Attendance ---
 const HistoryDayCard = ({ item }) => {
     const isPresent = item.status === 'Present';
     const dayStatus = isPresent ? 'Present' : 'Absent';
@@ -75,20 +77,28 @@ const AttendanceScreen = ({ route }) => {
 };
 
 
-// --- MODIFIED: Generic Student History Component ---
+// --- MODIFIED: Generic Student History Component with Calendar ---
 const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     const [viewMode, setViewMode] = useState('monthly');
     const [data, setData] = useState({ summary: {}, history: [] });
     const [isLoading, setIsLoading] = useState(true);
+    // --- NEW: State for Date Picker ---
+    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     useEffect(() => {
         const fetchHistory = async () => {
             if (!studentId) return;
             setIsLoading(true);
             try {
-                const url = onBack 
+                let url = onBack 
                     ? `/attendance/student-history-admin/${studentId}?viewMode=${viewMode}`
                     : `/attendance/my-history/${studentId}?viewMode=${viewMode}`;
+                
+                // --- MODIFIED: Append date to URL if in daily view ---
+                if (viewMode === 'daily') {
+                    url += `&date=${selectedDate.toISOString().split('T')[0]}`;
+                }
                 
                 const response = await apiClient.get(url);
                 setData(response.data);
@@ -99,7 +109,18 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
             }
         };
         fetchHistory();
-    }, [studentId, viewMode]);
+    }, [studentId, viewMode, selectedDate]); // --- MODIFIED: Refetch on date change
+
+    // --- NEW: Handler for the date picker ---
+    const onDateChange = (event: any, date?: Date) => {
+        setShowDatePicker(Platform.OS === 'ios'); // On iOS, the picker is a modal
+        if (date) {
+            setSelectedDate(date);
+            if (viewMode !== 'daily') {
+                setViewMode('daily'); // Switch to daily view when a date is picked
+            }
+        }
+    };
 
     const percentage = useMemo(() => {
         if (!data.summary?.total_days || data.summary.total_days === 0) return '0.0';
@@ -116,6 +137,12 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
                 )}
                 <View style={{flex: 1, alignItems: 'center', paddingRight: onBack ? 30 : 0 }}>
                     <Text style={styles.headerTitle}>{headerTitle}</Text>
+                    {/* --- NEW: Show selected date in daily view --- */}
+                    {viewMode === 'daily' && (
+                        <Text style={styles.headerSubtitleSmall}>
+                            Showing for: {selectedDate.toDateString()}
+                        </Text>
+                    )}
                 </View>
             </View>
 
@@ -129,7 +156,21 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
                 <TouchableOpacity style={[styles.toggleButton, viewMode === 'overall' && styles.toggleButtonActive]} onPress={() => setViewMode('overall')}>
                     <Text style={[styles.toggleButtonText, viewMode === 'overall' && styles.toggleButtonTextActive]}>Overall</Text>
                 </TouchableOpacity>
+                 {/* --- NEW: Calendar Icon Button --- */}
+                <TouchableOpacity style={styles.calendarButton} onPress={() => setShowDatePicker(true)}>
+                    <Icon name="calendar" size={22} color={PRIMARY_COLOR} />
+                </TouchableOpacity>
             </View>
+
+            {/* --- NEW: Date Picker Modal --- */}
+            {showDatePicker && (
+                <DateTimePicker
+                    value={selectedDate}
+                    mode="date"
+                    display="default"
+                    onChange={onDateChange}
+                />
+            )}
 
             {isLoading ? <ActivityIndicator style={styles.loaderContainer} size="large" color={PRIMARY_COLOR} /> : (
                 <>
@@ -152,7 +193,6 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     );
 };
 
-// --- Student Attendance View ---
 const StudentAttendanceView = ({ student }) => {
     return (
         <GenericStudentHistoryView
@@ -162,7 +202,6 @@ const StudentAttendanceView = ({ student }) => {
     );
 };
 
-// --- Admin: Student Detail View ---
 const AdminStudentDetailView = ({ student, onBack }) => {
     return (
         <GenericStudentHistoryView
@@ -173,12 +212,19 @@ const AdminStudentDetailView = ({ student, onBack }) => {
     );
 };
 
-// --- MODIFIED: Generic Summary View (for Admin and Teacher) ---
 const GenericSummaryView = ({
     picker1, picker2, listData,
-    summaryData, isLoading, viewMode, setViewMode, onSelectStudent
+    summaryData, isLoading, viewMode, setViewMode, onDateChange, selectedDate, onSelectStudent
 }) => {
     const summary = summaryData?.overallSummary ?? {};
+    const [showDatePicker, setShowDatePicker] = useState(false);
+
+    const handleDateChange = (event: any, date?: Date) => {
+        setShowDatePicker(Platform.OS === 'ios');
+        if (date) {
+            onDateChange(date); 
+        }
+    };
 
     const renderSummaryCards = () => {
         if (viewMode === 'daily') {
@@ -189,7 +235,7 @@ const GenericSummaryView = ({
                     <SummaryCard label="Students Absent" value={summary.students_absent ?? 0} color={RED} />
                 </View>
             );
-        } else { // Monthly & Overall view
+        } else {
             return (
                 <View style={styles.summaryContainer}>
                     <SummaryCard label="Class Attendance %" value={`${Number(summary.overall_percentage ?? 0).toFixed(1)}%`} color={BLUE} />
@@ -202,10 +248,24 @@ const GenericSummaryView = ({
 
     return (
         <SafeAreaView style={styles.container}>
+            {showDatePicker && (
+                <DateTimePicker
+                    value={selectedDate}
+                    mode="date"
+                    display="default"
+                    onChange={handleDateChange}
+                />
+            )}
             <View style={styles.pickerContainer}>
                 <View style={styles.pickerWrapper}>{picker1}</View>
                 <View style={styles.pickerWrapper}>{picker2}</View>
             </View>
+            
+            {viewMode === 'daily' && (
+                <Text style={styles.dateHeader}>
+                    Showing for: {selectedDate.toDateString()}
+                </Text>
+            )}
 
             <View style={styles.toggleContainer}>
                 <TouchableOpacity style={[styles.toggleButton, viewMode === 'daily' && styles.toggleButtonActive]} onPress={() => setViewMode('daily')}>
@@ -216,6 +276,9 @@ const GenericSummaryView = ({
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.toggleButton, viewMode === 'overall' && styles.toggleButtonActive]} onPress={() => setViewMode('overall')}>
                     <Text style={[styles.toggleButtonText, viewMode === 'overall' && styles.toggleButtonTextActive]}>Overall</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.calendarButton} onPress={() => setShowDatePicker(true)}>
+                    <Icon name="calendar" size={22} color={PRIMARY_COLOR} />
                 </TouchableOpacity>
             </View>
 
@@ -250,7 +313,6 @@ const GenericSummaryView = ({
     );
 };
 
-// --- Teacher Attendance Summary View ---
 const TeacherSummaryView = ({ teacher }) => {
     const [assignments, setAssignments] = useState([]);
     const [selectedClass, setSelectedClass] = useState('');
@@ -258,6 +320,7 @@ const TeacherSummaryView = ({ teacher }) => {
     const [summaryData, setSummaryData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState('overall');
+    const [selectedDate, setSelectedDate] = useState(new Date());
 
     useEffect(() => {
         const fetchAssignments = async () => {
@@ -287,7 +350,11 @@ const TeacherSummaryView = ({ teacher }) => {
             }
             setIsLoading(true);
             try {
-                const response = await apiClient.get(`/attendance/teacher-summary?teacherId=${teacher.id}&classGroup=${selectedClass}&subjectName=${selectedSubject}&viewMode=${viewMode}`);
+                let url = `/attendance/teacher-summary?teacherId=${teacher.id}&classGroup=${selectedClass}&subjectName=${selectedSubject}&viewMode=${viewMode}`;
+                if (viewMode === 'daily') {
+                    url += `&date=${selectedDate.toISOString().split('T')[0]}`;
+                }
+                const response = await apiClient.get(url);
                 setSummaryData(response.data);
             } catch (error) {
                 Alert.alert('Error', 'Could not retrieve data.');
@@ -297,7 +364,7 @@ const TeacherSummaryView = ({ teacher }) => {
             }
         };
         fetchSummary();
-    }, [selectedClass, selectedSubject, viewMode]);
+    }, [selectedClass, selectedSubject, viewMode, selectedDate]); 
 
     const uniqueClasses = useMemo(() => [...new Set(assignments.map(a => a.class_group))], [assignments]);
     const subjectsForSelectedClass = useMemo(() => assignments.filter(a => a.class_group === selectedClass).map(a => a.subject_name), [assignments, selectedClass]);
@@ -306,6 +373,13 @@ const TeacherSummaryView = ({ teacher }) => {
         setSelectedClass(newClass);
         const newSubjects = assignments.filter(a => a.class_group === newClass).map(a => a.subject_name);
         setSelectedSubject(newSubjects[0] || '');
+    };
+
+    const handleDateChange = (date: Date) => {
+        setSelectedDate(date);
+        if (viewMode !== 'daily') {
+            setViewMode('daily');
+        }
     };
 
     const picker1 = (
@@ -335,11 +409,12 @@ const TeacherSummaryView = ({ teacher }) => {
             isLoading={isLoading}
             viewMode={viewMode}
             setViewMode={setViewMode}
+            selectedDate={selectedDate}
+            onDateChange={handleDateChange}
         />
     );
 };
 
-// --- Admin Attendance View ---
 const AdminAttendanceView = () => {
   const [selectedClass, setSelectedClass] = useState(CLASS_GROUPS[9]);
   const [subjects, setSubjects] = useState([]);
@@ -348,6 +423,7 @@ const AdminAttendanceView = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState('overall');
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   useEffect(() => {
     const fetchSubjects = async () => {
@@ -380,7 +456,11 @@ const AdminAttendanceView = () => {
       }
       setIsLoading(true);
       try {
-        const response = await apiClient.get(`/attendance/admin-summary?classGroup=${selectedClass}&subjectName=${selectedSubject}&viewMode=${viewMode}`);
+        let url = `/attendance/admin-summary?classGroup=${selectedClass}&subjectName=${selectedSubject}&viewMode=${viewMode}`;
+        if (viewMode === 'daily') {
+            url += `&date=${selectedDate.toISOString().split('T')[0]}`;
+        }
+        const response = await apiClient.get(url);
         setSummaryData(response.data);
       } catch (error) {
         Alert.alert('Error', 'Could not fetch summary.');
@@ -392,7 +472,14 @@ const AdminAttendanceView = () => {
     if (selectedSubject) {
         fetchSummary();
     }
-  }, [selectedSubject, viewMode]);
+  }, [selectedSubject, viewMode, selectedDate]); 
+
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date);
+    if (viewMode !== 'daily') {
+        setViewMode('daily');
+    }
+  };
 
   if (selectedStudent) {
     return <AdminStudentDetailView student={selectedStudent} onBack={() => setSelectedStudent(null)} />;
@@ -423,11 +510,12 @@ const AdminAttendanceView = () => {
         viewMode={viewMode}
         setViewMode={setViewMode}
         onSelectStudent={setSelectedStudent}
+        selectedDate={selectedDate}
+        onDateChange={handleDateChange}
     />
   );
 };
 
-// --- Teacher Live Attendance View ---
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
   const { class_group, subject_name, date } = route?.params || {};
   const [students, setStudents] = useState([]);
@@ -435,6 +523,7 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
   const [isSaving, setIsSaving] = useState(false);
   const periodInfo = PERIOD_DEFINITIONS.find(p => p.period === 1);
   const periodTime = periodInfo ? periodInfo.time : `Period 1`;
+  const navigation = useNavigation();
 
   useEffect(() => {
     const fetchAttendanceSheet = async () => {
@@ -465,20 +554,22 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
       await apiClient.post('/attendance', { 
         class_group, 
         subject_name, 
-        period_number: 1, // Always submit as period 1
+        period_number: 1,
         date, 
         teacher_id: teacher.id, 
         attendanceData 
       });
-      Alert.alert('Success', 'Attendance saved!');
+      Alert.alert(
+        'Success', 
+        'Attendance saved successfully!',
+        [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]
+      );
     } catch (error: any) { 
-      // ★★★★★ START: IMPROVED ERROR HANDLING ★★★★★
-      // Log the full error to the console for debugging
       console.error("Failed to save attendance:", JSON.stringify(error.response?.data || error.message, null, 2));
-      // Show a more informative error to the user
       const errorMessage = error.response?.data?.message || 'Failed to save attendance. Please contact support.';
       Alert.alert('Error', errorMessage);
-      // ★★★★★ END: IMPROVED ERROR HANDLING ★★★★★
     }
     finally { setIsSaving(false); }
   };
@@ -550,7 +641,7 @@ const styles = StyleSheet.create({
   statusButtonText: { fontSize: 16, fontWeight: 'bold', color: '#555' },
   saveButton: { backgroundColor: PRIMARY_COLOR, padding: 15, margin: 10, borderRadius: 8, alignItems: 'center' },
   saveButtonText: { color: WHITE, fontSize: 16, fontWeight: 'bold' },
-  toggleContainer: { flexDirection: 'row', justifyContent: 'center', padding: 10, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
+  toggleContainer: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 5, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR, alignItems: 'center' },
   toggleButton: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 20, marginHorizontal: 5, backgroundColor: '#E0E0E0' },
   toggleButtonActive: { backgroundColor: PRIMARY_COLOR },
   toggleButtonText: { color: TEXT_COLOR_DARK, fontWeight: '600' },
@@ -560,6 +651,8 @@ const styles = StyleSheet.create({
   historyDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
   historyDate: { fontSize: 16, fontWeight: '600', color: TEXT_COLOR_DARK },
   historyStatus: { fontSize: 14, fontWeight: 'bold' },
+  calendarButton: { padding: 8, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
+  dateHeader: { textAlign: 'center', paddingVertical: 8, backgroundColor: '#F0F4F8', color: TEXT_COLOR_MEDIUM, fontSize: 14, fontWeight: '500' },
 });
 
 export default AttendanceScreen;

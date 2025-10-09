@@ -641,11 +641,15 @@ app.post('/api/timetable', async (req, res) => { const { class_group, day_of_wee
 app.get('/api/subjects/:class_group', async (req, res) => { try { const { class_group } = req.params; if (!class_group) { return res.status(400).json({ message: 'Class group is required.' }); } const query = `SELECT DISTINCT subject_name FROM timetables WHERE class_group = ? ORDER BY subject_name;`; const [subjects] = await db.query(query, [class_group]); res.status(200).json(subjects.map(s => s.subject_name)); } catch (error) { console.error("GET /api/subjects/:class_group Error:", error); res.status(500).json({ message: 'Could not fetch subjects for the class.' }); }});
 app.get('/api/teacher-assignments/:teacherId', async (req, res) => { try { const { teacherId } = req.params; if (!teacherId) { return res.status(400).json({ message: 'Teacher ID is required.' }); } const query = `SELECT DISTINCT class_group, subject_name FROM timetables WHERE teacher_id = ? ORDER BY class_group, subject_name;`; const [assignments] = await db.query(query, [teacherId]); res.status(200).json(assignments); } catch (error) { console.error("GET /api/teacher-assignments/:teacherId Error:", error); res.status(500).json({ message: 'Could not fetch teacher assignments.' }); }});
 
-// --- Summary Endpoint Logic for Daily Attendance ---
 const getAttendanceSummary = async (filters) => {
     let dateFilter = '';
-    const { viewMode } = filters;
-    if (viewMode === 'daily') {
+    const { viewMode, date } = filters;
+    let queryDateParams = [];
+
+    if (date) {
+        dateFilter = 'AND ar.attendance_date = ?';
+        queryDateParams.push(date);
+    } else if (viewMode === 'daily') {
         dateFilter = 'AND ar.attendance_date = CURDATE()';
     } else if (viewMode === 'monthly') {
         dateFilter = 'AND MONTH(ar.attendance_date) = MONTH(CURDATE()) AND YEAR(ar.attendance_date) = YEAR(CURDATE())';
@@ -664,6 +668,8 @@ const getAttendanceSummary = async (filters) => {
     }
 
     const baseQuery = `FROM attendance_records ar WHERE ${whereClause} ${dateFilter}`;
+    const fullQueryParams = [...queryParams, ...queryDateParams];
+
     let overallSummary;
     if (viewMode === 'daily') {
         const summaryQuery = `
@@ -673,8 +679,8 @@ const getAttendanceSummary = async (filters) => {
                 COUNT(DISTINCT CASE WHEN status = 'Absent' THEN student_id END) as students_absent
             ${baseQuery}
         `;
-        [[overallSummary]] = await db.query(summaryQuery, queryParams);
-    } else { // Monthly & Overall
+        [[overallSummary]] = await db.query(summaryQuery, fullQueryParams);
+    } else {
         const summaryQuery = `
             WITH StudentStats AS (
                 SELECT 
@@ -688,8 +694,9 @@ const getAttendanceSummary = async (filters) => {
                 (SELECT COUNT(*) FROM StudentStats WHERE percentage < 75) AS students_below_threshold,
                 (SELECT COALESCE(SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) * 100.0 / COUNT(id), 0) ${baseQuery}) as overall_percentage
         `;
-         [[overallSummary]] = await db.query(summaryQuery, [...queryParams, ...queryParams]);
+         [[overallSummary]] = await db.query(summaryQuery, [...fullQueryParams, ...fullQueryParams]);
     }
+
     const studentDetailsQuery = `
         SELECT 
             u.id AS student_id, 
@@ -702,18 +709,18 @@ const getAttendanceSummary = async (filters) => {
         GROUP BY u.id, u.full_name 
         ORDER BY u.full_name;
     `;
-    const studentDetailsParams = [...queryParams, filters.classGroup];
+    const studentDetailsParams = [...fullQueryParams, filters.classGroup];
     const [studentDetails] = await db.query(studentDetailsQuery, studentDetailsParams);
     return { overallSummary, studentDetails };
 };
 
 app.get('/api/attendance/teacher-summary', async (req, res) => {
     try {
-        const { teacherId, classGroup, subjectName, viewMode } = req.query;
+        const { teacherId, classGroup, subjectName, viewMode, date } = req.query;
         if (!teacherId || !classGroup || !subjectName) {
             return res.status(400).json({ message: 'Teacher ID, Class Group, and Subject are required.' });
         }
-        const summary = await getAttendanceSummary({ teacherId, classGroup, subjectName, viewMode });
+        const summary = await getAttendanceSummary({ teacherId, classGroup, subjectName, viewMode, date });
         res.status(200).json(summary);
     } catch (error) {
         console.error("GET /api/attendance/teacher-summary Error:", error);
@@ -723,11 +730,11 @@ app.get('/api/attendance/teacher-summary', async (req, res) => {
 
 app.get('/api/attendance/admin-summary', async (req, res) => {
     try {
-        const { classGroup, subjectName, viewMode } = req.query;
+        const { classGroup, subjectName, viewMode, date } = req.query;
         if (!classGroup || !subjectName) {
             return res.status(400).json({ message: 'Class Group and Subject Name are required.' });
         }
-        const summary = await getAttendanceSummary({ classGroup, subjectName, viewMode });
+        const summary = await getAttendanceSummary({ classGroup, subjectName, viewMode, date });
         res.status(200).json(summary);
     } catch (error) {
         console.error("GET /api/attendance/admin-summary Error:", error);
@@ -750,7 +757,6 @@ app.get('/api/attendance/sheet', async (req, res) => {
     }
 });
 
-// ★★★★★ START: FINAL AND ROBUST POST ATTENDANCE ROUTE ★★★★★
 app.post('/api/attendance', async (req, res) => {
     const { class_group, subject_name, period_number, date, teacher_id, attendanceData } = req.body;
     const connection = await db.getConnection();
@@ -777,9 +783,6 @@ app.post('/api/attendance', async (req, res) => {
 
         await connection.beginTransaction();
 
-        // This single, atomic query will INSERT a new record if it doesn't exist,
-        // or UPDATE the status if a record for that student on that date already exists.
-        // This is the most reliable way to handle this operation.
         const query = `
             INSERT INTO attendance_records 
                 (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status) 
@@ -807,26 +810,32 @@ app.post('/api/attendance', async (req, res) => {
         connection.release();
     }
 });
-// ★★★★★ END: FINAL AND ROBUST POST ATTENDANCE ROUTE ★★★★★
 
-
-// --- Student History Endpoint Logic ---
-const getStudentHistory = async (studentId, viewMode) => {
+const getStudentHistory = async (studentId, viewMode, date) => {
     let dateFilter = '';
-    if (viewMode === 'daily') { dateFilter = 'AND attendance_date = CURDATE()'; } 
-    else if (viewMode === 'monthly') { dateFilter = 'AND MONTH(attendance_date) = MONTH(CURDATE()) AND YEAR(attendance_date) = YEAR(CURDATE())'; }
+    let queryDateParams = [];
+    
+    if (date) {
+        dateFilter = 'AND attendance_date = ?';
+        queryDateParams.push(date);
+    } else if (viewMode === 'daily') {
+        dateFilter = 'AND attendance_date = CURDATE()';
+    } else if (viewMode === 'monthly') {
+        dateFilter = 'AND MONTH(attendance_date) = MONTH(CURDATE()) AND YEAR(attendance_date) = YEAR(CURDATE())';
+    }
     
     const queryBase = `FROM attendance_records WHERE student_id = ? ${dateFilter}`;
+    const fullQueryParams = [studentId, ...queryDateParams];
     
     const summaryQuery = `
         SELECT 
             COALESCE(SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END), 0) as present_days, 
             COUNT(*) as total_days 
         ${queryBase}`;
-    const [[summary]] = await db.query(summaryQuery, [studentId]);
+    const [[summary]] = await db.query(summaryQuery, fullQueryParams);
     
     const historyQuery = `SELECT attendance_date, status, subject_name, period_number ${queryBase} ORDER BY attendance_date DESC`;
-    const [history] = await db.query(historyQuery, [studentId]);
+    const [history] = await db.query(historyQuery, fullQueryParams);
     
     return {
         summary: {
@@ -841,8 +850,8 @@ const getStudentHistory = async (studentId, viewMode) => {
 app.get('/api/attendance/my-history/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
-        const { viewMode } = req.query;
-        const data = await getStudentHistory(studentId, viewMode);
+        const { viewMode, date } = req.query;
+        const data = await getStudentHistory(studentId, viewMode, date);
         res.status(200).json(data);
     } catch (error) {
         console.error("GET /api/attendance/my-history Error:", error);
@@ -853,8 +862,8 @@ app.get('/api/attendance/my-history/:studentId', async (req, res) => {
 app.get('/api/attendance/student-history-admin/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
-        const { viewMode } = req.query;
-        const data = await getStudentHistory(studentId, viewMode);
+        const { viewMode, date } = req.query;
+        const data = await getStudentHistory(studentId, viewMode, date);
         res.status(200).json(data);
     } catch (error) {
         console.error("GET /api/attendance/student-history-admin Error:", error);
