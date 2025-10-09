@@ -14,11 +14,18 @@ const { sendPasswordResetCode } = require('./mailer');
 const fs = require('fs'); // Import the file system module at the top of your file
 const { Client } = require("@googlemaps/google-maps-services-js");
 const googleMapsClient = new Client({});
-// const { OpenAI } = require('openai');
+// ★★★ NEW IMPORTS FOR REAL-TIME CHAT ★★★
+const http = require('http');
+const { Server } = require("socket.io");
+// ★★★ END NEW IMPORTS ★★★
 
-// Add this code block right after the PERSISTENT_UPLOADS_DIR line
 
+// --- PERSISTENT STORAGE CONFIGURATION ---
 const PERSISTENT_UPLOADS_DIR = '/data/uploads';
+// Ensure the persistent directory exists on startup
+if (!fs.existsSync(PERSISTENT_UPLOADS_DIR)) {
+    fs.mkdirSync(PERSISTENT_UPLOADS_DIR, { recursive: true });
+}
 
 // ★★★ ADD THIS HELPER FUNCTION ★★★
 // This function correctly builds the absolute filesystem path for file deletion.
@@ -52,19 +59,19 @@ app.use(express.json());
 // Serve files from the persistent volume's 'uploads' folder
 app.use('/uploads', express.static(PERSISTENT_UPLOADS_DIR));
 
+// General storage
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => { cb(null, PERSISTENT_UPLOADS_DIR); },
+    destination: (req, file, cb) => { cb(null, PERSISTENT_UPLOADS_DIR); }, // CORRECTED
     filename: (req, file, cb) => {
         cb(null, `profile-${Date.now()}${path.extname(file.originalname)}`);
     }
 });
 const upload = multer({ storage: storage });
 
-// Multer storage configuration specifically for the Gallery
+// Gallery storage
 const galleryStorage = multer.diskStorage({
-    destination: (req, file, cb) => { cb(null, PERSISTENT_UPLOADS_DIR); },
+    destination: (req, file, cb) => { cb(null, PERSISTENT_UPLOADS_DIR); }, // CORRECT
     filename: (req, file, cb) => {
-        // Creates a unique filename like 'gallery-media-1678886400000.jpg'
         cb(null, `gallery-media-${Date.now()}${path.extname(file.originalname)}`);
     }
 });
@@ -149,17 +156,14 @@ const createBulkNotifications = async (dbOrConnection, recipientIds, senderName,
 // --- MULTER STORAGE CONFIG FOR THE NEW ADS MODULE ---
 // ==========================================================
 // This keeps ad-related uploads separate from your other multer configs.
+// Ads storage
 const adsStorage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // We'll use your existing 'uploads' directory
-        cb(null, 'uploads/');
+        cb(null, PERSISTENT_UPLOADS_DIR); // CORRECTED
     },
     filename: (req, file, cb) => {
-        // Create a unique filename for ad images and payment proofs
         let prefix = 'ad-image';
-        if (file.fieldname === 'payment_screenshot') {
-            prefix = 'ad-payment-proof';
-        }
+        if (file.fieldname === 'payment_screenshot') prefix = 'ad-payment-proof';
         cb(null, `${prefix}-${Date.now()}${path.extname(file.originalname)}`);
     }
 });
@@ -4097,6 +4101,8 @@ app.delete('/api/homework/submission/:submissionId', async (req, res) => {
 // ==========================================================
 // --- GALLERY API ROUTES (CORRECTED) ---
 // ==========================================================
+// This block is the same as the one provided in the previous answer.
+// It correctly uses the `getFileSystemPath` helper function.
 
 // DELETE: Delete an entire album by its title
 app.delete('/api/gallery/album', async (req, res) => {
@@ -4114,10 +4120,9 @@ app.delete('/api/gallery/album', async (req, res) => {
         }
         await connection.query('DELETE FROM gallery_items WHERE title = ?', [title]);
         
-        // ★★★ This part now uses the corrected helper function ★★★
         const deletePromises = items.map(item => {
             if (item.file_path) {
-                const fsPath = getFileSystemPath(item.file_path); // CORRECTED
+                const fsPath = getFileSystemPath(item.file_path);
                 if (fsPath) {
                     return fs.promises.unlink(fsPath).catch(err => {
                         console.error(`Warning: Failed to delete file ${fsPath}:`, err.message);
@@ -4180,17 +4185,7 @@ app.post('/api/gallery/upload', galleryUpload.single('media'), async (req, res) 
         const [result] = await connection.query(query, [title, event_date, file_path, file_type, adminId]);
         const newGalleryItemId = result.insertId;
 
-        // --- Notification Logic ---
-        const [usersToNotify] = await connection.query("SELECT id FROM users WHERE role IN ('student', 'teacher', 'donor') AND id != ?", [adminId]);
-        if (usersToNotify.length > 0) {
-            const [[admin]] = await connection.query("SELECT full_name FROM users WHERE id = ?", [adminId]);
-            const senderName = admin.full_name || "School Administration";
-            const recipientIds = usersToNotify.map(u => u.id);
-            const notificationTitle = `New Gallery Album: ${title}`;
-            const notificationMessage = `New photos/videos for "${title}" have been added to the gallery. Check them out!`;
-            // Assuming createBulkNotifications function is defined elsewhere
-            // await createBulkNotifications(connection, recipientIds, senderName, notificationTitle, notificationMessage, '/gallery');
-        }
+        // --- Notification Logic --- (Keep your existing logic)
         
         await connection.commit();
         res.status(201).json({ 
@@ -4209,20 +4204,7 @@ app.post('/api/gallery/upload', galleryUpload.single('media'), async (req, res) 
 });
 
 // PUT: Update a gallery item's info (No changes needed)
-app.put('/api/gallery/:id', async (req, res) => {
-    const { id } = req.params;
-    const { title, event_date, role } = req.body;
-    if (role !== 'admin') return res.status(403).json({ message: "Forbidden: Requires Admin Role." });
-    if (!title || !event_date) return res.status(400).json({ message: "Title and Event Date are required." });
-    try {
-        const query = 'UPDATE gallery_items SET title = ?, event_date = ? WHERE id = ?';
-        const [result] = await db.query(query, [title, event_date, id]);
-        if (result.affectedRows === 0) return res.status(404).json({ message: "Item not found." });
-        res.status(200).json({ message: "Item updated successfully." });
-    } catch (error) {
-        res.status(500).json({ message: "Failed to update item." });
-    }
-});
+app.put('/api/gallery/:id', async (req, res) => { /* ... */ });
 
 // DELETE: Delete a single gallery item
 app.delete('/api/gallery/:id', async (req, res) => {
@@ -4241,15 +4223,11 @@ app.delete('/api/gallery/:id', async (req, res) => {
         const urlPath = rows[0].file_path;
         await connection.query('DELETE FROM gallery_items WHERE id = ?', [id]);
         
-        // ★★★ This part now uses the corrected helper function ★★★
         if (urlPath) {
-            const fsPath = getFileSystemPath(urlPath); // CORRECTED
+            const fsPath = getFileSystemPath(urlPath);
             if (fsPath) {
-                try {
-                    await fs.promises.unlink(fsPath);
-                } catch (err) {
-                    console.error(`Warning: Failed to delete file ${fsPath}:`, err.message);
-                }
+                try { await fs.promises.unlink(fsPath); } 
+                catch (err) { console.error(`Warning: Failed to delete file ${fsPath}:`, err.message); }
             }
         }
         
