@@ -735,9 +735,7 @@ app.get('/api/attendance/admin-summary', async (req, res) => {
     }
 });
 
-// ★★★★★ START: CORRECTED GET ATTENDANCE SHEET ROUTE ★★★★★
 app.get('/api/attendance/sheet', async (req, res) => { 
-    // This now correctly reads all required parameters from the request query
     const { class_group, date, period_number } = req.query; 
     try { 
         if (!class_group || !date || !period_number) { 
@@ -751,11 +749,9 @@ app.get('/api/attendance/sheet', async (req, res) => {
         res.status(500).json({ message: 'Error fetching attendance sheet.' }); 
     }
 });
-// ★★★★★ END: CORRECTED GET ATTENDANCE SHEET ROUTE ★★★★★
 
-// ★★★★★ START: CORRECTED POST ATTENDANCE ROUTE ★★★★★
+// ★★★★★ START: FINAL CORRECTED POST ATTENDANCE ROUTE ★★★★★
 app.post('/api/attendance', async (req, res) => {
-    // This now correctly reads all fields from the request body, including period_number
     const { class_group, subject_name, period_number, date, teacher_id, attendanceData } = req.body;
     const connection = await db.getConnection();
     try {
@@ -781,11 +777,15 @@ app.post('/api/attendance', async (req, res) => {
 
         if (studentIds.length > 0) {
             await connection.execute('DELETE FROM attendance_records WHERE student_id IN (?) AND attendance_date = ?', [studentIds, date]);
+            
             const query = `INSERT INTO attendance_records (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status) VALUES ?;`;
+            
             const valuesToInsert = attendanceData.map(record => [
                 record.student_id, teacher_id, class_group, subject_name, date, period_number, record.status
             ]);
-            await connection.query(query, [valuesToInsert]);
+
+            // THE FIX IS HERE: We pass `valuesToInsert` directly, NOT `[valuesToInsert]`
+            await connection.query(query, valuesToInsert);
         }
         
         await connection.commit();
@@ -798,7 +798,7 @@ app.post('/api/attendance', async (req, res) => {
         connection.release();
     }
 });
-// ★★★★★ END: CORRECTED POST ATTENDANCE ROUTE ★★★★★
+// ★★★★★ END: FINAL CORRECTED POST ATTENDANCE ROUTE ★★★★★
 
 // --- Student History Endpoint Logic ---
 const getStudentHistory = async (studentId, viewMode) => {
