@@ -1,15 +1,14 @@
-// 📂 File: src/context/AuthContext.tsx (FINAL AND CORRECTED)
-
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// ★★★ 1. IMPORT apiClient SO WE CAN CONFIGURE IT ★★★
 import apiClient from '../api/client';
 
+// The User interface is correct. It already includes the optional profile_image_url.
 interface User {
   id: string;
   username: string;
   full_name: string;
   role: 'admin' | 'teacher' | 'student' | 'donor';
+  profile_image_url?: string;
 }
 
 interface AuthState {
@@ -19,8 +18,9 @@ interface AuthState {
 
 interface AuthContextType {
   authState: AuthState;
-  login: (user: User, token: string) => Promise<void>; 
+  login: (user: User, token: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (newUserData: Partial<User>) => void;
   isLoading: boolean;
 }
 
@@ -40,48 +40,85 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
         if (userString && tokenString) {
           const user = JSON.parse(userString);
-          
-          // ★★★ 2. CONFIGURE apiClient WITH THE LOADED TOKEN ★★★
-          // This is the critical missing step for when the app restarts.
           apiClient.defaults.headers.common['Authorization'] = `Bearer ${tokenString}`;
-
           setAuthState({ user, token: tokenString });
         }
-      } catch (e) { 
+      } catch (e) {
         console.error("AuthContext: Failed to load session", e);
         await AsyncStorage.multiRemove(['userSession', 'userToken']);
-      } 
-      finally { 
-        setIsLoading(false); 
+      }
+      finally {
+        setIsLoading(false);
       }
     };
     loadSession();
   }, []);
-  
-  const login = async (user: User, token: string) => {
+
+  // --- MODIFIED LOGIN FUNCTION ---
+  const login = async (userFromLoginApi: User, token: string) => {
     try {
-      // ★★★ 3. CONFIGURE apiClient WITH THE NEW TOKEN ON LOGIN ★★★
-      // This makes API calls work immediately after logging in.
+      // 1. Set the authorization header immediately so the next API call is authenticated
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-      setAuthState({ user, token }); 
-      await AsyncStorage.setItem('userSession', JSON.stringify(user));
+      // 2. Fetch the user's full, detailed profile from the server using their ID
+      const profileResponse = await apiClient.get(`/profiles/${userFromLoginApi.id}`);
+      const fullUserProfile = profileResponse.data;
+
+      // 3. Create a final, complete user object by merging the basic login data
+      //    with the detailed profile data. The profile data will overwrite any
+      //    conflicting fields (like full_name), ensuring it's the most current.
+      const completeUser = {
+        ...userFromLoginApi, // Contains basic info like id, username, role
+        ...fullUserProfile,  // Contains everything else like full_name, profile_image_url, etc.
+      };
+
+      // 4. Set the application state and save the COMPLETE user object to AsyncStorage
+      setAuthState({ user: completeUser, token });
+      await AsyncStorage.setItem('userSession', JSON.stringify(completeUser));
       await AsyncStorage.setItem('userToken', token);
-    } catch (e) { console.error("AuthContext: Failed to save session", e); }
+
+    } catch (e) {
+      console.error("AuthContext: Failed to login or fetch full profile", e);
+      // If fetching the profile fails, it's a critical error.
+      // It's safer to log the user out to prevent a broken state.
+      await logout();
+    }
   };
 
   const logout = async () => {
     try {
-      // ★★★ 4. REMOVE THE TOKEN FROM apiClient ON LOGOUT ★★★
-      // This ensures that the guard doesn't have an old, invalid badge.
       delete apiClient.defaults.headers.common['Authorization'];
-
       setAuthState({ user: null, token: null });
       await AsyncStorage.multiRemove(['userSession', 'userToken']);
     } catch (e) { console.error("AuthContext: Failed to clear session", e); }
   };
 
-  const value = { authState, login, logout, isLoading };
+  // This updateUser function is already implemented correctly and is crucial
+  // for updating the profile image *during* an active session. No changes needed here.
+  const updateUser = (newUserData: Partial<User>) => {
+    setAuthState(prevAuthState => {
+      if (!prevAuthState.user) {
+        return prevAuthState;
+      }
+
+      const updatedUser = {
+        ...prevAuthState.user,
+        ...newUserData,
+      };
+      
+      // Persist the updated user data to storage
+      AsyncStorage.setItem('userSession', JSON.stringify(updatedUser)).catch(e => {
+        console.error("AuthContext: Failed to save updated user session", e);
+      });
+
+      return {
+        ...prevAuthState,
+        user: updatedUser,
+      };
+    });
+  };
+
+  const value = { authState, login, logout, isLoading, updateUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
@@ -89,11 +126,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
+  
   return {
     user: context.authState.user,
     token: context.authState.token,
     login: context.login,
     logout: context.logout,
     isLoading: context.isLoading,
+    updateUser: context.updateUser,
   };
 };

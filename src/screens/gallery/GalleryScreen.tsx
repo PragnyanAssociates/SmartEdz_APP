@@ -1,6 +1,4 @@
-// 📂 File: src/screens/gallery/GalleryScreen.tsx (FULLY OPTIMIZED)
-
-import React, { useState, FC, useCallback, useEffect, memo } from 'react';
+import React, { useState, FC, useCallback, useEffect } from 'react';
 import {
     View, Text, StyleSheet, FlatList, Dimensions,
     TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput,
@@ -13,15 +11,15 @@ import RNPickerSelect from 'react-native-picker-select';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as Animatable from 'react-native-animatable';
 import LinearGradient from 'react-native-linear-gradient';
-import FastImage from 'react-native-fast-image'; // ✨ IMPORT FASTIMAGE
+import FastImage from 'react-native-fast-image'; // --- CHANGE 1: Import FastImage
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { SERVER_URL } from '../../../apiConfig';
 
 // --- Type Definitions ---
-type GalleryItemType = { id: number; title: string; event_date: string; file_path: string; file_type: 'photo' | 'video'; uploader_name: string; };
-type AlbumSection = { title: string; date: string; items: GalleryItemType[]; };
-type RootStackParamList = { AlbumDetail: { title: string; items: GalleryItemType[]; onRefresh: () => void; } }; // ✨ Pass onRefresh prop
+// --- CHANGE 2: Update Album type to match new API response ---
+type AlbumType = { title: string; event_date: string; item_count: number; cover_image_path: string | null; };
+type RootStackParamList = { AlbumDetail: { title: string }; }; // Pass only the title now
 type GalleryScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 type DateFilterType = 'month' | 'year';
 
@@ -32,126 +30,111 @@ const NUM_COLUMNS = 2;
 const MARGIN = 12;
 const albumSize = (width - MARGIN * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
 
-// --- AlbumCover Component (Optimized & Memoized) ---
-const AlbumCover: FC<{ section: AlbumSection; onPress: () => void; onDelete: () => void; isAdmin: boolean; index: number; }> = memo(({ section, onPress, onDelete, isAdmin, index }) => {
-    const coverItem = section.items.find(i => i.file_type === 'photo') || section.items[0];
-    const coverPath = coverItem ? coverItem.file_path : '';
-    const filename = coverPath ? coverPath.split('/').pop() : '';
+// --- CHANGE 3: Update AlbumCover to use FastImage and new data structure ---
+const AlbumCover: FC<{ album: AlbumType; onPress: () => void; onDelete: () => void; isAdmin: boolean; index: number; }> = ({ album, onPress, onDelete, isAdmin, index }) => {
+    const imageSource = album.cover_image_path
+        ? { uri: `${SERVER_URL}${album.cover_image_path}`, priority: FastImage.priority.normal }
+        : require('../../../assets/default_avatar.png'); // Fallback image if no photo in album
 
     return (
         <Animatable.View animation="zoomIn" duration={500} delay={index * 100} useNativeDriver={true}>
             <TouchableOpacity style={styles.albumContainer} onPress={onPress}>
-                {section.items.every(i => i.file_type === 'video') ? (
-                    <View style={styles.albumImage}><Icon name="film-outline" size={40} color="rgba(255,255,255,0.6)" /></View>
-                ) : (
-                    <FastImage
-                        source={{
-                            uri: `${SERVER_URL}/api/image/${filename}?w=400`, // ✨ Use Thumbnail API
-                            priority: FastImage.priority.normal,
-                        }}
-                        style={styles.albumImage}
-                        resizeMode={FastImage.resizeMode.cover}
-                    />
-                )}
+                <FastImage source={imageSource} style={styles.albumImage} resizeMode={FastImage.resizeMode.cover}>
+                    {/* Show a video icon if there's no cover image (implies video-only album) */}
+                    {!album.cover_image_path && <Icon name="film-outline" size={40} color="rgba(255,255,255,0.6)" />}
+                </FastImage>
                 <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.gradientOverlay} />
                 <View style={styles.albumInfo}>
-                    <Text style={styles.albumTitle} numberOfLines={2}>{section.title}</Text>
-                    <Text style={styles.albumDate}>{new Date(section.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
-                    <Text style={styles.albumCount}>{section.items.length} items</Text>
+                    <Text style={styles.albumTitle} numberOfLines={2}>{album.title}</Text>
+                    <Text style={styles.albumDate}>{new Date(album.event_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                    <Text style={styles.albumCount}>{album.item_count} items</Text>
                 </View>
                 {isAdmin && <TouchableOpacity style={styles.deleteButton} onPress={(e) => { e.stopPropagation(); onDelete(); }}><Icon name="trash-outline" size={18} color="white" /></TouchableOpacity>}
             </TouchableOpacity>
         </Animatable.View>
     );
-});
-
+};
 
 // --- Main GalleryScreen Component ---
 const GalleryScreen: FC = () => {
     const { user } = useAuth();
     const navigation = useNavigation<GalleryScreenNavigationProp>();
     const isAdmin = user?.role === 'admin';
-    const [allAlbums, setAllAlbums] = useState<AlbumSection[]>([]);
-    const [filteredAlbums, setFilteredAlbums] = useState<AlbumSection[]>([]);
+
+    const [allAlbums, setAllAlbums] = useState<AlbumType[]>([]); // Use new AlbumType
+    const [filteredAlbums, setFilteredAlbums] = useState<AlbumType[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [isFilterModalVisible, setFilterModalVisible] = useState(false);
-
+    
+    // Date filter state (unchanged)
     const [activeDateFilterType, setActiveDateFilterType] = useState<DateFilterType | null>(null);
     const [selectedYear, setSelectedYear] = useState<number | null>(null);
     const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
     const [tempActiveDateFilterType, setTempActiveDateFilterType] = useState<DateFilterType | null>(null);
     const [tempSelectedYear, setTempSelectedYear] = useState<number | null>(null);
     const [tempSelectedMonth, setTempSelectedMonth] = useState<number | null>(null);
-    const [availableYears, setAvailableYears] = useState<{ label: string; value: number }[]>([]);
+    const [availableYears, setAvailableYears] = useState<{label: string; value: number}[]>([]);
 
+    // --- CHANGE 4: Update filter logic to work with `event_date` directly ---
     useEffect(() => {
         let albumsToFilter = [...allAlbums];
         if (activeDateFilterType && selectedYear) {
             if (activeDateFilterType === 'year') {
-                albumsToFilter = albumsToFilter.filter(album => new Date(album.date).getFullYear() === selectedYear);
+                albumsToFilter = albumsToFilter.filter(album => new Date(album.event_date).getFullYear() === selectedYear);
             } else if (activeDateFilterType === 'month' && selectedMonth !== null) {
                 albumsToFilter = albumsToFilter.filter(album => {
-                    const albumDate = new Date(album.date);
+                    const albumDate = new Date(album.event_date);
                     return albumDate.getFullYear() === selectedYear && albumDate.getMonth() === selectedMonth;
                 });
             }
         }
         setFilteredAlbums(albumsToFilter);
     }, [allAlbums, activeDateFilterType, selectedYear, selectedMonth]);
-
+    
+    // --- CHANGE 5: Update available years logic ---
     useEffect(() => {
         if (allAlbums.length > 0) {
-            const years = [...new Set(allAlbums.map(album => new Date(album.date).getFullYear()))];
+            const years = [...new Set(allAlbums.map(album => new Date(album.event_date).getFullYear()))];
             setAvailableYears(years.sort((a, b) => b - a).map(y => ({ label: String(y), value: y })));
         }
     }, [allAlbums]);
 
-    const groupDataByTitle = (data: GalleryItemType[]): AlbumSection[] => {
-        if (!data) return [];
-        const grouped = data.reduce((acc, item) => { if (!acc[item.title]) { acc[item.title] = { title: item.title, date: item.event_date, items: [] }; } acc[item.title].items.push(item); return acc; }, {} as Record<string, AlbumSection>);
-        return Object.values(grouped).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    };
+    // --- CHANGE 6: Remove groupDataByTitle. The API does this now. ---
 
-    const fetchData = useCallback(async () => { setLoading(true); try { const response = await apiClient.get<GalleryItemType[]>('/gallery'); setAllAlbums(groupDataByTitle(response.data)); } catch (error: any) { Alert.alert("Error", "Failed to load albums."); } finally { setLoading(false); } }, []);
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            // Fetch the new, optimized album summary data
+            const response = await apiClient.get<AlbumType[]>('/gallery');
+            setAllAlbums(response.data);
+        } catch (error: any) {
+            Alert.alert("Error", "Failed to load albums.");
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     useFocusEffect(useCallback(() => { fetchData(); }, [fetchData]));
 
     const handleApplyFilter = () => { setActiveDateFilterType(tempActiveDateFilterType); setSelectedYear(tempSelectedYear); setSelectedMonth(tempSelectedMonth); setFilterModalVisible(false); };
     const handleClearFilter = () => { setTempActiveDateFilterType(null); setTempSelectedYear(null); setTempSelectedMonth(null); };
     const handleOpenFilterModal = () => { setTempActiveDateFilterType(activeDateFilterType); setTempSelectedYear(selectedYear); setTempSelectedMonth(selectedMonth); setFilterModalVisible(true); };
 
+    // --- CHANGE 7: Update navigation to pass only the title ---
+    const handleAlbumPress = (album: AlbumType) => navigation.navigate('AlbumDetail', { title: album.title });
+
+    // Rest of the component (Upload Logic, Delete Logic, Modals) remains largely the same
     const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
     const [isUploadModalVisible, setUploadModalVisible] = useState<boolean>(false);
     const [title, setTitle] = useState<string>('');
     const [eventDate, setEventDate] = useState<Date>(new Date());
     const [asset, setAsset] = useState<Asset | null>(null);
     const handleOpenUploadModal = () => { setTitle(''); setEventDate(new Date()); setAsset(null); setUploadModalVisible(true); };
-    const handleDeleteAlbum = (albumTitle: string) => Alert.alert("Delete Album", `Are you sure?`, [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: async () => { try { await apiClient.delete('/gallery/album', { data: { title: albumTitle, role: user?.role } }); fetchData(); } catch (e) { Alert.alert("Error", "Could not delete."); } } }]);
+    const handleDeleteAlbum = (albumTitle: string) => Alert.alert("Delete Album", `Are you sure you want to delete "${albumTitle}" and all its contents? This cannot be undone.`, [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: async () => { try { await apiClient.delete('/gallery/album', { data: { title: albumTitle, role: user?.role } }); fetchData(); } catch (e) { Alert.alert("Error", "Could not delete album."); } } }]);
+    const handleUpload = async () => { if (!user || !title.trim() || !eventDate || !asset) { Alert.alert('Validation Error', 'All fields are required.'); return; } setIsSubmitting(true); const fd = new FormData(); fd.append('title', title.trim()); fd.append('event_date', eventDate.toISOString().split('T')[0]); fd.append('role', user.role); fd.append('adminId', String(user.id)); fd.append('media', { uri: asset.uri, type: asset.type, name: asset.fileName || `m-${Date.now()}` }); try { await apiClient.post('/gallery/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); Alert.alert('Success', 'Media uploaded successfully!'); setUploadModalVisible(false); fetchData(); } catch (e) { Alert.alert('Error', 'Upload failed.'); } finally { setIsSubmitting(false); } };
+    const monthItems = [ { label: "January", value: 0 }, { label: "February", value: 1 }, { label: "March", value: 2 }, { label: "April", value: 3 }, { label: "May", value: 4 }, { label: "June", value: 5 }, { label: "July", value: 6 }, { label: "August", value: 7 }, { label: "September", value: 8 }, { label: "October", value: 9 }, { label: "November", value: 10 }, { label: "December", value: 11 }, ];
     
-    // ✨ PASS onRefresh function to AlbumDetail screen
-    const handleAlbumPress = (section: AlbumSection) => navigation.navigate('AlbumDetail', { title: section.title, items: section.items, onRefresh: fetchData });
-    
-    const handleUpload = async () => { if (!user || !title.trim() || !eventDate || !asset) { Alert.alert('Validation Error', 'All fields required.'); return; } setIsSubmitting(true); const fd = new FormData(); fd.append('title', title.trim()); fd.append('event_date', eventDate.toISOString().split('T')[0]); fd.append('role', user.role); fd.append('adminId', String(user.id)); fd.append('media', { uri: asset.uri, type: asset.type, name: asset.fileName || `m-${Date.now()}` }); try { await apiClient.post('/gallery/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); Alert.alert('Success', 'Uploaded!'); setUploadModalVisible(false); fetchData(); } catch (e) { Alert.alert('Error', 'Upload failed.'); } finally { setIsSubmitting(false); } };
-
-    const monthItems = [{ label: "January", value: 0 }, { label: "February", value: 1 }, { label: "March", value: 2 }, { label: "April", value: 3 }, { label: "May", value: 4 }, { label: "June", value: 5 }, { label: "July", value: 6 }, { label: "August", value: 7 }, { label: "September", value: 8 }, { label: "October", value: 9 }, { label: "November", value: 10 }, { label: "December", value: 11 }];
-    
-    // ✨ Memoized render function for FlatList performance
-    const renderAlbumCover = useCallback(({ item, index }) => (
-        <AlbumCover
-            section={item}
-            onPress={() => handleAlbumPress(item)}
-            onDelete={() => handleDeleteAlbum(item.title)}
-            isAdmin={!!isAdmin}
-            index={index}
-        />
-    ), [isAdmin]);
-    
-    // ✨ Layout calculation for FlatList performance
-    const getItemLayout = (data, index) => ({
-        length: albumSize + 20 + MARGIN, // Item height + margin
-        offset: (albumSize + 20 + MARGIN) * Math.floor(index / NUM_COLUMNS),
-        index,
-    });
-
+    // --- JSX (Main View) ---
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
@@ -159,29 +142,16 @@ const GalleryScreen: FC = () => {
                 <Text style={styles.headerTitle}>Photos & Videos</Text>
                 <TouchableOpacity style={[styles.filterTriggerButton, activeDateFilterType && styles.filterActive]} onPress={handleOpenFilterModal}>
                     <Icon name="funnel-outline" size={18} color={activeDateFilterType ? ACCENT_COLOR : '#333'} />
-                    <Text style={[styles.filterTriggerText, activeDateFilterType && { color: ACCENT_COLOR }]}>Filter</Text>
+                    <Text style={[styles.filterTriggerText, activeDateFilterType && {color: ACCENT_COLOR}]}>Filter</Text>
                     {activeDateFilterType && <View style={styles.activeFilterIndicator} />}
                 </TouchableOpacity>
             </View>
 
-            <FlatList
-                data={filteredAlbums}
-                numColumns={NUM_COLUMNS}
-                keyExtractor={(item) => item.title}
-                renderItem={renderAlbumCover}
-                ListEmptyComponent={<View style={styles.emptyContainer}><Icon name="images-outline" size={60} color="#ccc" /><Text style={styles.emptyText}>No Albums Found</Text><Text style={styles.emptySubText}>Try adjusting your filters or create a new album.</Text></View>}
-                contentContainerStyle={styles.listContainer}
-                onRefresh={fetchData}
-                refreshing={loading}
-                // ✨ PERFORMANCE PROPS
-                initialNumToRender={6}
-                maxToRenderPerBatch={4}
-                windowSize={7}
-                getItemLayout={getItemLayout}
-            />
-
+            <FlatList data={filteredAlbums} numColumns={NUM_COLUMNS} keyExtractor={(item) => item.title} renderItem={({ item, index }) => <AlbumCover album={item} onPress={() => handleAlbumPress(item)} onDelete={() => handleDeleteAlbum(item.title)} isAdmin={isAdmin} index={index} />} ListEmptyComponent={!loading ? <View style={styles.emptyContainer}><Icon name="images-outline" size={60} color="#ccc" /><Text style={styles.emptyText}>No Albums Found</Text><Text style={styles.emptySubText}>Try adjusting your filters or create a new album.</Text></View> : null} contentContainerStyle={styles.listContainer} onRefresh={fetchData} refreshing={loading} />
+            
             {isAdmin && <Animatable.View animation="zoomIn" duration={400} delay={300} style={styles.fabContainer}><TouchableOpacity style={styles.fab} onPress={handleOpenUploadModal}><Icon name="add" size={30} color="white" /></TouchableOpacity></Animatable.View>}
-
+            
+            {/* Filter Modal (Unchanged) */}
             <Modal visible={isFilterModalVisible} transparent={true} animationType="slide" onRequestClose={() => setFilterModalVisible(false)}>
                 <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterModalVisible(false)}>
                     <Animatable.View animation="fadeInUpBig" duration={400} style={styles.filterModalView} onStartShouldSetResponder={() => true}>
@@ -194,37 +164,20 @@ const GalleryScreen: FC = () => {
                                 </TouchableOpacity>
                             ))}
                         </View>
-
-                        {tempActiveDateFilterType === 'month' && (
-                            <>
-                                <Text style={styles.modalSectionTitle}>Select Month & Year</Text>
-                                <View style={{ flexDirection: 'row' }}>
-                                    <View style={{ flex: 1, marginRight: 8 }}><RNPickerSelect placeholder={{ label: 'Month', value: null }} items={monthItems} onValueChange={(value) => setTempSelectedMonth(value)} style={pickerSelectStyles} value={tempSelectedMonth} /></View>
-                                    <View style={{ flex: 1, marginLeft: 8 }}><RNPickerSelect placeholder={{ label: 'Year', value: null }} items={availableYears} onValueChange={(value) => setTempSelectedYear(value)} style={pickerSelectStyles} value={tempSelectedYear} /></View>
-                                </View>
-                            </>
-                        )}
-
-                        {tempActiveDateFilterType === 'year' && (
-                            <>
-                                <Text style={styles.modalSectionTitle}>Select Year</Text>
-                                <RNPickerSelect placeholder={{ label: 'Select a year...', value: null }} items={availableYears} onValueChange={(value) => setTempSelectedYear(value)} style={pickerSelectStyles} value={tempSelectedYear} />
-                            </>
-                        )}
-
-                        <View style={styles.modalActions}>
-                            <TouchableOpacity style={styles.clearFilterButton} onPress={handleClearFilter}><Text style={styles.clearFilterButtonText}>CLEAR FILTER</Text></TouchableOpacity>
-                            <TouchableOpacity style={styles.applyFilterButton} onPress={handleApplyFilter}><Text style={styles.applyFilterButtonText}>APPLY</Text></TouchableOpacity>
-                        </View>
+                        {tempActiveDateFilterType === 'month' && (<><Text style={styles.modalSectionTitle}>Select Month & Year</Text><View style={{ flexDirection: 'row' }}><View style={{ flex: 1, marginRight: 8 }}><RNPickerSelect placeholder={{ label: 'Month', value: null }} items={monthItems} onValueChange={(value) => setTempSelectedMonth(value)} style={pickerSelectStyles} value={tempSelectedMonth} /></View><View style={{ flex: 1, marginLeft: 8 }}><RNPickerSelect placeholder={{ label: 'Year', value: null }} items={availableYears} onValueChange={(value) => setTempSelectedYear(value)} style={pickerSelectStyles} value={tempSelectedYear} /></View></View></>)}
+                        {tempActiveDateFilterType === 'year' && (<><Text style={styles.modalSectionTitle}>Select Year</Text><RNPickerSelect placeholder={{ label: 'Select a year...', value: null }} items={availableYears} onValueChange={(value) => setTempSelectedYear(value)} style={pickerSelectStyles} value={tempSelectedYear} /></>)}
+                        <View style={styles.modalActions}><TouchableOpacity style={styles.clearFilterButton} onPress={handleClearFilter}><Text style={styles.clearFilterButtonText}>CLEAR</Text></TouchableOpacity><TouchableOpacity style={styles.applyFilterButton} onPress={handleApplyFilter}><Text style={styles.applyFilterButtonText}>APPLY</Text></TouchableOpacity></View>
                     </Animatable.View>
                 </TouchableOpacity>
             </Modal>
-
-            <Modal visible={isUploadModalVisible} transparent={true} animationType="fade" onRequestClose={() => setUploadModalVisible(false)}><View style={styles.modalBackdrop}><Animatable.View animation="zoomInUp" duration={500} style={styles.uploadModalView}><Text style={styles.modalTitle}>Create New Album</Text><TextInput style={styles.input} placeholder="Album Title" value={title} onChangeText={setTitle} /><TouchableOpacity style={styles.datePickerButton}><Icon name="calendar-outline" size={20} color="#555" style={{ marginRight: 10 }} /><Text style={styles.datePickerText}>Event Date: {eventDate.toLocaleDateString()}</Text></TouchableOpacity><TouchableOpacity style={styles.selectButton} onPress={() => launchImageLibrary({ mediaType: 'mixed' }, r => r.assets && setAsset(r.assets[0]))}><Icon name={asset ? "checkmark-circle" : "attach"} size={20} color={asset ? '#4CAF50' : ACCENT_COLOR} /><Text style={styles.selectButtonText}>{asset ? "Media Selected" : "Select Cover"}</Text></TouchableOpacity>{asset?.fileName && <Text style={styles.fileName}>{asset.fileName}</Text>}<View style={styles.modalActions}><Button title="Cancel" onPress={() => setUploadModalVisible(false)} color="#888" /><View style={{ width: 20 }} /><Button title={isSubmitting ? "Uploading..." : 'Upload'} onPress={handleUpload} disabled={isSubmitting} color={ACCENT_COLOR} /></View></Animatable.View></View></Modal>
+            
+            {/* Upload Modal (Unchanged) */}
+            <Modal visible={isUploadModalVisible} transparent={true} animationType="fade" onRequestClose={() => setUploadModalVisible(false)}><View style={styles.modalBackdrop}><Animatable.View animation="zoomInUp" duration={500} style={styles.uploadModalView}><Text style={styles.modalTitle}>Create New Album</Text><TextInput style={styles.input} placeholder="Album Title" value={title} onChangeText={setTitle} /><TouchableOpacity style={styles.datePickerButton}><Icon name="calendar-outline" size={20} color="#555" style={{marginRight: 10}} /><Text style={styles.datePickerText}>Event Date: {eventDate.toLocaleDateString()}</Text></TouchableOpacity><TouchableOpacity style={styles.selectButton} onPress={() => launchImageLibrary({mediaType: 'mixed'}, r => r.assets && setAsset(r.assets[0]))}><Icon name={asset ? "checkmark-circle" : "attach"} size={20} color={asset ? '#4CAF50' : ACCENT_COLOR} /><Text style={styles.selectButtonText}>{asset ? "Media Selected" : "Select Photo/Video"}</Text></TouchableOpacity>{asset?.fileName && <Text style={styles.fileName}>{asset.fileName}</Text>}<View style={styles.modalActions}><Button title="Cancel" onPress={() => setUploadModalVisible(false)} color="#888" /><View style={{width: 20}} /><Button title={isSubmitting ? "Uploading..." : 'Upload'} onPress={handleUpload} disabled={isSubmitting} color={ACCENT_COLOR} /></View></Animatable.View></View></Modal>
         </SafeAreaView>
     );
 };
 
+// Styles remain the same, just a few tweaks for FastImage placeholder
 const pickerSelectStyles = StyleSheet.create({ inputIOS: { fontSize: 16, paddingVertical: 12, paddingHorizontal: 10, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, color: 'black', backgroundColor: '#f0f2f5', }, inputAndroid: { fontSize: 16, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#ddd', borderRadius: 8, color: 'black', backgroundColor: '#f0f2f5', } });
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F0F2F5' },

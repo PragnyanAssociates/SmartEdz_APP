@@ -155,7 +155,7 @@ const AcademicCalendar = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentContainer}>
-        <Animatable.View animation="fadeInDown" duration={600} style={styles.titleHeader}><Text style={styles.mainTitle}>Academic Calendar</Text></Animatable.View>
+        {/* <Animatable.View animation="fadeInDown" duration={600} style={styles.titleHeader}><Text style={styles.mainTitle}>Academic Calendar</Text></Animatable.View> */}
         <Animatable.View animation="fadeIn" duration={600} delay={200}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.legendContainer}>
             {Object.entries(eventTypesConfig).map(([k, v]) => <View key={k} style={styles.legendItem}><View style={[styles.legendColorBox, {backgroundColor:v.color}]}/><Text style={styles.legendText}>{v.displayName}</Text></View>)}

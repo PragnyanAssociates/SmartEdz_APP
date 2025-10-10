@@ -1,5 +1,3 @@
-// 📂 File: ProfileScreen.js (FULLY OPTIMIZED)
-
 import React, { useState, useEffect, useCallback, memo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -11,7 +9,7 @@ import { SERVER_URL } from '../../apiConfig';
 import apiClient from '../api/client';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import * as Animatable from 'react-native-animatable';
-import FastImage from 'react-native-fast-image'; // ✨ IMPORT FASTIMAGE
+import FastImage from 'react-native-fast-image';
 
 // --- Type Definitions ---
 export interface ProfileData {
@@ -31,7 +29,7 @@ export interface ProfileData {
 }
 
 interface ProfileScreenProps {
-  onBackPress?: () => void;
+  onBackPress?: () => void; // This prop is kept in case you want to trigger back navigation from the parent component
   staticProfileData?: ProfileData;
   onStaticSave?: (updatedData: ProfileData, newImage: Asset | null) => Promise<void>;
   onProfileUpdate?: (newProfileData: ProfileData) => void;
@@ -39,7 +37,7 @@ interface ProfileScreenProps {
 
 // --- Constants ---
 const PRIMARY_ACCENT = '#008080';
-const PAGE_BACKGROUND = '#f7fcfbff';
+const PAGE_BACKGROUND = '#ffffffff';
 const CARD_BACKGROUND = '#FFFFFF';
 const TEXT_PRIMARY = '#2C3E50';
 const TEXT_SECONDARY = '#8A94A6';
@@ -47,16 +45,21 @@ const BORDER_COLOR = '#EAECEF';
 
 // --- Helper Functions ---
 const getProfileImageSource = (url?: string | null) => {
+  // ✨ THIS IS THE MODIFIED LOGIC
   if (!url || typeof url !== 'string') {
-    // Return a default placeholder URI string. The component will handle the fallback.
-    return { uri: 'https://via.placeholder.com/150', priority: FastImage.priority.low };
+    // If there's no URL, return the local default avatar.
+    // 'require' returns a number that FastImage and Image components understand.
+    return require('../assets/default_avatar.png'); // ✨ IMPORTANT: Make sure this path is correct for your project structure.
   }
+
+  // If there is a URL, return the object format that FastImage expects for network images.
   if (url.startsWith('http') || url.startsWith('file')) {
     return { uri: url, priority: FastImage.priority.normal };
   }
-  // ✨ PERFORMANCE & AD BLOCKER FIX: Use the API image route
-  const filename = url.split('/').pop();
-  return { uri: `${SERVER_URL}/api/image/${filename}?w=300`, priority: FastImage.priority.high };
+
+  // Construct the full URL for server-relative paths
+  const fullUrl = url.startsWith('/') ? `${SERVER_URL}${url}` : `${SERVER_URL}/${url}`;
+  return { uri: `${fullUrl}?t=${new Date().getTime()}`, priority: FastImage.priority.high };
 };
 
 // --- Memoized Child Components for Performance ---
@@ -82,32 +85,22 @@ const EditField = memo(({ label, value, onChange, ...props }: any) => (
   </View>
 ));
 
-const DisplayProfileView = memo(({ userProfile, onEditPress, onBackPress }: { userProfile: ProfileData, onEditPress: () => void, onBackPress?: () => void }) => {
+const DisplayProfileView = memo(({ userProfile, onEditPress }: { userProfile: ProfileData, onEditPress: () => void }) => {
   const profileImageSource = getProfileImageSource(userProfile.profile_image_url);
   const showAcademicDetails = userProfile.role !== 'donor';
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Animatable.View animation="fadeInDown" duration={500}>
-        <View style={styles.header}>
-            {onBackPress ? (
-            <TouchableOpacity onPress={onBackPress} style={styles.headerButton}>
-                <MaterialIcons name="arrow-back" size={24} color={PRIMARY_ACCENT} />
-            </TouchableOpacity>
-            ) : (
-            <View style={styles.headerButton} />
-            )}
-            <Text style={styles.headerTitle}>My Profile</Text>
-            <TouchableOpacity onPress={onEditPress} style={styles.headerButton}>
-            <MaterialIcons name="edit" size={24} color={PRIMARY_ACCENT} />
-            </TouchableOpacity>
-        </View>
-      </Animatable.View>
+      {/* The entire header component has been removed as requested. */}
       <ScrollView contentContainerStyle={styles.container}>
         <Animatable.View animation="zoomIn" duration={500} delay={100} style={styles.profileHeader}>
           <FastImage source={profileImageSource} style={styles.profileImage} resizeMode={FastImage.resizeMode.cover} />
           <Text style={styles.profileName}>{userProfile.full_name}</Text>
           <Text style={styles.profileRole}>{userProfile.role.charAt(0).toUpperCase() + userProfile.role.slice(1)}</Text>
+          <TouchableOpacity onPress={onEditPress} style={styles.editProfileButton}>
+            <MaterialIcons name="edit" size={16} color={PRIMARY_ACCENT} />
+            <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+          </TouchableOpacity>
         </Animatable.View>
         <Animatable.View animation="fadeInUp" duration={500} delay={200} style={styles.detailsCard}>
           <Text style={styles.cardTitle}>Personal Information</Text>
@@ -141,10 +134,10 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
   const requestGalleryPermission = useCallback(async () => {
     if (Platform.OS === 'android') {
       try {
-        const permission = Platform.Version >= 33 
+        const permission = Platform.Version >= 33
             ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES
             : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
-        
+
         const granted = await PermissionsAndroid.request(permission, {
           title: 'Gallery Access Permission',
           message: 'App needs access to your gallery to select a profile picture.',
@@ -176,21 +169,19 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
   const handleChange = useCallback((field: keyof ProfileData, value: string) => {
     setEditedData(prev => ({ ...prev, [field]: value }));
   }, []);
+  
+  // The Save and Cancel buttons must now be part of the screen's main content.
+  const handleSaveChanges = () => {
+    onSave(editedData, newImage);
+  }
 
   const imageSource = newImage?.uri ? { uri: newImage.uri } : getProfileImageSource(editedData.profile_image_url);
   const showAcademicFields = userProfile.role !== 'donor';
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onCancel} style={styles.headerButton} disabled={isSaving}>
-          <Text style={styles.headerButtonTextCancel}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Profile</Text>
-        <TouchableOpacity onPress={() => onSave(editedData, newImage)} style={styles.headerButton} disabled={isSaving}>
-          <Text style={styles.headerButtonTextSave}>Save</Text>
-        </TouchableOpacity>
-      </View>
+      {/* The Edit view header has also been removed for consistency. */}
+      {/* Save/Cancel buttons are now at the bottom. */}
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.profileHeader}>
           <FastImage source={imageSource} style={styles.profileImage} resizeMode={FastImage.resizeMode.cover} />
@@ -212,7 +203,16 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
             <EditField label="Admission Date" value={editedData.admission_date} onChange={text => handleChange('admission_date', text)} placeholder="YYYY-MM-DD" />
           </>
         )}
-        {isSaving && <ActivityIndicator size="large" color={PRIMARY_ACCENT} style={{ marginTop: 20 }} />}
+        {isSaving ? <ActivityIndicator size="large" color={PRIMARY_ACCENT} style={{ marginTop: 20 }} /> : (
+            <View style={styles.editActionsContainer}>
+                <TouchableOpacity style={[styles.editActionButton, styles.cancelButton]} onPress={onCancel}>
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.editActionButton, styles.saveButton]} onPress={handleSaveChanges}>
+                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                </TouchableOpacity>
+            </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -220,9 +220,9 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
 
 // --- Main ProfileScreen Component ---
 
-const ProfileScreen = ({ onBackPress, staticProfileData, onStaticSave, onProfileUpdate }: ProfileScreenProps) => {
-  const { user, isLoading: isAuthLoading } = useAuth();
-  
+const ProfileScreen = ({ staticProfileData, onStaticSave, onProfileUpdate }: ProfileScreenProps) => {
+  const { user, isLoading: isAuthLoading, updateUser } = useAuth();
+
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
@@ -231,11 +231,11 @@ const ProfileScreen = ({ onBackPress, staticProfileData, onStaticSave, onProfile
   useEffect(() => {
     const loadProfile = async () => {
       if (staticProfileData) {
-        setProfileData(staticProfileData);
+        setProfileData(staticProfileData as ProfileData);
         setIsProfileLoading(false);
         return;
       }
-      
+
       if (!isAuthLoading && user) {
         setIsProfileLoading(true);
         try {
@@ -282,32 +282,38 @@ const ProfileScreen = ({ onBackPress, staticProfileData, onStaticSave, onProfile
             name: newImage.fileName || `profile-${Date.now()}.jpg`
           });
         }
-        
+
         const response = await apiClient.put(`/profiles/${user.id}`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
 
         const refreshedDataFromServer = response.data;
-        
-        setProfileData(prevData => ({
-          ...prevData,
+        const finalUpdatedProfile = {
+          ...profileData,
           ...editedData,
-          profile_image_url: refreshedDataFromServer.profile_image_url || prevData.profile_image_url,
-        } as ProfileData));
-        
+          profile_image_url: refreshedDataFromServer.profile_image_url || profileData?.profile_image_url,
+        } as ProfileData;
+
+        setProfileData(finalUpdatedProfile);
+
+        if (updateUser) {
+          updateUser(finalUpdatedProfile);
+        }
+
         if (onProfileUpdate) {
-            onProfileUpdate({ ...profileData, ...editedData, ...refreshedDataFromServer } as ProfileData);
+            onProfileUpdate(finalUpdatedProfile);
         }
 
         Alert.alert('Success', 'Profile updated successfully!');
         setIsEditing(false);
       }
-    } catch (error: any) {
+    } catch (error: any)
+    {
       Alert.alert('Update Failed', error.response?.data?.message || 'Failed to save profile.');
     } finally {
       setIsSaving(false);
     }
-  }, [user, onStaticSave, onProfileUpdate, profileData]);
+  }, [user, onStaticSave, onProfileUpdate, profileData, updateUser]);
 
   if (isAuthLoading || isProfileLoading) {
     return <View style={styles.centered}><ActivityIndicator size="large" color={PRIMARY_ACCENT} /></View>;
@@ -316,12 +322,12 @@ const ProfileScreen = ({ onBackPress, staticProfileData, onStaticSave, onProfile
   if (!profileData) {
     return <View style={styles.centered}><Text>Profile not available.</Text></View>;
   }
-  
+
   return (
     <Animatable.View key={String(isEditing)} animation="fadeIn" duration={400} style={{flex: 1}}>
       {isEditing
         ? <EditProfileView userProfile={profileData} onSave={handleSave} onCancel={() => setIsEditing(false)} isSaving={isSaving} />
-        : <DisplayProfileView userProfile={profileData} onEditPress={() => setIsEditing(true)} onBackPress={onBackPress} />
+        : <DisplayProfileView userProfile={profileData} onEditPress={() => setIsEditing(true)} />
       }
     </Animatable.View>
   );
@@ -330,22 +336,31 @@ const ProfileScreen = ({ onBackPress, staticProfileData, onStaticSave, onProfile
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: PAGE_BACKGROUND },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: PAGE_BACKGROUND },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: CARD_BACKGROUND, paddingVertical: 15, paddingHorizontal: 10,
-    borderBottomWidth: 1, borderBottomColor: BORDER_COLOR,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 3
+  // The header styles have been removed.
+  container: { 
+    paddingHorizontal: 15, 
+    paddingBottom: 40,
+    paddingTop: 20 // Added padding to prevent content from touching the status bar
   },
-  headerButton: { padding: 8, minWidth: 60, alignItems: 'center' },
-  headerButtonTextSave: { color: PRIMARY_ACCENT, fontSize: 16, fontWeight: '600' },
-  headerButtonTextCancel: { color: TEXT_SECONDARY, fontSize: 16, fontWeight: '500' },
-  headerTitle: { color: TEXT_PRIMARY, fontSize: 20, fontWeight: 'bold' },
-  container: { paddingHorizontal: 15, paddingBottom: 40 },
   profileHeader: { alignItems: 'center', marginVertical: 20 },
   profileImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 4, borderColor: CARD_BACKGROUND, marginBottom: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 5, elevation: 5, backgroundColor: '#e0e0e0' },
   profileName: { fontSize: 26, fontWeight: 'bold', color: TEXT_PRIMARY, textAlign: 'center' },
   profileRole: { fontSize: 16, color: TEXT_SECONDARY, marginTop: 5, textTransform: 'capitalize' },
+  editProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    backgroundColor: 'rgba(0, 128, 128, 0.1)',
+    paddingVertical: 10,
+    paddingHorizontal: 25,
+    borderRadius: 25,
+  },
+  editProfileButtonText: {
+    color: PRIMARY_ACCENT,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    fontSize: 16,
+  },
   detailsCard: { backgroundColor: CARD_BACKGROUND, borderRadius: 12, padding: 20, marginBottom: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
   cardTitle: { fontSize: 18, fontWeight: 'bold', color: PRIMARY_ACCENT, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR, paddingBottom: 10 },
   detailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
@@ -356,8 +371,37 @@ const styles = StyleSheet.create({
   changeImageButtonText: { color: PRIMARY_ACCENT, fontWeight: 'bold' },
   inputGroup: { marginBottom: 15 },
   inputLabel: { fontSize: 15, fontWeight: '500', color: TEXT_SECONDARY, marginBottom: 8 },
-  textInput: { backgroundColor: CARD_BACKGROUND, borderRadius: 10, padding: 12, fontSize: 16, color: TEXT_PRIMARY, borderWidth: 1, borderColor: BORDER_COLOR },
+  textInput: { backgroundColor: '#F7F8FA', borderRadius: 10, padding: 12, fontSize: 16, color: TEXT_PRIMARY, borderWidth: 1, borderColor: BORDER_COLOR },
   multilineInput: { height: 100, textAlignVertical: 'top' },
+  editActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 30,
+  },
+  editActionButton: {
+    flex: 1,
+    paddingVertical: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#EAECEF',
+    marginRight: 10,
+  },
+  saveButton: {
+    backgroundColor: PRIMARY_ACCENT,
+    marginLeft: 10,
+  },
+  cancelButtonText: {
+    color: TEXT_SECONDARY,
+    fontWeight: 'bold',
+    fontSize: 16
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16
+  },
 });
 
 export default ProfileScreen;
