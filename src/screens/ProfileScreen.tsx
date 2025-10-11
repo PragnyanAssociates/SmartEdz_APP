@@ -26,6 +26,10 @@ export interface ProfileData {
   admission_date?: string;
   roll_no?: string;
   email?: string;
+  admission_no?: string;
+  parent_name?: string;
+  aadhar_no?: string;
+  pen_no?: string;
 }
 
 interface ProfileScreenProps {
@@ -45,19 +49,12 @@ const BORDER_COLOR = '#EAECEF';
 
 // --- Helper Functions ---
 const getProfileImageSource = (url?: string | null) => {
-  // ✨ THIS IS THE MODIFIED LOGIC
   if (!url || typeof url !== 'string') {
-    // If there's no URL, return the local default avatar.
-    // 'require' returns a number that FastImage and Image components understand.
-    return require('../assets/default_avatar.png'); // ✨ IMPORTANT: Make sure this path is correct for your project structure.
+    return require('../assets/default_avatar.png');
   }
-
-  // If there is a URL, return the object format that FastImage expects for network images.
   if (url.startsWith('http') || url.startsWith('file')) {
     return { uri: url, priority: FastImage.priority.normal };
   }
-
-  // Construct the full URL for server-relative paths
   const fullUrl = url.startsWith('/') ? `${SERVER_URL}${url}` : `${SERVER_URL}/${url}`;
   return { uri: `${fullUrl}?t=${new Date().getTime()}`, priority: FastImage.priority.high };
 };
@@ -91,7 +88,6 @@ const DisplayProfileView = memo(({ userProfile, onEditPress }: { userProfile: Pr
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* The entire header component has been removed as requested. */}
       <ScrollView contentContainerStyle={styles.container}>
         <Animatable.View animation="zoomIn" duration={500} delay={100} style={styles.profileHeader}>
           <FastImage source={profileImageSource} style={styles.profileImage} resizeMode={FastImage.resizeMode.cover} />
@@ -119,6 +115,10 @@ const DisplayProfileView = memo(({ userProfile, onEditPress }: { userProfile: Pr
             <Text style={styles.cardTitle}>Academic Details</Text>
             <DetailRow label="Class:" value={userProfile.class_group} icon="class" />
             <DetailRow label="Roll No.:" value={userProfile.roll_no} icon="assignment-ind" />
+            <DetailRow label="Admission No.:" value={userProfile.admission_no} icon="person-add" />
+            <DetailRow label="Parent Name:" value={userProfile.parent_name} icon="people" />
+            <DetailRow label="Aadhar No.:" value={userProfile.aadhar_no} icon="fingerprint" />
+            <DetailRow label="PEN No.:" value={userProfile.pen_no} icon="description" />
             <DetailRow label="Admission Date:" value={userProfile.admission_date} icon="event" />
           </Animatable.View>
         )}
@@ -170,7 +170,6 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
     setEditedData(prev => ({ ...prev, [field]: value }));
   }, []);
   
-  // The Save and Cancel buttons must now be part of the screen's main content.
   const handleSaveChanges = () => {
     onSave(editedData, newImage);
   }
@@ -180,8 +179,6 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* The Edit view header has also been removed for consistency. */}
-      {/* Save/Cancel buttons are now at the bottom. */}
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.profileHeader}>
           <FastImage source={imageSource} style={styles.profileImage} resizeMode={FastImage.resizeMode.cover} />
@@ -200,6 +197,10 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
             <EditField label="Gender" value={editedData.gender} onChange={text => handleChange('gender', text)} />
             <EditField label="Class / Group" value={editedData.class_group} onChange={text => handleChange('class_group', text)} />
             <EditField label="Roll No." value={editedData.roll_no} onChange={text => handleChange('roll_no', text)} />
+            <EditField label="Admission No." value={editedData.admission_no} onChange={text => handleChange('admission_no', text)} />
+            <EditField label="Parent Name" value={editedData.parent_name} onChange={text => handleChange('parent_name', text)} />
+            <EditField label="Aadhar No." value={editedData.aadhar_no} onChange={text => handleChange('aadhar_no', text)} keyboardType="numeric" maxLength={12} />
+            <EditField label="PEN No." value={editedData.pen_no} onChange={text => handleChange('pen_no', text)} />
             <EditField label="Admission Date" value={editedData.admission_date} onChange={text => handleChange('admission_date', text)} placeholder="YYYY-MM-DD" />
           </>
         )}
@@ -336,11 +337,10 @@ const ProfileScreen = ({ staticProfileData, onStaticSave, onProfileUpdate }: Pro
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: PAGE_BACKGROUND },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: PAGE_BACKGROUND },
-  // The header styles have been removed.
   container: { 
     paddingHorizontal: 15, 
     paddingBottom: 40,
-    paddingTop: 20 // Added padding to prevent content from touching the status bar
+    paddingTop: 20
   },
   profileHeader: { alignItems: 'center', marginVertical: 20 },
   profileImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 4, borderColor: CARD_BACKGROUND, marginBottom: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 5, elevation: 5, backgroundColor: '#e0e0e0' },

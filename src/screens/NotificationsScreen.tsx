@@ -1,4 +1,4 @@
-// 📂 File: src/screens/NotificationsScreen.tsx (FINAL VERSION WITH COMPLETE NAVIGATION)
+// 📂 File: src/screens/NotificationsScreen.tsx (FINAL VERSION WITH COMPLETE NAVIGATION & FIX)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -13,16 +13,21 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-// ★ 1. IMPORT useNavigation
 import { useNavigation } from '@react-navigation/native'; 
 import apiClient from '../api/client';
 import { format } from 'date-fns';
 
-// --- Style Constants and Icons (No changes needed here) ---
+// --- Style Constants and Icons ---
 const PRIMARY_COLOR = '#008080';
 const TERTIARY_COLOR = '#f8f8ff';
-// ... (rest of your constants are fine)
 
+// ★★★ FIX: ADD THESE MISSING COLOR CONSTANTS ★★★
+const TEXT_COLOR_DARK = '#333333';   // For main titles
+const TEXT_COLOR_MEDIUM = '#666666'; // For body text, subtitles
+const TEXT_COLOR_LIGHT = '#999999';  // For dates, metadata
+// ★★★ END FIX ★★★
+
+// Your notification icons object remains the same...
 const notificationIcons = {
   default: 'https://cdn-icons-png.flaticon.com/128/8297/8297354.png',
   homework: 'https://cdn-icons-png.flaticon.com/128/2158/2158507.png',
@@ -47,6 +52,7 @@ const notificationIcons = {
   kitchen: 'https://cdn-icons-png.flaticon.com/128/3081/3081448.png',
 };
 
+// Your helper functions remain the same...
 const getIconForTitle = (title: string = '') => {
     const lowerCaseTitle = title.toLowerCase();
     if (lowerCaseTitle.includes('homework') || lowerCaseTitle.includes('assignment')) return notificationIcons.homework;
@@ -58,12 +64,10 @@ const getIconForTitle = (title: string = '') => {
     if (lowerCaseTitle.includes('report')) return notificationIcons.report;
     if (lowerCaseTitle.includes('syllabus')) return notificationIcons.syllabus;
     if (lowerCaseTitle.includes('gallery')) return notificationIcons.gallery;
-    // ... rest of your icon logic is fine
     return notificationIcons.default;
 };
 
 const NotificationsScreen = ({ onUnreadCountChange }) => {
-  // ★ 2. GET THE NAVIGATION OBJECT
   const navigation = useNavigation();
   const [filterStatus, setFilterStatus] = useState('all');
   const [notifications, setNotifications] = useState([]);
@@ -72,7 +76,6 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchNotifications = useCallback(async () => {
-    // ... no changes in this function
     try {
       const response = await apiClient.get('/notifications');
       setNotifications(response.data);
@@ -96,9 +99,7 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
     fetchNotifications();
   };
 
-  // ★ 3. THE COMPLETE NAVIGATION HANDLER
   const handleNotificationPress = async (notification) => {
-    // Mark the notification as read if it isn't already
     if (!notification.is_read) {
         try {
             await apiClient.put(`/notifications/${notification.id}/read`);
@@ -110,49 +111,40 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
         }
     }
 
-    // Navigate based on the 'link' property
     if (!notification.link) {
-        return; // Do nothing if there's no link
+        return;
     }
 
     try {
-        const parts = notification.link.split('/').filter(Boolean); // e.g., ['homework', '123']
+        const parts = notification.link.split('/').filter(Boolean);
         if (parts.length === 0) return;
 
         const screen = parts[0];
-        const id1 = parts[1]; // Can be an ID or title
-        const id2 = parts[2]; // For more complex links like /helpdesk/ticket/45
+        const id1 = parts[1];
+        const id2 = parts[2];
 
         console.log(`Navigating to screen: ${screen} with IDs:`, id1, id2);
 
-        // Make sure to replace screen names with your actual screen names from your navigator!
         switch (screen) {
             case 'calendar':
                 navigation.navigate('AcademicCalendar');
                 break;
             case 'gallery':
-                // For nested navigators, you might need to specify the screen inside a navigator
                 navigation.navigate('GalleryScreen', { screen: 'AlbumDetailScreen', params: { albumTitle: id1 } });
                 break;
             case 'homework':
-                // Assumes you have a Homework screen that takes an assignmentId
                 navigation.navigate('StudentHomeworkScreen', { assignmentId: parseInt(id1, 10) });
                 break;
             case 'submissions':
-                // For a teacher to view submissions for an assignment
-                navigation.navigate('submissions', { assignmentId: parseInt(id1, 10) });
+                navigation.navigate('TeacherHomeworkSubmissions', { assignmentId: parseInt(id1, 10) });
                 break;
             case 'helpdesk':
                  if (id1 === 'ticket') {
                     navigation.navigate('HelpDeskTicketDetail', { ticketId: parseInt(id2, 10) });
                  }
                  break;
-            // Add other cases here based on your backend links...
-            
             default:
                 console.warn(`No navigation route configured for link: ${notification.link}`);
-                // Optional: navigate to a default screen if the link is unknown
-                // navigation.navigate('Home'); 
         }
     } catch (e) {
         console.error("Navigation error:", e);
@@ -162,7 +154,8 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
 
   const filteredNotifications = notifications.filter(notification => {
     if (filterStatus === 'unread') return !notification.is_read;
-    return true;
+    if (filterStatus === 'read') return notification.is_read;
+    return true; // for 'all'
   });
 
   const renderContent = () => {
@@ -179,7 +172,6 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
       <TouchableOpacity
         key={notification.id}
         style={[styles.notificationItem, !notification.is_read && styles.notificationItemUnread]}
-        // ★ 4. ATTACH THE HANDLER
         onPress={() => handleNotificationPress(notification)} 
       >
         <Image
@@ -223,7 +215,6 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
 };
 
 const styles = StyleSheet.create({
-  // ... no changes to styles
   safeArea: { flex: 1, backgroundColor: TERTIARY_COLOR },
   filterContainer: { flexDirection: 'row', backgroundColor: 'white', borderRadius: 25, marginHorizontal: 15, marginBottom: 15, marginTop: 10, padding: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, },
   filterButton: { flex: 1, paddingVertical: 10, borderRadius: 20, alignItems: 'center' },

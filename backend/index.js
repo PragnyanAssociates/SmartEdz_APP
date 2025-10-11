@@ -235,7 +235,10 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/users', async (req, res) => {
     try {
         const query = `
-            SELECT u.id, u.username, u.full_name, u.role, u.class_group, u.subjects_taught, p.email, p.phone, p.address 
+            SELECT 
+                u.id, u.username, u.full_name, u.role, u.class_group, u.subjects_taught, 
+                p.email, p.phone, p.address,
+                p.admission_no, p.parent_name, p.aadhar_no, p.pen_no
             FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id`;
         const [rows] = await db.query(query);
         const usersWithParsedSubjects = rows.map(user => {
@@ -249,7 +252,10 @@ app.get('/api/users', async (req, res) => {
 });
 
 app.post('/api/users', async (req, res) => {
-    const { username, password, full_name, email, role, class_group, subjects_taught } = req.body;
+    const { 
+        username, password, full_name, email, role, class_group, subjects_taught, 
+        admission_no, parent_name, aadhar_no, pen_no 
+    } = req.body;
     const subjectsJson = (role === 'teacher' && Array.isArray(subjects_taught)) ? JSON.stringify(subjects_taught) : null;
     const connection = await db.getConnection();
     try {
@@ -260,7 +266,10 @@ app.post('/api/users', async (req, res) => {
             [username, hashedPassword, full_name, role, class_group, subjectsJson]
         );
         const newUserId = userResult.insertId;
-        await connection.query('INSERT INTO user_profiles (user_id, email) VALUES (?, ?)', [newUserId, email || null]);
+        await connection.query(
+            'INSERT INTO user_profiles (user_id, email, admission_no, parent_name, aadhar_no, pen_no) VALUES (?, ?, ?, ?, ?, ?)', 
+            [newUserId, email || null, admission_no || null, parent_name || null, aadhar_no || null, pen_no || null]
+        );
         await connection.commit();
         res.status(201).json({ message: 'User and profile created successfully!' });
     } catch (error) {
@@ -271,73 +280,71 @@ app.post('/api/users', async (req, res) => {
 });
 
 
-// Add this new route to your backend API file
-
 app.put('/api/users/:id', async (req, res) => {
     const { id } = req.params;
-    const { username, password, full_name, role, class_group, subjects_taught } = req.body;
-
-    // Build the query dynamically based on the fields provided
-    let queryFields = [];
-    let queryParams = [];
-
-    if (username !== undefined) {
-        queryFields.push('username = ?');
-        queryParams.push(username);
-    }
-    if (full_name !== undefined) {
-        queryFields.push('full_name = ?');
-        queryParams.push(full_name);
-    }
-    if (role !== undefined) {
-        queryFields.push('role = ?');
-        queryParams.push(role);
-    }
-    if (class_group !== undefined) {
-        queryFields.push('class_group = ?');
-        queryParams.push(class_group);
-    }
-    // Only update subjects if the role is teacher and subjects are provided
-    if (role === 'teacher' && subjects_taught !== undefined) {
-        const subjectsJson = Array.isArray(subjects_taught) ? JSON.stringify(subjects_taught) : null;
-        queryFields.push('subjects_taught = ?');
-        queryParams.push(subjectsJson);
-    }
-
-    // CRITICAL: Only hash and update the password if a new one was provided
-    if (password) {
-        try {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            queryFields.push('password = ?');
-            queryParams.push(hashedPassword);
-        } catch (hashError) {
-            console.error("Password Hashing Error:", hashError);
-            return res.status(500).json({ message: 'Error processing password.' });
-        }
-    }
-
-    // If no fields are being updated, return an error
-    if (queryFields.length === 0) {
-        return res.status(400).json({ message: 'No valid fields provided for update.' });
-    }
-
-    // Add the user ID to the end of the parameters for the WHERE clause
-    queryParams.push(id);
-
-    const sql = `UPDATE users SET ${queryFields.join(', ')} WHERE id = ?`;
-
+    const { 
+        username, password, full_name, role, class_group, subjects_taught,
+        admission_no, parent_name, aadhar_no, pen_no // Get profile fields for editing
+    } = req.body;
+    
+    const connection = await db.getConnection();
     try {
-        const [result] = await db.query(sql, queryParams);
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'User not found.' });
+        await connection.beginTransaction();
+
+        // --- Step 1: Update the `users` table ---
+        let userQueryFields = [];
+        let userQueryParams = [];
+
+        if (username !== undefined) { userQueryFields.push('username = ?'); userQueryParams.push(username); }
+        if (full_name !== undefined) { userQueryFields.push('full_name = ?'); userQueryParams.push(full_name); }
+        if (role !== undefined) { userQueryFields.push('role = ?'); userQueryParams.push(role); }
+        if (class_group !== undefined) { userQueryFields.push('class_group = ?'); userQueryParams.push(class_group); }
+        if (role === 'teacher' && subjects_taught !== undefined) {
+            const subjectsJson = Array.isArray(subjects_taught) ? JSON.stringify(subjects_taught) : null;
+            userQueryFields.push('subjects_taught = ?');
+            userQueryParams.push(subjectsJson);
         }
+        if (password) {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            userQueryFields.push('password = ?');
+            userQueryParams.push(hashedPassword);
+        }
+
+        if (userQueryFields.length > 0) {
+            userQueryParams.push(id);
+            const userSql = `UPDATE users SET ${userQueryFields.join(', ')} WHERE id = ?`;
+            const [userResult] = await connection.query(userSql, userQueryParams);
+            if (userResult.affectedRows === 0) {
+                await connection.rollback();
+                return res.status(404).json({ message: 'User not found.' });
+            }
+        }
+
+        // --- Step 2: Update the `user_profiles` table for students ---
+        if (role === 'student') {
+             const profileSql = `
+                INSERT INTO user_profiles (user_id, admission_no, parent_name, aadhar_no, pen_no) 
+                VALUES (?, ?, ?, ?, ?) 
+                ON DUPLICATE KEY UPDATE 
+                    admission_no = VALUES(admission_no),
+                    parent_name = VALUES(parent_name),
+                    aadhar_no = VALUES(aadhar_no),
+                    pen_no = VALUES(pen_no)
+            `;
+            await connection.query(profileSql, [id, admission_no, parent_name, aadhar_no, pen_no]);
+        }
+        
+        await connection.commit();
         res.status(200).json({ message: 'User updated successfully!' });
     } catch (error) {
+        await connection.rollback();
         console.error("User Update Error:", error);
         if (error.code === 'ER_DUP_ENTRY') {
             return res.status(409).json({ message: 'Error: This username already exists.' });
         }
         res.status(500).json({ message: 'Error: Could not update user.' });
+    } finally {
+        connection.release();
     }
 });
 
@@ -345,7 +352,7 @@ app.put('/api/users/:id', async (req, res) => {
 app.get('/api/profiles/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        const sql = `SELECT u.*, p.email, p.dob, p.gender, p.phone, p.address, p.profile_image_url, p.admission_date, p.roll_no FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?`;
+        const sql = `SELECT u.*, p.email, p.dob, p.gender, p.phone, p.address, p.profile_image_url, p.admission_date, p.roll_no, p.admission_no, p.parent_name, p.aadhar_no, p.pen_no FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?`;
         const [rows] = await db.query(sql, [userId]);
         if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
         res.json(rows[0]);
@@ -354,7 +361,10 @@ app.get('/api/profiles/:userId', async (req, res) => {
 
 app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res) => {
     const userId = parseInt(req.params.userId, 10);
-    const { full_name, class_group, email, dob, gender, phone, address, roll_no, admission_date } = req.body;
+    const { 
+        full_name, class_group, email, dob, gender, phone, address, roll_no, admission_date,
+        admission_no, parent_name, aadhar_no, pen_no 
+    } = req.body;
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
@@ -363,8 +373,17 @@ app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res)
         }
         let profile_image_url = req.body.profile_image_url === 'null' ? null : req.body.profile_image_url;
         if (req.file) profile_image_url = `/uploads/${req.file.filename}`;
-        const profileSql = `INSERT INTO user_profiles (user_id, email, dob, gender, phone, address, profile_image_url, admission_date, roll_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE email = VALUES(email), dob = VALUES(dob), gender = VALUES(gender), phone = VALUES(phone), address = VALUES(address), profile_image_url = VALUES(profile_image_url), admission_date = VALUES(admission_date), roll_no = VALUES(roll_no)`;
-        await connection.query(profileSql, [userId, email, dob, gender, phone, address, profile_image_url, admission_date, roll_no]);
+        const profileSql = `
+            INSERT INTO user_profiles (user_id, email, dob, gender, phone, address, profile_image_url, admission_date, roll_no, admission_no, parent_name, aadhar_no, pen_no) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+            ON DUPLICATE KEY UPDATE 
+                email = VALUES(email), dob = VALUES(dob), gender = VALUES(gender), 
+                phone = VALUES(phone), address = VALUES(address), profile_image_url = VALUES(profile_image_url), 
+                admission_date = VALUES(admission_date), roll_no = VALUES(roll_no),
+                admission_no = VALUES(admission_no), parent_name = VALUES(parent_name),
+                aadhar_no = VALUES(aadhar_no), pen_no = VALUES(pen_no)
+        `;
+        await connection.query(profileSql, [userId, email, dob, gender, phone, address, profile_image_url, admission_date, roll_no, admission_no, parent_name, aadhar_no, pen_no]);
         await connection.commit();
         res.status(200).json({ message: 'Profile updated successfully!', profile_image_url: profile_image_url });
     } catch (error) {
@@ -396,7 +415,6 @@ app.delete('/api/users/:id', async (req, res) => {
 
 // --- SELF-SERVICE PASSWORD RESET API ROUTES (OTP/CODE METHOD) ---
 
-// This route now generates and sends a 6-digit code.
 app.post('/api/forgot-password', async (req, res) => {
     const { email } = req.body;
     try {
@@ -423,8 +441,6 @@ app.post('/api/forgot-password', async (req, res) => {
     }
 });
 
-// ✅ --- STEP 2: USE THE CORRECT RESET PASSWORD ROUTE --- ✅
-// This is the correct route for the OTP/code method.
 app.post('/api/reset-password', async (req, res) => {
     const { email, token, newPassword } = req.body;
     try {
@@ -449,19 +465,10 @@ app.post('/api/reset-password', async (req, res) => {
 });
 
 // ==========================================================
-// --- ✨ NEW: SELF-SERVICE PASSWORD CHANGE API ROUTE ---
+// --- SELF-SERVICE PASSWORD CHANGE API ROUTE ---
 // ==========================================================
-// This route should be protected by your JWT authentication middleware.
-// The middleware should verify the token and attach the user payload to req.user.
-// Example: app.post('/api/auth/change-password', verifyToken, async (req, res) => { ... });
 
 app.post('/api/auth/change-password', async (req, res) => {
-    // In a real app, req.user.id would be populated by your authentication middleware.
-    // For demonstration, we'll assume it's there.
-    // const { id } = req.user; 
-    
-    // If you don't have middleware yet, you'd have to decode the token here.
-    // This is a basic example of how to do it without dedicated middleware:
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'Access Denied. No token provided.' });
@@ -473,7 +480,6 @@ app.post('/api/auth/change-password', async (req, res) => {
     } catch (err) {
         return res.status(403).json({ message: 'Invalid Token.' });
     }
-    // End of token verification example
 
     const { currentPassword, newPassword } = req.body;
 
@@ -482,7 +488,6 @@ app.post('/api/auth/change-password', async (req, res) => {
     }
 
     try {
-        // 1. Fetch the user from the database
         const [rows] = await db.query('SELECT password FROM users WHERE id = ?', [userId]);
         const user = rows[0];
 
@@ -490,13 +495,11 @@ app.post('/api/auth/change-password', async (req, res) => {
             return res.status(404).json({ message: 'User not found.' });
         }
 
-        // 2. Verify the current password
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) {
             return res.status(401).json({ message: 'Incorrect current password.' });
         }
 
-        // 3. Hash the new password and update the database
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
         await db.query('UPDATE users SET password = ? WHERE id = ?', [hashedNewPassword, userId]);
 

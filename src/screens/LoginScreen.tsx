@@ -1,5 +1,3 @@
-// 📂 File: src/screens/LoginScreen.tsx (ENHANCED DYNAMIC VERSION)
-
 import React, { useState, useEffect, useRef } from "react";
 import { 
   View, Text, StyleSheet, TextInput, Image, 
@@ -39,6 +37,9 @@ export default function LoginScreen({ route }: LoginScreenProps) {
   // --- Focus State for Inputs ---
   const [isUserFocused, setIsUserFocused] = useState(false);
   const [isPassFocused, setIsPassFocused] = useState(false);
+  
+  // --- NEW: State for Password Visibility ---
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   useEffect(() => {
     // Staggered entry animation for a smooth, professional appearance
@@ -125,21 +126,31 @@ export default function LoginScreen({ route }: LoginScreenProps) {
                 />
               </View>
 
+              {/* --- MODIFIED PASSWORD INPUT --- */}
               <View style={[styles.inputContainer, isPassFocused && styles.inputContainerFocused]}>
                 <Feather name="lock" size={20} color={isPassFocused ? "#007BFF" : "#888"} style={styles.inputIcon} />
                 <TextInput 
                   style={styles.input} 
                   placeholder="Password" 
-                  secureTextEntry 
+                  secureTextEntry={!isPasswordVisible} // Dynamic visibility
                   value={password} 
                   onChangeText={setPassword}
                   placeholderTextColor="#888"
                   onFocus={() => setIsPassFocused(true)}
                   onBlur={() => setIsPassFocused(false)}
+                  textContentType="password" // Helps with password managers
                 />
+                <Pressable 
+                  onPress={() => setIsPasswordVisible(!isPasswordVisible)} 
+                  style={styles.eyeIconContainer}
+                >
+                  <Feather 
+                    name={isPasswordVisible ? "eye" : "eye-off"} 
+                    size={20} 
+                    color={isPassFocused ? "#007BFF" : "#888"} 
+                  />
+                </Pressable>
               </View>
-              
-              {/* Optional links for donor */}
               
               <Pressable style={({ pressed }) => [styles.loginButton, { transform: [{scale: pressed ? 0.98 : 1}] }]} onPress={handleLogin} disabled={isLoggingIn}>
                 {isLoggingIn ? (<ActivityIndicator color="#fff" />) : (<Text style={styles.loginButtonText}>Login</Text>)}
@@ -155,7 +166,7 @@ export default function LoginScreen({ route }: LoginScreenProps) {
   );
 }
 
-// --- YOUR ORIGINAL STYLES WITH DYNAMIC ENHANCEMENTS ---
+// --- YOUR ORIGINAL STYLES WITH DYNAMIC ENHANCEMENTS & NEW ADDITION ---
 const styles = StyleSheet.create({
   gradient: {
     flex: 1,
@@ -171,14 +182,14 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   logo: {
-    width: 300, // Slightly adjusted for better balance
+    width: 300,
     height: 250,
     resizeMode: "contain",
   },
   welcomeText: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#005662', // Color matched with home screen
+    color: '#005662',
     marginTop: -10,
   },
   formContainer: {
@@ -208,9 +219,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingHorizontal: 15,
     borderWidth: 2,
-    borderColor: 'transparent', // Prepare for focus state
+    borderColor: 'transparent',
   },
-  // NEW STYLE: For interactive focus effect
   inputContainerFocused: {
     borderColor: '#007BFF',
     backgroundColor: '#fff',
@@ -224,9 +234,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  // --- NEW STYLE for the eye icon ---
+  eyeIconContainer: {
+    padding: 5, // Increases the touchable area for the icon
+  },
   loginButton: {
     backgroundColor: "#007BFF",
-    height: 55, // Slightly taller for better touch target
+    height: 55,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",

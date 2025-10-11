@@ -8,16 +8,13 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Animatable from 'react-native-animatable';
 import apiClient from '../api/client';
 
-// ✨ NEW: Enable LayoutAnimation for Android for smooth accordion transitions
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Constants for categories and roles
 const CLASS_CATEGORIES = [ 'Admins', 'Teachers', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10' ];
 const USER_ROLES = ['admin', 'teacher', 'student'];
 
-// User interface definition
 interface User {
   id: number;
   username: string;
@@ -25,6 +22,10 @@ interface User {
   role: 'student' | 'teacher' | 'admin';
   class_group: string;
   subjects_taught?: string[];
+  admission_no?: string;
+  parent_name?: string;
+  aadhar_no?: string;
+  pen_no?: string;
 }
 
 const AdminLM = () => {
@@ -65,7 +66,11 @@ const AdminLM = () => {
 
   const openAddModal = () => {
     setEditingUser(null);
-    setFormData({ username: '', password: '', full_name: '', role: 'student', class_group: 'LKG', subjects_taught: [] });
+    setFormData({ 
+      username: '', password: '', full_name: '', role: 'student', 
+      class_group: 'LKG', subjects_taught: [], admission_no: '', 
+      parent_name: '', aadhar_no: '', pen_no: ''
+    });
     setIsModalVisible(true);
   };
 
@@ -150,7 +155,6 @@ const AdminLM = () => {
   };
 
   const handleToggleAccordion = (className: string) => {
-    // ✨ NEW: Use LayoutAnimation for a smooth expand/collapse effect
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedClass(expandedClass === className ? null : className);
   };
@@ -169,6 +173,11 @@ const AdminLM = () => {
       <View style={styles.userInfo}>
         <Text style={styles.userName}>{item.full_name}</Text>
         <Text style={styles.userUsername}>Username: {item.username}</Text>
+        {item.admission_no && (
+          <Text style={styles.userSubjects}>
+            Admission No: {item.admission_no}
+          </Text>
+        )}
         {item.role === 'teacher' && item.subjects_taught && item.subjects_taught.length > 0 && (
           <Text style={styles.userSubjects}>
             Subjects: {item.subjects_taught.join(', ')}
@@ -230,7 +239,6 @@ const AdminLM = () => {
         ))}
       </ScrollView>
 
-      {/* Add/Edit User Modal */}
       <Modal animationType="fade" transparent={true} visible={isModalVisible} onRequestClose={() => setIsModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
             <Animatable.View animation="zoomIn" duration={400} style={styles.modalContainer}>
@@ -267,12 +275,24 @@ const AdminLM = () => {
                         </>
                     ) : formData.role === 'student' ? (
                         <>
-                        <Text style={styles.inputLabel}>Class / Group</Text>
-                        <View style={styles.pickerWrapper}>
-                            <Picker selectedValue={formData.class_group} onValueChange={(val) => setFormData({ ...formData, class_group: val })} style={styles.modalPicker}>
-                            {CLASS_CATEGORIES.filter(c => c !== 'Teachers' && c !== 'Admins').map((level) => ( <Picker.Item key={level} label={level} value={level} /> ))}
-                            </Picker>
-                        </View>
+                          <Text style={styles.inputLabel}>Class / Group</Text>
+                          <View style={styles.pickerWrapper}>
+                              <Picker selectedValue={formData.class_group} onValueChange={(val) => setFormData({ ...formData, class_group: val })} style={styles.modalPicker}>
+                              {CLASS_CATEGORIES.filter(c => c !== 'Teachers' && c !== 'Admins').map((level) => ( <Picker.Item key={level} label={level} value={level} /> ))}
+                              </Picker>
+                          </View>
+                          
+                          <Text style={styles.inputLabel}>Admission No.</Text>
+                          <TextInput style={styles.input} placeholder="Enter admission number" value={formData.admission_no} onChangeText={(val) => setFormData({ ...formData, admission_no: val })} />
+
+                          <Text style={styles.inputLabel}>Parent Name</Text>
+                          <TextInput style={styles.input} placeholder="Enter parent's full name" value={formData.parent_name} onChangeText={(val) => setFormData({ ...formData, parent_name: val })} />
+                          
+                          <Text style={styles.inputLabel}>Aadhar No.</Text>
+                          <TextInput style={styles.input} placeholder="Enter 12-digit Aadhar number" value={formData.aadhar_no} onChangeText={(val) => setFormData({ ...formData, aadhar_no: val })} keyboardType="numeric" maxLength={12} />
+
+                          <Text style={styles.inputLabel}>PEN No.</Text>
+                          <TextInput style={styles.input} placeholder="Enter PEN number" value={formData.pen_no} onChangeText={(val) => setFormData({ ...formData, pen_no: val })} />
                         </>
                     ) : null}
                     
@@ -292,7 +312,6 @@ const AdminLM = () => {
   );
 };
 
-// ✨ NEW: Completely revamped styles for a modern and dynamic UI
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F7F9FC' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F9FC' },
