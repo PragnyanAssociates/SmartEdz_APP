@@ -216,16 +216,18 @@ const AdminStudentDetailView = ({ student, onBack }) => {
     );
 };
 
-// ✨ --- HEAVILY MODIFIED: This is the main component with the new search bar ---
+
+// ==========================================================
+// --- MODIFIED SECTION STARTS HERE ---
+// ==========================================================
 const GenericSummaryView = ({
     picker1, picker2, listData,
     summaryData, isLoading, viewMode, setViewMode, onDateChange, selectedDate, onSelectStudent
 }) => {
     const summary = summaryData?.overallSummary ?? {};
     const [showDatePicker, setShowDatePicker] = useState(false);
-    const [searchQuery, setSearchQuery] = useState(''); // ✨ NEW: State for search query
+    const [searchQuery, setSearchQuery] = useState('');
 
-    // ✨ NEW: Memoized filtering for performance
     const filteredListData = useMemo(() => {
         if (!searchQuery) {
             return listData;
@@ -242,7 +244,6 @@ const GenericSummaryView = ({
         }
     };
     
-    // ✨ NEW: Search handler with smooth animation
     const handleSearch = (text: string) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setSearchQuery(text);
@@ -308,12 +309,11 @@ const GenericSummaryView = ({
 
             {isLoading ? <ActivityIndicator size="large" color={PRIMARY_COLOR} style={styles.loaderContainer} /> : (
                 <FlatList
-                    data={filteredListData} // ✨ MODIFIED: Use filtered data
+                    data={filteredListData}
                     keyExtractor={(item) => item.student_id.toString()}
                     ListHeaderComponent={
                         <>
                             {renderSummaryCards()}
-                             {/* ✨ NEW: Search Bar UI */}
                             <Animatable.View animation="fadeIn" duration={600} delay={400} style={styles.searchBarContainer}>
                                 <Icon name="magnify" size={22} color={TEXT_COLOR_MEDIUM} style={styles.searchIcon} />
                                 <TextInput
@@ -326,7 +326,7 @@ const GenericSummaryView = ({
                             </Animatable.View>
                         </>
                     }
-                    renderItem={({ item, index }) => { // ✨ MODIFIED: Pass index for animation
+                    renderItem={({ item, index }) => { // ★★★ MODIFIED: Added roll number display ★★★
                         const studentPercentage = item.total_days > 0 ? (item.present_days / item.total_days) * 100 : 0;
                         const percentageColor = studentPercentage >= 75 ? GREEN : studentPercentage >= 50 ? YELLOW : RED;
                         return (
@@ -335,7 +335,9 @@ const GenericSummaryView = ({
                                     <View style={styles.summaryStudentRow}>
                                         <View style={{flex: 1}}>
                                             <Text style={styles.studentName}>{item.full_name}</Text>
-                                            <Text style={styles.studentDetailText}>Days Present: {item.present_days} / {item.total_days}</Text>
+                                            <Text style={styles.studentDetailText}>
+                                                Roll No: {item.roll_no || 'N/A'} | Days Present: {item.present_days} / {item.total_days}
+                                            </Text>
                                         </View>
                                         <Text style={[styles.percentageText, { color: percentageColor }]}>{studentPercentage.toFixed(0)}%</Text>
                                     </View>
@@ -356,6 +358,9 @@ const GenericSummaryView = ({
         </SafeAreaView>
     );
 };
+// ==========================================================
+// --- MODIFIED SECTION ENDS HERE ---
+// ==========================================================
 
 const TeacherSummaryView = ({ teacher }) => {
     // ... (This component's logic remains unchanged, it just benefits from the updated GenericSummaryView)
@@ -562,9 +567,6 @@ const AdminAttendanceView = () => {
   );
 };
 
-// ==========================================================
-// --- MODIFIED SECTION STARTS HERE ---
-// ==========================================================
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
   const { class_group, subject_name, date } = route?.params || {};
   const [students, setStudents] = useState([]);
@@ -623,7 +625,7 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
       </Animatable.View>
       <FlatList
         data={students}
-        renderItem={({ item, index }) => ( // ★★★ MODIFIED: Added roll number display ★★★
+        renderItem={({ item, index }) => ( 
             <Animatable.View animation="fadeInUp" duration={400} delay={index * 75} style={styles.liveStudentRow}>
                 <View style={styles.studentInfoContainer}>
                     <Icon name="account-circle-outline" size={32} color={TEXT_COLOR_DARK} />
@@ -648,9 +650,6 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
     </SafeAreaView>
   );
 };
-// ==========================================================
-// --- MODIFIED SECTION ENDS HERE ---
-// ==========================================================
 
 // --- Styles ---
 const styles = StyleSheet.create({
@@ -673,17 +672,13 @@ const styles = StyleSheet.create({
   searchBar: { flex: 1, height: 45, fontSize: 16, color: TEXT_COLOR_DARK },
   searchIcon: { marginRight: 8 },
   summaryStudentRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, padding: 15, marginHorizontal: 15, marginVertical: 6, borderRadius: 8, elevation: 1, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
-  studentDetailText: { fontSize: 12, color: TEXT_COLOR_MEDIUM, marginTop: 2 },
+  studentName: { fontSize: 16, color: TEXT_COLOR_DARK, fontWeight: '600' },
+  studentDetailText: { fontSize: 12, color: TEXT_COLOR_MEDIUM, marginTop: 4 },
   percentageText: { fontSize: 20, fontWeight: 'bold' },
-
-  // ★★★ MODIFIED & NEW STYLES FOR ATTENDANCE MARKING ★★★
   liveStudentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: WHITE, marginHorizontal: 10, marginVertical: 5, borderRadius: 8, elevation: 2, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 3 },
   studentInfoContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10, },
   studentNameContainer: { marginLeft: 12, flex: 1 },
-  studentName: { fontSize: 16, color: TEXT_COLOR_DARK, fontWeight: '600' },
   rollNoText: { fontSize: 13, color: TEXT_COLOR_MEDIUM, marginTop: 2 },
-  // ★★★ END OF MODIFIED STYLES ★★★
-
   buttonGroup: { flexDirection: 'row' },
   statusButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#BDBDBD', marginHorizontal: 5 },
   presentButton: { backgroundColor: GREEN, borderColor: '#388E3C' },

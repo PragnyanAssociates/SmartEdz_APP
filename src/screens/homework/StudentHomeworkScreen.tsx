@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Linking, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Linking, LayoutAnimation, UIManager, Platform, TextInput } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import * as Animatable from 'react-native-animatable'; // ✨ NEW: Import animatable
+import * as Animatable from 'react-native-animatable';
 import { pick, types, isCancel } from '@react-native-documents/picker';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { SERVER_URL } from '../../../apiConfig';
 
-// ✨ NEW: Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -37,16 +36,12 @@ const StudentHomeworkScreen = () => {
 
     useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
 
-    const handleSubmission = async (assignmentId) => {
+    // ★★★ MODIFIED: Handle file submission
+    const handleFileSubmission = async (assignmentId) => {
         if (!user) return;
-
         try {
             const result = await pick({ type: [types.allFiles], allowMultiSelection: false });
-
-            if (!result || result.length === 0) {
-                console.log('User closed picker without selecting a file.');
-                return;
-            }
+            if (!result || result.length === 0) return;
             const fileToUpload = result[0];
 
             setIsSubmitting(assignmentId);
@@ -54,7 +49,6 @@ const StudentHomeworkScreen = () => {
             formData.append('student_id', user.id.toString());
             formData.append('submission', { uri: fileToUpload.uri, type: fileToUpload.type, name: fileToUpload.name });
 
-            // ✨ NEW: Animate the layout change before fetching new data
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             await apiClient.post(`/homework/submit/${assignmentId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
             
@@ -62,9 +56,32 @@ const StudentHomeworkScreen = () => {
             fetchAssignments();
 
         } catch (err: any) {
-            if (isCancel(err)) { console.log('User cancelled submission.'); } 
-            else { console.error("Submission Error:", err); Alert.alert("Error", err.response?.data?.message || "Could not submit file."); }
+            if (!isCancel(err)) { console.error("Submission Error:", err); Alert.alert("Error", err.response?.data?.message || "Could not submit file."); }
         } finally { setIsSubmitting(null); }
+    };
+    
+    // ★★★ NEW: Handle written answer submission
+    const handleWrittenSubmission = async (assignmentId, answer) => {
+        if (!user) return;
+        if (!answer || answer.trim() === '') {
+            return Alert.alert('Error', 'Please enter an answer before submitting.');
+        }
+
+        setIsSubmitting(assignmentId);
+        try {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            await apiClient.post('/api/homework/submit-written', {
+                assignment_id: assignmentId,
+                student_id: user.id,
+                written_answer: answer,
+            });
+            Alert.alert("Success", "Your answer has been submitted!");
+            fetchAssignments();
+        } catch (err: any) {
+             Alert.alert("Error", err.response?.data?.message || "Could not submit your answer.");
+        } finally {
+            setIsSubmitting(null);
+        }
     };
     
     const handleDeleteSubmission = async (submissionId, assignmentId) => {
@@ -73,7 +90,6 @@ const StudentHomeworkScreen = () => {
             onPress: async () => {
                 setIsSubmitting(assignmentId); 
                 try {
-                    // ✨ NEW: Animate the layout change before fetching new data
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     await apiClient.delete(`/homework/submission/${submissionId}`, { data: { student_id: user.id } });
                     Alert.alert("Success", "Your submission has been deleted.");
@@ -94,12 +110,12 @@ const StudentHomeworkScreen = () => {
             <FlatList
                 data={assignments}
                 keyExtractor={(item) => item.id.toString()}
-                // ✨ MODIFIED: Pass index to the AssignmentCard for staggered animation
                 renderItem={({ item, index }) => (
                     <AssignmentCard 
                         item={item} 
                         index={index}
-                        onSubmit={handleSubmission} 
+                        onFileSubmit={handleFileSubmission}
+                        onWrittenSubmit={handleWrittenSubmission}
                         onDelete={handleDeleteSubmission}
                         isSubmitting={isSubmitting === item.id} 
                     />
@@ -115,20 +131,16 @@ const StudentHomeworkScreen = () => {
 };
 
 const Header = () => (
-    // ✨ MODIFIED: Add entrance animation to header
     <Animatable.View animation="fadeInDown" duration={600} style={styles.header}>
-        <View style={styles.iconCircle}>
-            <MaterialIcons name="edit" size={24} color="#fff" />
-        </View>
-        <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>Assignments & Homework</Text>
-            <Text style={styles.headerSubtitle}>Track upcoming and submitted assignments.</Text>
-        </View>
+        <View style={styles.iconCircle}><MaterialIcons name="edit" size={24} color="#fff" /></View>
+        <View style={styles.headerTextContainer}><Text style={styles.headerTitle}>Assignments & Homework</Text><Text style={styles.headerSubtitle}>Track upcoming and submitted assignments.</Text></View>
     </Animatable.View>
 );
 
-// ✨ MODIFIED: Accept 'index' prop for animation delay
-const AssignmentCard = ({ item, onSubmit, onDelete, isSubmitting, index }) => {
+// ★★★ HEAVILY MODIFIED: AssignmentCard now handles both types
+const AssignmentCard = ({ item, onFileSubmit, onWrittenSubmit, onDelete, isSubmitting, index }) => {
+    const [writtenAnswer, setWrittenAnswer] = useState('');
+
     const getStatusInfo = () => {
         const statusText = item.submission_id ? (item.status || 'Submitted') : 'Pending';
         switch (statusText) {
@@ -141,66 +153,87 @@ const AssignmentCard = ({ item, onSubmit, onDelete, isSubmitting, index }) => {
     const status = getStatusInfo();
     const handleViewAttachment = () => { if(item.attachment_path) Linking.openURL(`${SERVER_URL}${item.attachment_path}`); };
 
-    return (
-        // ✨ MODIFIED: Wrap card in animatable view for staggered entrance
-        <Animatable.View style={[styles.card, { borderLeftColor: status.color }]} animation="fadeInUp" duration={600} delay={index * 120}>
-            <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: status.color }]}>
-                    <MaterialIcons name={status.icon} size={14} color="#fff" />
-                    <Text style={styles.statusText}>{status.text}</Text>
+    const renderSubmissionContent = () => {
+        // --- RENDER IF HOMEWORK IS SUBMITTED ---
+        if (item.submission_id) {
+            return (
+                <>
+                    {item.written_answer && (
+                         <View style={styles.submittedAnswerContainer}>
+                            <Text style={styles.submittedAnswerLabel}>Your Answer:</Text>
+                            <Text style={styles.submittedAnswerText}>{item.written_answer}</Text>
+                        </View>
+                    )}
+                    <View style={styles.buttonRow}>
+                        {status.text !== 'Graded' && (
+                            <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(item.submission_id, item.id)} disabled={isSubmitting}>
+                                {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <><MaterialIcons name="delete" size={18} color="#fff" /><Text style={styles.submitButtonText}>Delete Submission</Text></>}
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </>
+            );
+        }
+        
+        // --- RENDER IF HOMEWORK IS PENDING ---
+        if (item.homework_type === 'Written') {
+            return (
+                <View style={styles.writtenSubmissionArea}>
+                    <TextInput
+                        style={styles.writtenInput}
+                        placeholder="Type your answer here..."
+                        multiline
+                        value={writtenAnswer}
+                        onChangeText={setWrittenAnswer}
+                    />
+                    <TouchableOpacity style={styles.submitButton} onPress={() => onWrittenSubmit(item.id, writtenAnswer)} disabled={isSubmitting}>
+                        {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <><MaterialIcons name="send" size={18} color="#fff" /><Text style={styles.submitButtonText}>Submit Answer</Text></>}
+                    </TouchableOpacity>
                 </View>
-            </View>
+            );
+        } else { // Default to 'PDF' type
+            return (
+                <View style={styles.buttonRow}>
+                    <TouchableOpacity style={styles.submitButton} onPress={() => onFileSubmit(item.id)} disabled={isSubmitting}>
+                        {isSubmitting ? <ActivityIndicator size="small" color="#fff" /> : <><MaterialIcons name="upload-file" size={18} color="#fff" /><Text style={styles.submitButtonText}>Submit Homework</Text></>}
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+    };
+
+    return (
+        <Animatable.View style={[styles.card, { borderLeftColor: status.color }]} animation="fadeInUp" duration={600} delay={index * 120}>
+            <View style={styles.cardHeader}><Text style={styles.cardTitle}>{item.title}</Text><View style={[styles.statusBadge, { backgroundColor: status.color }]}><MaterialIcons name={status.icon} size={14} color="#fff" /><Text style={styles.statusText}>{status.text}</Text></View></View>
             <Text style={styles.description}>{item.description}</Text>
             
             <View style={styles.detailsGrid}>
+                <DetailRow icon="category" label="Type" value={item.homework_type || 'PDF'} />
                 <DetailRow icon="book" label="Subject" value={item.subject} />
                 <DetailRow icon="event" label="Due Date" value={new Date(item.due_date).toLocaleDateString()} />
                 {item.submitted_at && <DetailRow icon="event-available" label="Submitted" value={new Date(item.submitted_at).toLocaleDateString()} />}
             </View>
             
             {status.text === 'Graded' && item.grade && (
-                // ✨ MODIFIED: Animate the graded section when it appears
                 <Animatable.View animation="fadeIn" duration={400} style={styles.gradedSection}>
                     <DetailRow icon="school" label="Grade" value={item.grade} />
                     {item.remarks && <Text style={styles.remarksText}>Remarks: {item.remarks}</Text>}
                 </Animatable.View>
             )}
-            
-            <View style={styles.buttonRow}>
-                {item.attachment_path && (
-                    <TouchableOpacity style={styles.detailsButton} onPress={handleViewAttachment}>
-                        <MaterialIcons name="attachment" size={18} color="#42a5f5" />
-                        <Text style={styles.detailsButtonText}>View Attachment</Text>
-                    </TouchableOpacity>
-                )}
-                {item.submission_id && status.text !== 'Graded' ? (
-                    <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(item.submission_id, item.id)} disabled={isSubmitting}>
-                        {isSubmitting ? 
-                            <ActivityIndicator size="small" color="#fff" /> : 
-                            <><MaterialIcons name="delete" size={18} color="#fff" /><Text style={styles.submitButtonText}>Delete Submission</Text></>
-                        }
-                    </TouchableOpacity>
-                ) : !item.submission_id && (
-                    <TouchableOpacity style={styles.submitButton} onPress={() => onSubmit(item.id)} disabled={isSubmitting}>
-                        {isSubmitting ? 
-                            <ActivityIndicator size="small" color="#fff" /> : 
-                            <><MaterialIcons name="upload-file" size={18} color="#fff" /><Text style={styles.submitButtonText}>Submit Homework</Text></>
-                        }
-                    </TouchableOpacity>
-                )}
-            </View>
+
+            {item.attachment_path && (
+                <TouchableOpacity style={styles.attachmentButton} onPress={handleViewAttachment}>
+                    <MaterialIcons name="attachment" size={18} color="#42a5f5" />
+                    <Text style={styles.detailsButtonText}>View Teacher's Attachment</Text>
+                </TouchableOpacity>
+            )}
+
+            {renderSubmissionContent()}
         </Animatable.View>
     );
 };
 
-const DetailRow = ({ icon, label, value }) => (
-    <View style={styles.detailRow}>
-        <MaterialIcons name={icon} size={16} color="#546e7a" />
-        <Text style={styles.detailLabel}>{label}:</Text>
-        <Text style={styles.detailValue}>{value}</Text>
-    </View>
-);
+const DetailRow = ({ icon, label, value }) => ( <View style={styles.detailRow}><MaterialIcons name={icon} size={16} color="#546e7a" /><Text style={styles.detailLabel}>{label}:</Text><Text style={styles.detailValue}>{value}</Text></View> );
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f4f6f8' },
@@ -223,12 +256,17 @@ const styles = StyleSheet.create({
     gradedSection: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
     remarksText: { marginTop: 5, fontStyle: 'italic', color: '#37474f', backgroundColor: '#f9f9f9', padding: 8, borderRadius: 4 },
     buttonRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-    detailsButton: { flexDirection: 'row', alignItems: 'center', padding: 8, marginRight: 'auto' },
+    attachmentButton: { flexDirection: 'row', alignItems: 'center', padding: 8, marginTop: 10, alignSelf: 'flex-start' },
     detailsButtonText: { color: '#42a5f5', marginLeft: 5, fontWeight: 'bold' },
     submitButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#66bb6a', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 20, elevation: 2 },
     deleteButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ef5350', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 20, elevation: 2 },
     submitButtonText: { color: '#fff', marginLeft: 8, fontWeight: 'bold' },
     emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16, color: '#777' },
+    writtenSubmissionArea: { marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+    writtenInput: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, minHeight: 100, padding: 10, textAlignVertical: 'top', fontSize: 16, marginBottom: 10 },
+    submittedAnswerContainer: { marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+    submittedAnswerLabel: { fontSize: 14, fontWeight: 'bold', color: '#546e7a', marginBottom: 5 },
+    submittedAnswerText: { fontSize: 15, color: '#37474f', backgroundColor: '#f1f8e9', padding: 12, borderRadius: 6, lineHeight: 22 },
 });
 
 export default StudentHomeworkScreen;

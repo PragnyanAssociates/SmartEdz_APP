@@ -708,7 +708,11 @@ app.get('/api/teacher-assignments/:teacherId', async (req, res) => {
     }
 });
 
-// Helper function for attendance summaries (No changes needed, this is correct)
+// ==========================================================
+// --- MODIFIED SECTION STARTS HERE ---
+// ==========================================================
+
+// Helper function for attendance summaries
 const getAttendanceSummary = async (filters) => {
     let dateFilter = '';
     const { viewMode, date } = filters;
@@ -764,23 +768,30 @@ const getAttendanceSummary = async (filters) => {
         `;
          [[overallSummary]] = await db.query(summaryQuery, [...fullQueryParams, ...fullQueryParams]);
     }
-
+    
+    // ★★★ MODIFIED QUERY: Joins user_profiles to get roll_no and orders by it ★★★
     const studentDetailsQuery = `
         SELECT 
             u.id AS student_id, 
             u.full_name, 
+            up.roll_no,
             COALESCE(SUM(CASE WHEN ar.status = 'Present' THEN 1 ELSE 0 END), 0) as present_days, 
             COUNT(ar.id) as total_days
         FROM users u 
+        LEFT JOIN user_profiles up ON u.id = up.user_id
         LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ${whereClause} ${dateFilter}
         WHERE u.role = 'student' AND u.class_group = ?
-        GROUP BY u.id, u.full_name 
-        ORDER BY u.full_name;
+        GROUP BY u.id, u.full_name, up.roll_no
+        ORDER BY CAST(up.roll_no AS UNSIGNED), u.full_name;
     `;
     const studentDetailsParams = [...fullQueryParams, filters.classGroup];
     const [studentDetails] = await db.query(studentDetailsQuery, studentDetailsParams);
     return { overallSummary, studentDetails };
 };
+
+// ==========================================================
+// --- MODIFIED SECTION ENDS HERE ---
+// ==========================================================
 
 // GET teacher attendance summary (No changes needed, this is correct)
 app.get('/api/attendance/teacher-summary', async (req, res) => {
@@ -812,10 +823,6 @@ app.get('/api/attendance/admin-summary', async (req, res) => {
     }
 });
 
-// ==========================================================
-// --- MODIFIED SECTION STARTS HERE ---
-// ==========================================================
-
 // GET attendance sheet for a specific period
 app.get('/api/attendance/sheet', async (req, res) => { 
     const { class_group, date, period_number } = req.query; 
@@ -824,7 +831,6 @@ app.get('/api/attendance/sheet', async (req, res) => {
             return res.status(400).json({ message: 'Class group, date, and period number are required.' }); 
         } 
         
-        // ★★★ MODIFIED QUERY: Joins user_profiles to get roll_no and orders by roll_no ★★★
         const query = `
             SELECT u.id, u.full_name, up.roll_no, ar.status 
             FROM users u 
@@ -841,11 +847,6 @@ app.get('/api/attendance/sheet', async (req, res) => {
         res.status(500).json({ message: 'Error fetching attendance sheet.' }); 
     }
 });
-
-// ==========================================================
-// --- MODIFIED SECTION ENDS HERE ---
-// ==========================================================
-
 
 // POST attendance data and send notifications to absent students
 app.post('/api/attendance', async (req, res) => {
@@ -2319,10 +2320,10 @@ app.delete('/api/ptm/:id', verifyToken, async (req, res) => {
 
 
 // ==========================================================
-// --- HOMEWORK & ASSIGNMENTS API ROUTES (CORRECTED & FINAL) ---
+// --- HOMEWORK & ASSIGNMENTS API ROUTES (MODIFIED) ---
 // ==========================================================
 
-// --- UTILITY ROUTES (FOR HOMEWORK FORMS) ---
+// --- UTILITY ROUTES (FOR HOMEWORK FORMS - NO CHANGES) ---
 
 // Get a list of all unique student class groups
 app.get('/api/student-classes', async (req, res) => {
@@ -2355,7 +2356,7 @@ app.get('/api/subjects-for-class/:classGroup', async (req, res) => {
 
 // --- TEACHER / ADMIN ROUTES ---
 
-// Get assignment history for a specific teacher
+// Get assignment history for a specific teacher (NO CHANGES)
 app.get('/api/homework/teacher/:teacherId', async (req, res) => {
     const { teacherId } = req.params;
     try {
@@ -2371,12 +2372,15 @@ app.get('/api/homework/teacher/:teacherId', async (req, res) => {
     }
 });
 
-// 📂 File: server.js (MODIFY this route)
 
-// Create a new homework assignment
+// ★★★ MODIFIED: Create a new homework assignment (now includes homework_type) ★★★
 app.post('/api/homework', upload.single('attachment'), async (req, res) => {
-    const { title, description, class_group, subject, due_date, teacher_id } = req.body;
-    console.log('[HOMEWORK CREATE] Received request:', { title, class_group, subject, teacher_id }); // DEBUG LOG
+    // Added homework_type to destructuring
+    const { title, description, class_group, subject, due_date, teacher_id, homework_type } = req.body;
+    
+    if (!homework_type || !['PDF', 'Written'].includes(homework_type)) {
+        return res.status(400).json({ message: 'A valid homework type (PDF or Written) is required.' });
+    }
 
     const attachment_path = req.file ? `/uploads/${req.file.filename}` : null;
     const connection = await db.getConnection();
@@ -2384,25 +2388,17 @@ app.post('/api/homework', upload.single('attachment'), async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        // Step 1: Insert the homework
-        const query = `INSERT INTO homework_assignments (title, description, class_group, subject, due_date, teacher_id, attachment_path) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-        const [assignmentResult] = await connection.query(query, [title, description, class_group, subject, due_date, teacher_id, attachment_path]);
+        const query = `INSERT INTO homework_assignments (title, description, class_group, subject, due_date, teacher_id, attachment_path, homework_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+        const [assignmentResult] = await connection.query(query, [title, description, class_group, subject, due_date, teacher_id, attachment_path, homework_type]);
         const newAssignmentId = assignmentResult.insertId;
-        console.log(`[HOMEWORK CREATE] Homework created with ID: ${newAssignmentId}`);
 
-        // Step 2: Find the teacher and students for the notification
         const [[teacher]] = await connection.query('SELECT full_name FROM users WHERE id = ?', [teacher_id]);
         const [students] = await connection.query('SELECT id FROM users WHERE role = "student" AND class_group = ?', [class_group]);
         
-        console.log(`[HOMEWORK CREATE] Found ${students.length} students in class group "${class_group}".`); // DEBUG LOG
-
         if (students.length > 0) {
             const studentIds = students.map(s => s.id);
-            console.log(`[HOMEWORK CREATE] Sending notifications to student IDs:`, studentIds);
-
-            // ★★★ Step 3: CREATE NOTIFICATIONS within the transaction ★★★
             await createBulkNotifications(
-                connection, // Pass the transaction connection
+                connection,
                 studentIds,
                 teacher.full_name,
                 `New Homework: ${subject}`,
@@ -2416,7 +2412,7 @@ app.post('/api/homework', upload.single('attachment'), async (req, res) => {
 
     } catch (error) { 
         await connection.rollback();
-        console.error('[HOMEWORK CREATE ERROR] Transaction rolled back:', error);
+        console.error('[HOMEWORK CREATE ERROR]', error);
         res.status(500).json({ message: 'Error creating homework.' }); 
     } finally {
         connection.release();
@@ -2424,20 +2420,24 @@ app.post('/api/homework', upload.single('attachment'), async (req, res) => {
 });
 
 
-// Update an existing homework assignment (Note: uses POST for multipart/form-data compatibility)
+// ★★★ MODIFIED: Update an existing homework assignment (now includes homework_type) ★★★
 app.post('/api/homework/:assignmentId', upload.single('attachment'), async (req, res) => {
     const { assignmentId } = req.params;
-    const { title, description, class_group, subject, due_date, existing_attachment_path } = req.body;
+    // Added homework_type
+    const { title, description, class_group, subject, due_date, existing_attachment_path, homework_type } = req.body;
     
+    if (!homework_type || !['PDF', 'Written'].includes(homework_type)) {
+        return res.status(400).json({ message: 'A valid homework type (PDF or Written) is required.' });
+    }
+
     try {
-        // If a new file is uploaded, use its path. Otherwise, use the existing path sent from the client.
         let attachment_path = existing_attachment_path || null;
         if (req.file) { 
             attachment_path = `/uploads/${req.file.filename}`; 
         }
 
-        const query = `UPDATE homework_assignments SET title = ?, description = ?, class_group = ?, subject = ?, due_date = ?, attachment_path = ? WHERE id = ?`;
-        await db.query(query, [title, description, class_group, subject, due_date, attachment_path, assignmentId]);
+        const query = `UPDATE homework_assignments SET title = ?, description = ?, class_group = ?, subject = ?, due_date = ?, attachment_path = ?, homework_type = ? WHERE id = ?`;
+        await db.query(query, [title, description, class_group, subject, due_date, attachment_path, homework_type, assignmentId]);
         res.status(200).json({ message: 'Homework updated successfully.' });
     } catch (error) { 
         console.error('Error updating homework:', error);
@@ -2445,13 +2445,10 @@ app.post('/api/homework/:assignmentId', upload.single('attachment'), async (req,
     }
 });
 
-// Delete a homework assignment
+// Delete a homework assignment (NO CHANGES)
 app.delete('/api/homework/:assignmentId', async (req, res) => {
     const { assignmentId } = req.params;
     try {
-        // Note: For a robust system, you'd also delete associated submission files from the /uploads folder.
-        // This query also relies on cascading deletes in the DB or deleting submissions first.
-        // Assuming `homework_submissions` has an ON DELETE CASCADE for `assignment_id` foreign key.
         await db.query('DELETE FROM homework_assignments WHERE id = ?', [assignmentId]);
         res.status(200).json({ message: 'Homework and all its submissions deleted.' });
     } catch (error) { 
@@ -2460,19 +2457,17 @@ app.delete('/api/homework/:assignmentId', async (req, res) => {
     }
 });
 
-// Get all submissions for a specific assignment
+// ★★★ MODIFIED: Get all submissions for an assignment (now includes written_answer) ★★★
 app.get('/api/homework/submissions/:assignmentId', async (req, res) => {
     const { assignmentId } = req.params;
     try {
-        // This powerful query gets all students from the assignment's class group
-        // and LEFT JOINs their submission for this specific assignment.
-        // Students who haven't submitted will have NULL for submission-related fields.
         const query = `
             SELECT 
                 u.id as student_id,
                 u.full_name as student_name,
                 s.id as submission_id,
                 s.submission_path,
+                s.written_answer, -- Added this line
                 s.submitted_at,
                 s.status,
                 s.grade,
@@ -2487,8 +2482,6 @@ app.get('/api/homework/submissions/:assignmentId', async (req, res) => {
                 )
             ORDER BY 
                 u.full_name ASC`;
-            
-        // The assignmentId is used twice in the query
         const [results] = await db.query(query, [assignmentId, assignmentId]);
         res.json(results);
     } catch (error) { 
@@ -2497,7 +2490,7 @@ app.get('/api/homework/submissions/:assignmentId', async (req, res) => {
     }
 });
 
-// Grade a submission
+// Grade a submission (NO CHANGES)
 app.put('/api/homework/grade/:submissionId', async (req, res) => {
     const { submissionId } = req.params;
     const { grade, remarks } = req.body;
@@ -2514,14 +2507,15 @@ app.put('/api/homework/grade/:submissionId', async (req, res) => {
 
 // --- STUDENT ROUTES ---
 
-// Get all assignments for a student's class (NO CHANGES)
+// ★★★ MODIFIED: Get all assignments for a student (now includes homework_type and written_answer) ★★★
 app.get('/api/homework/student/:studentId/:classGroup', async (req, res) => {
     const { studentId, classGroup } = req.params;
     try {
         const query = `
             SELECT 
-                a.id, a.title, a.description, a.subject, a.due_date, a.attachment_path,
-                s.id as submission_id, 
+                a.id, a.title, a.description, a.subject, a.due_date, a.attachment_path, a.homework_type,
+                s.id as submission_id,
+                s.written_answer,
                 s.submitted_at, 
                 s.status, 
                 s.grade, 
@@ -2542,7 +2536,7 @@ app.get('/api/homework/student/:studentId/:classGroup', async (req, res) => {
     }
 });
 
-// Student submits a homework file (NO CHANGES)
+// Student submits a homework file (PDF Type) (NO CHANGES)
 app.post('/api/homework/submit/:assignmentId', upload.single('submission'), async (req, res) => {
     const { assignmentId } = req.params;
     const { student_id } = req.body;
@@ -2563,6 +2557,7 @@ app.post('/api/homework/submit/:assignmentId', upload.single('submission'), asyn
             return res.status(409).json({ message: 'You have already submitted this homework.' });
         }
 
+        // submission_path is provided, written_answer is null
         const query = `INSERT INTO homework_submissions (assignment_id, student_id, submission_path, status) VALUES (?, ?, ?, 'Submitted')`;
         await connection.query(query, [assignmentId, student_id, submission_path]);
         
@@ -2570,34 +2565,72 @@ app.post('/api/homework/submit/:assignmentId', upload.single('submission'), asyn
         const [[student]] = await connection.query('SELECT full_name, class_group FROM users WHERE id = ?', [student_id]);
 
         if (assignment && student) {
-            const notificationMessage = `${student.full_name} (${student.class_group}) has submitted their homework.`;
              await createNotification(
-                connection,
-                assignment.teacher_id,
-                student.full_name,
-                `Submission for: ${assignment.title}`,
-                notificationMessage,
-                `/submissions/${assignmentId}`
+                connection, assignment.teacher_id, student.full_name, `Submission for: ${assignment.title}`,
+                `${student.full_name} (${student.class_group}) has submitted their homework.`, `/submissions/${assignmentId}`
             );
         }
         
         await connection.commit();
         res.status(201).json({ message: 'Homework submitted successfully.' });
-
     } catch (error) {
         await connection.rollback();
-        console.error('[HOMEWORK SUBMIT ERROR] Transaction rolled back:', error);
+        console.error('[HOMEWORK SUBMIT ERROR]', error);
         res.status(500).json({ message: 'Database error during homework submission.' });
     } finally {
         connection.release();
     }
 });
 
+// ★★★ NEW ROUTE: Student submits a written answer ★★★
+app.post('/api/homework/submit-written', async (req, res) => {
+    const { assignment_id, student_id, written_answer } = req.body;
 
-// ★★★ 2. ADD THIS NEW ROUTE TO DELETE A SUBMISSION ★★★
+    if (!assignment_id || !student_id || !written_answer) {
+        return res.status(400).json({ message: 'Assignment ID, Student ID, and an answer are required.' });
+    }
+
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        const [existing] = await connection.query('SELECT id FROM homework_submissions WHERE assignment_id = ? AND student_id = ?', [assignment_id, student_id]);
+        if (existing.length > 0) {
+            await connection.rollback();
+            return res.status(409).json({ message: 'You have already submitted this homework.' });
+        }
+
+        // written_answer is provided, submission_path is null
+        const query = `INSERT INTO homework_submissions (assignment_id, student_id, written_answer, status) VALUES (?, ?, ?, 'Submitted')`;
+        await connection.query(query, [assignment_id, student_id, written_answer]);
+        
+        const [[assignment]] = await connection.query('SELECT teacher_id, title FROM homework_assignments WHERE id = ?', [assignment_id]);
+        const [[student]] = await connection.query('SELECT full_name, class_group FROM users WHERE id = ?', [student_id]);
+
+        if (assignment && student) {
+             await createNotification(
+                connection, assignment.teacher_id, student.full_name, `Submission for: ${assignment.title}`,
+                `${student.full_name} (${student.class_group}) has submitted their written homework.`, `/submissions/${assignment_id}`
+            );
+        }
+
+        await connection.commit();
+        res.status(201).json({ message: 'Answer submitted successfully.' });
+
+    } catch (error) {
+        await connection.rollback();
+        console.error('[WRITTEN SUBMIT ERROR]', error);
+        res.status(500).json({ message: 'Database error during submission.' });
+    } finally {
+        connection.release();
+    }
+});
+
+
+// Delete a submission (NO CHANGES)
 app.delete('/api/homework/submission/:submissionId', async (req, res) => {
     const { submissionId } = req.params;
-    const { student_id } = req.body; // Sent from frontend to verify ownership
+    const { student_id } = req.body; 
 
     if (!student_id) {
         return res.status(400).json({ message: 'Student ID is required for verification.' });
@@ -2607,35 +2640,25 @@ app.delete('/api/homework/submission/:submissionId', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        // Step 1: Find the submission and verify the owner
-        const [[submission]] = await connection.query(
-            'SELECT * FROM homework_submissions WHERE id = ?', [submissionId]
-        );
+        const [[submission]] = await connection.query('SELECT * FROM homework_submissions WHERE id = ?', [submissionId]);
 
         if (!submission) {
             await connection.rollback();
             return res.status(404).json({ message: 'Submission not found.' });
         }
 
-        // SECURITY CHECK: Ensure the person deleting is the owner
         if (submission.student_id != student_id) {
             await connection.rollback();
             return res.status(403).json({ message: 'You are not authorized to delete this submission.' });
         }
 
-        // Step 2: Delete the database record
         await connection.query('DELETE FROM homework_submissions WHERE id = ?', [submissionId]);
 
-        // Step 3: Delete the physical file from the server
         if (submission.submission_path) {
-            const filePath = path.join(__dirname, '..', submission.submission_path); // Adjust path if needed
+            const filePath = path.join(__dirname, '..', submission.submission_path);
             fs.unlink(filePath, (err) => {
-                if (err) {
-                    // Log error but don't fail the request, as the DB entry is more critical
-                    console.error(`Failed to delete submission file: ${filePath}`, err);
-                } else {
-                    console.log(`Successfully deleted file: ${filePath}`);
-                }
+                if (err) { console.error(`Failed to delete submission file: ${filePath}`, err); } 
+                else { console.log(`Successfully deleted file: ${filePath}`); }
             });
         }
         
@@ -2650,6 +2673,8 @@ app.delete('/api/homework/submission/:submissionId', async (req, res) => {
         connection.release();
     }
 });
+
+
 
 // ==========================================================
 // --- EXAM SCHEDULE API ROUTES ---
