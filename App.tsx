@@ -113,7 +113,6 @@ const PublicStack = () => (
 );
 
 // --- THIS IS THE NESTED NAVIGATOR FOR THE GALLERY ---
-// --- THIS IS THE NESTED NAVIGATOR FOR THE GALLERY (WITH STYLING) ---
 const GalleryNavigator = () => (
     <Stack.Navigator>
         <Stack.Screen
@@ -121,7 +120,6 @@ const GalleryNavigator = () => (
             component={GalleryScreen}
             options={{ 
               title: 'Gallery ',
-              // --- STYLES ADDED HERE ---
               headerStyle: {
                 backgroundColor: '#e0f2f7', // Light teal background from your dashboard
               },
@@ -134,10 +132,8 @@ const GalleryNavigator = () => (
         <Stack.Screen
             name="AlbumDetail"
             component={AlbumDetailScreen}
-            // Add the same styles to the detail screen for consistency
             options={({ route }: any) => ({ 
               title: route.params.title,
-              // --- STYLES ADDED HERE ---
               headerStyle: {
                 backgroundColor: '#e0f2f7',
               },
@@ -150,7 +146,31 @@ const GalleryNavigator = () => (
     </Stack.Navigator>
 );
 
-
+// ★★★ MODIFIED: Moved this navigator definition to the top level for best practice ★★★
+const StudentHomeworkNavigator = () => (
+    <Stack.Navigator>
+        <Stack.Screen 
+            name="HomeworkList"
+            component={StudentHomeworkScreen} 
+            options={{ 
+                title: 'Assignments & Homework',
+                headerStyle: { backgroundColor: '#fff5e6' }, // Light orange theme
+                headerTintColor: '#FF7043',
+                headerTitleStyle: { fontWeight: 'bold' },
+            }}
+        />
+        <Stack.Screen 
+            name="WrittenAnswerScreen" 
+            component={WrittenAnswerScreen}
+            options={({ route }: any) => ({ 
+                title: route.params?.assignment?.title || 'Answer Homework',
+                headerStyle: { backgroundColor: '#fff5e6' },
+                headerTintColor: '#FF7043',
+                headerTitleStyle: { fontWeight: 'bold' },
+            })}
+        />
+    </Stack.Navigator>
+);
 
 // --- STACK 2: Screens available ONLY AFTER a user logs in ---
 const AuthenticatedStack = () => {
@@ -228,26 +248,17 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="OnlineClassScreen" component={OnlineClassScreen} />
       <Stack.Screen name="AlumniScreen" component={AlumniScreen} />
       <Stack.Screen name="PreAdmissionsScreen" component={PreAdmissionsScreen} /> */}
-      // Inside your Stack.Navigator component
-
-<Stack.Screen 
-    name="HomeworkList" // Or whatever you call your main homework screen
-    component={StudentHomeworkScreen} 
-    options={{ title: 'Assignments & Homework' }}
-/>
-
-<Stack.Screen 
-    name="WrittenAnswerScreen" 
-    component={WrittenAnswerScreen}
-    options={({ route }) => ({ 
-        title: route.params?.assignment?.title || 'Answer Homework' 
-    })}
-/>
-
-      {/* ADD THE GALLERY NAVIGATOR AS A SINGLE SCREEN IN THE MAIN STACK */}
+      
+      {/* ★★★ MODIFIED: The problematic comment has been removed from here ★★★ */}
+      
       <Stack.Screen 
         name="Gallery" 
         component={GalleryNavigator} 
+        options={{ headerShown: false }} 
+      />
+      <Stack.Screen 
+        name="StudentHomework" 
+        component={StudentHomeworkNavigator}
         options={{ headerShown: false }} 
       />
       
@@ -282,35 +293,26 @@ const AuthenticatedStack = () => {
 // --- Main Router ---
 const AppNavigator = () => {
   const { user, isLoading } = useAuth();
-  const navigationRef = useNavigationContainerRef(); // ✅ Create a ref
+  const navigationRef = useNavigationContainerRef();
 
-  // ✅ This object defines your app's custom URL scheme and how to map it to screens
   const linking = {
     prefixes: ['vspngo://'],
     config: {
       screens: {
-        // This name MUST match the screen name in the PublicStack
         ResetPasswordScreen: 'reset-password/:token',
       },
     },
   };
 
-  // ✅ This effect listens for incoming deep links while the app is already running
   useEffect(() => {
     const onReceiveURL = ({ url }: { url: string }) => {
-      // This function can be expanded to handle more complex links later if needed
       console.log("Deep link received: ", url);
     };
-
-    // Set up the event listener
     const subscription = Linking.addEventListener('url', onReceiveURL);
-
-    // Clean up the listener when the component is unmounted
     return () => {
       subscription.remove();
     };
   }, []);
-
 
   if (isLoading) {
     return (
@@ -320,7 +322,6 @@ const AppNavigator = () => {
     );
   }
 
-  // ✅ --- 3. WRAP THE NAVIGATOR TO DISPLAY ADS GLOBALLY --- ✅
   return (
     <View style={{ flex: 1 }}>
       <NavigationContainer ref={navigationRef} linking={linking} fallback={<ActivityIndicator color="#008080" />}>
@@ -349,5 +350,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f8f8ff'
   }
-
 });

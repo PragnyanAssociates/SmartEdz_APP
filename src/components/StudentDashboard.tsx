@@ -8,7 +8,6 @@ import {
   Alert,
   SafeAreaView,
   Dimensions,
-  // --- CHANGE 1: The standard Image will still be used for icons, but we'll import FastImage for the profile pic ---
   Image,
   Platform,
   TextInput,
@@ -22,7 +21,6 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 import { SERVER_URL } from '../../apiConfig';
-// --- CHANGE 2: IMPORT FastImage ---
 import FastImage from 'react-native-fast-image';
 
 // --- COMPONENT IMPORTS ---
@@ -31,7 +29,6 @@ import AcademicCalendar from './AcademicCalendar';
 import ProfileScreen from '../screens/ProfileScreen';
 import TimetableScreen from '../screens/TimetableScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
-import StudentHomeworkScreen from '../screens/homework/StudentHomeworkScreen';
 import AboutUs from './AboutUs';
 
 const { width: windowWidth } = Dimensions.get('window');
@@ -59,11 +56,10 @@ const StudentDashboard = ({ navigation }) => {
   const [isProfileModalVisible, setProfileModalVisible] = useState(false);
   const [isBottomNavVisible, setIsBottomNavVisible] = useState(true);
 
-  // --- CHANGE 3: CONSTRUCT a source object suitable for FastImage for better caching ---
   const profileImageSource = user?.profile_image_url
     ? {
         uri: `${SERVER_URL}${user.profile_image_url}?t=${new Date().getTime()}`,
-        priority: FastImage.priority.high, // Prioritize loading and caching this image
+        priority: FastImage.priority.high,
       }
     : require('../assets/default_avatar.png');
 
@@ -86,7 +82,10 @@ const StudentDashboard = ({ navigation }) => {
   const allQuickAccessItems = [
     { id: 'qa2', title: 'Timetable', imageSource: 'https://cdn-icons-png.flaticon.com/128/1254/1254275.png', navigateToTab: 'Timetable' },
     { id: 'qa3', title: 'Attendance', imageSource: 'https://cdn-icons-png.flaticon.com/128/10293/10293877.png', navigateToTab: 'Attendance' },
-    { id: 'qa14', title: 'Home Work', imageSource: 'https://cdn-icons-png.flaticon.com/128/11647/11647336.png', navigateToTab: 'StudentHomeworkScreen' },
+    // ★★★ THIS IS THE CRITICAL CHANGE ★★★
+    // We use `navigateTo` which triggers `navigation.navigate()`
+    // The name 'StudentHomework' MUST match the name of the navigator in your App.tsx
+    { id: 'qa14', title: 'Home Work', imageSource: 'https://cdn-icons-png.flaticon.com/128/11647/11647336.png', navigateTo: 'StudentHomework' },
     { id: 'qa18', title: 'Gallery', imageSource: 'https://cdn-icons-png.flaticon.com/128/8418/8418513.png', navigateTo: 'Gallery' },
     { id: 'qa19', title: 'About Us', imageSource: 'https://cdn-icons-png.flaticon.com/128/3815/3815523.png', navigateToTab: 'AboutUs' },
   ];
@@ -109,7 +108,6 @@ const StudentDashboard = ({ navigation }) => {
 
   const renderContent = () => {
     const handleBack = () => switchTab('home');
-    // ... No changes inside renderContent ...
     switch (activeTab) {
       case 'home':
         return (
@@ -149,7 +147,7 @@ const StudentDashboard = ({ navigation }) => {
       case 'allNotifications': return ( <><ContentScreenHeader title="Notifications" onBack={handleBack} /><NotificationsScreen onUnreadCountChange={setUnreadNotificationsCount} /></> );
       case 'calendar': return ( <><ContentScreenHeader title="Academic Calendar" onBack={handleBack} /><AcademicCalendar /></> );
       case 'profile': return ( <><ContentScreenHeader title="My Profile" onBack={handleBack} /><ProfileScreen /></> );
-      case 'StudentHomeworkScreen': return ( <><ContentScreenHeader title="Homework" onBack={handleBack} /><StudentHomeworkScreen /></> );
+      // ★★★ THIS CASE IS NO LONGER NEEDED AND HAS BEEN REMOVED ★★★
       case 'Timetable': return ( <><ContentScreenHeader title="Time Table" onBack={handleBack} /><TimetableScreen /></> );
       case 'Attendance': return ( <><ContentScreenHeader title="Attendance" onBack={handleBack} /><AttendanceScreen /></> );
       case 'AboutUs': return ( <><ContentScreenHeader title="About Us" onBack={handleBack} /><AboutUs /></> );
@@ -163,7 +161,6 @@ const StudentDashboard = ({ navigation }) => {
         {activeTab === 'home' && (
           <View style={styles.topBar}>
             <TouchableOpacity style={styles.profileContainer} onPress={() => setProfileModalVisible(true)} activeOpacity={0.8}>
-              {/* --- CHANGE 4: USE FastImage INSTEAD OF Image --- */}
               <FastImage source={profileImageSource} style={styles.profileImage} />
               <View style={styles.profileTextContainer}>
                 <Text style={styles.profileNameText} numberOfLines={1}>{user?.full_name || 'Student'}</Text>
@@ -194,7 +191,6 @@ const StudentDashboard = ({ navigation }) => {
         <Modal animationType="fade" transparent={true} visible={isProfileModalVisible} onRequestClose={() => setProfileModalVisible(false)}>
           <TouchableWithoutFeedback onPress={() => setProfileModalVisible(false)}>
             <View style={styles.modalOverlay}>
-              {/* --- CHANGE 5: USE FastImage IN THE MODAL AS WELL --- */}
               <FastImage source={profileImageSource} style={styles.enlargedProfileImage} />
               <TouchableOpacity style={styles.closeModalButton} onPress={() => setProfileModalVisible(false)}>
                 <MaterialIcons name="close" size={30} color="#fff" />
@@ -208,8 +204,6 @@ const StudentDashboard = ({ navigation }) => {
   );
 };
 
-// --- Helper Components (Simplified) ---
-// The standard Image component is perfectly fine for the card icons
 const DashboardCard = ({ item, onPress }) => (
   <TouchableOpacity style={styles.dashboardCardWrapper} onPress={onPress} activeOpacity={0.7}>
     <View style={styles.dashboardCard}>
@@ -228,7 +222,6 @@ const BottomNavItem = ({ icon, label, isActive, onPress }) => (
   </TouchableOpacity>
 );
 
-// ... NO CHANGES TO STYLES ...
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: 'transparent' },
   mainContent: { flex: 1 },
