@@ -171,7 +171,7 @@ const AuthenticatedStack = () => {
       {/* <Stack.Screen name="DonorDashboard" component={DonorDashboard} /> */}
       <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="AcademicCalendar" component={AcademicCalendar} />
-      <Stack.Screen name="Timetable" component={TimetableScreen} />
+      <Stack.Screen name="TimetableScreen" component={TimetableScreen} />
       <Stack.Screen name="Attendance" component={AttendanceScreen} />
       
       {/* <Stack.Screen name="UserHelpDesk" component={UserHelpDeskScreen} /> */}

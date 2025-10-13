@@ -562,6 +562,9 @@ const AdminAttendanceView = () => {
   );
 };
 
+// ==========================================================
+// --- MODIFIED SECTION STARTS HERE ---
+// ==========================================================
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
   const { class_group, subject_name, date } = route?.params || {};
   const [students, setStudents] = useState([]);
@@ -620,10 +623,16 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
       </Animatable.View>
       <FlatList
         data={students}
-        renderItem={({ item, index }) => ( // ✨ MODIFIED: Added index prop for animation
+        renderItem={({ item, index }) => ( // ★★★ MODIFIED: Added roll number display ★★★
             <Animatable.View animation="fadeInUp" duration={400} delay={index * 75} style={styles.liveStudentRow}>
-                <Icon name="account-circle-outline" size={32} color={TEXT_COLOR_DARK} />
-                <Text style={styles.studentName}>{item.full_name}</Text>
+                <View style={styles.studentInfoContainer}>
+                    <Icon name="account-circle-outline" size={32} color={TEXT_COLOR_DARK} />
+                    <View style={styles.studentNameContainer}>
+                        <Text style={styles.studentName}>{item.full_name}</Text>
+                        <Text style={styles.rollNoText}>Roll No: {item.roll_no || 'N/A'}</Text>
+                    </View>
+                </View>
+
                 <View style={styles.buttonGroup}>
                     <TouchableOpacity style={[styles.statusButton, item.status === 'Present' && styles.presentButton]} onPress={() => handleMarkAttendance(item.id, 'Present')}><Text style={[styles.statusButtonText, item.status === 'Present' && { color: WHITE }]}>P</Text></TouchableOpacity>
                     <TouchableOpacity style={[styles.statusButton, item.status === 'Absent' && styles.absentButton]} onPress={() => handleMarkAttendance(item.id, 'Absent')}><Text style={[styles.statusButtonText, item.status === 'Absent' && { color: WHITE }]}>A</Text></TouchableOpacity>
@@ -639,6 +648,9 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
     </SafeAreaView>
   );
 };
+// ==========================================================
+// --- MODIFIED SECTION ENDS HERE ---
+// ==========================================================
 
 // --- Styles ---
 const styles = StyleSheet.create({
@@ -657,16 +669,21 @@ const styles = StyleSheet.create({
   summaryBox: { alignItems: 'center', flex: 1, paddingVertical: 10, paddingHorizontal: 5 },
   summaryValue: { fontSize: 26, fontWeight: 'bold' },
   summaryLabel: { fontSize: 14, color: TEXT_COLOR_MEDIUM, marginTop: 5, fontWeight: '500', textAlign: 'center' },
-  // ✨ --- NEW STYLES FOR SEARCH BAR ---
   searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, marginHorizontal: 15, marginTop: 15, borderRadius: 8, borderWidth: 1, borderColor: BORDER_COLOR, paddingHorizontal: 10 },
   searchBar: { flex: 1, height: 45, fontSize: 16, color: TEXT_COLOR_DARK },
   searchIcon: { marginRight: 8 },
-  // ✨ --- END OF NEW STYLES ---
   summaryStudentRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, padding: 15, marginHorizontal: 15, marginVertical: 6, borderRadius: 8, elevation: 1, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
-  studentName: { flex: 1, fontSize: 16, color: TEXT_COLOR_DARK, fontWeight: '600' },
   studentDetailText: { fontSize: 12, color: TEXT_COLOR_MEDIUM, marginTop: 2 },
   percentageText: { fontSize: 20, fontWeight: 'bold' },
-  liveStudentRow: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: WHITE, marginHorizontal: 10, marginVertical: 5, borderRadius: 8, elevation: 2, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 3 },
+
+  // ★★★ MODIFIED & NEW STYLES FOR ATTENDANCE MARKING ★★★
+  liveStudentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: WHITE, marginHorizontal: 10, marginVertical: 5, borderRadius: 8, elevation: 2, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 3 },
+  studentInfoContainer: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10, },
+  studentNameContainer: { marginLeft: 12, flex: 1 },
+  studentName: { fontSize: 16, color: TEXT_COLOR_DARK, fontWeight: '600' },
+  rollNoText: { fontSize: 13, color: TEXT_COLOR_MEDIUM, marginTop: 2 },
+  // ★★★ END OF MODIFIED STYLES ★★★
+
   buttonGroup: { flexDirection: 'row' },
   statusButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#BDBDBD', marginHorizontal: 5 },
   presentButton: { backgroundColor: GREEN, borderColor: '#388E3C' },

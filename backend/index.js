@@ -812,14 +812,28 @@ app.get('/api/attendance/admin-summary', async (req, res) => {
     }
 });
 
-// GET attendance sheet for a specific period (No changes needed, this is correct)
+// ==========================================================
+// --- MODIFIED SECTION STARTS HERE ---
+// ==========================================================
+
+// GET attendance sheet for a specific period
 app.get('/api/attendance/sheet', async (req, res) => { 
     const { class_group, date, period_number } = req.query; 
     try { 
         if (!class_group || !date || !period_number) { 
             return res.status(400).json({ message: 'Class group, date, and period number are required.' }); 
         } 
-        const query = `SELECT u.id, u.full_name, ar.status FROM users u LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ar.attendance_date = ? AND ar.period_number = ? WHERE u.role = 'student' AND u.class_group = ? ORDER BY u.full_name;`; 
+        
+        // ★★★ MODIFIED QUERY: Joins user_profiles to get roll_no and orders by roll_no ★★★
+        const query = `
+            SELECT u.id, u.full_name, up.roll_no, ar.status 
+            FROM users u 
+            LEFT JOIN user_profiles up ON u.id = up.user_id
+            LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ar.attendance_date = ? AND ar.period_number = ? 
+            WHERE u.role = 'student' AND u.class_group = ? 
+            ORDER BY CAST(up.roll_no AS UNSIGNED), u.full_name;
+        `; 
+        
         const [students] = await db.query(query, [date, period_number, class_group]); 
         res.status(200).json(students); 
     } catch (error) { 
@@ -827,6 +841,11 @@ app.get('/api/attendance/sheet', async (req, res) => {
         res.status(500).json({ message: 'Error fetching attendance sheet.' }); 
     }
 });
+
+// ==========================================================
+// --- MODIFIED SECTION ENDS HERE ---
+// ==========================================================
+
 
 // POST attendance data and send notifications to absent students
 app.post('/api/attendance', async (req, res) => {

@@ -20,14 +20,10 @@ import { format } from 'date-fns';
 // --- Style Constants and Icons ---
 const PRIMARY_COLOR = '#008080';
 const TERTIARY_COLOR = '#f8f8ff';
+const TEXT_COLOR_DARK = '#333333';
+const TEXT_COLOR_MEDIUM = '#666666';
+const TEXT_COLOR_LIGHT = '#999999';
 
-// ★★★ FIX: ADD THESE MISSING COLOR CONSTANTS ★★★
-const TEXT_COLOR_DARK = '#333333';   // For main titles
-const TEXT_COLOR_MEDIUM = '#666666'; // For body text, subtitles
-const TEXT_COLOR_LIGHT = '#999999';  // For dates, metadata
-// ★★★ END FIX ★★★
-
-// Your notification icons object remains the same...
 const notificationIcons = {
   default: 'https://cdn-icons-png.flaticon.com/128/8297/8297354.png',
   homework: 'https://cdn-icons-png.flaticon.com/128/2158/2158507.png',
@@ -52,7 +48,6 @@ const notificationIcons = {
   kitchen: 'https://cdn-icons-png.flaticon.com/128/3081/3081448.png',
 };
 
-// Your helper functions remain the same...
 const getIconForTitle = (title: string = '') => {
     const lowerCaseTitle = title.toLowerCase();
     if (lowerCaseTitle.includes('homework') || lowerCaseTitle.includes('assignment')) return notificationIcons.homework;
@@ -129,6 +124,15 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
             case 'calendar':
                 navigation.navigate('AcademicCalendar');
                 break;
+            // ★★★ THIS IS THE FIX ★★★
+            // The case now matches the backend link '/timetable'
+            case 'timetable':
+                navigation.navigate('TimetableScreen');
+                break;
+            case 'Attendance':
+                navigation.navigate('AttendanceScreen');
+                break;
+            // ★★★ END OF FIX ★★★
             case 'gallery':
                 navigation.navigate('GalleryScreen', { screen: 'AlbumDetailScreen', params: { albumTitle: id1 } });
                 break;
