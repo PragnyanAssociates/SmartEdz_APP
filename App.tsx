@@ -154,8 +154,8 @@ const StudentHomeworkNavigator = () => (
             component={StudentHomeworkScreen} 
             options={{ 
                 title: 'Assignments & Homework',
-                headerStyle: { backgroundColor: '#fff5e6' }, // Light orange theme
-                headerTintColor: '#FF7043',
+                headerStyle: { backgroundColor: '#e0f2f7' }, // Light orange theme
+                headerTintColor: '#008080',
                 headerTitleStyle: { fontWeight: 'bold' },
             }}
         />
@@ -164,8 +164,8 @@ const StudentHomeworkNavigator = () => (
             component={WrittenAnswerScreen}
             options={({ route }: any) => ({ 
                 title: route.params?.assignment?.title || 'Answer Homework',
-                headerStyle: { backgroundColor: '#fff5e6' },
-                headerTintColor: '#FF7043',
+                headerStyle: { backgroundColor: '#e0f2f7' },
+                headerTintColor: '#008080',
                 headerTitleStyle: { fontWeight: 'bold' },
             })}
         />

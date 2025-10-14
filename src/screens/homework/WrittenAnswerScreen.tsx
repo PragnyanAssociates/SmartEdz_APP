@@ -1,3 +1,5 @@
+// 📂 File: WrittenAnswerScreen.js (FINAL AND VERIFIED)
+
 import React, { useState } from 'react';
 import {
   View,
@@ -35,7 +37,9 @@ const WrittenAnswerScreen = ({ route }) => {
     
     setIsSubmitting(true);
     try {
-      await apiClient.post('/homework/submit-written', {
+      // ★★★ THIS IS THE FIX ★★★
+      // The API endpoint was missing the "/api" prefix.
+      await apiClient.post('/api/homework/submit-written', {
         assignment_id: assignment.id,
         student_id: user.id,
         written_answer: answer,

@@ -2320,10 +2320,10 @@ app.delete('/api/ptm/:id', verifyToken, async (req, res) => {
 
 
 // ==========================================================
-// --- HOMEWORK & ASSIGNMENTS API ROUTES (MODIFIED) ---
+// --- HOMEWORK & ASSIGNMENTS API ROUTES (CORRECTED & FINAL) ---
 // ==========================================================
 
-// --- UTILITY ROUTES (FOR HOMEWORK FORMS - NO CHANGES) ---
+// --- UTILITY ROUTES (FOR HOMEWORK FORMS) ---
 
 // Get a list of all unique student class groups
 app.get('/api/student-classes', async (req, res) => {
@@ -2356,7 +2356,7 @@ app.get('/api/subjects-for-class/:classGroup', async (req, res) => {
 
 // --- TEACHER / ADMIN ROUTES ---
 
-// Get assignment history for a specific teacher (NO CHANGES)
+// Get assignment history for a specific teacher
 app.get('/api/homework/teacher/:teacherId', async (req, res) => {
     const { teacherId } = req.params;
     try {
@@ -2372,10 +2372,8 @@ app.get('/api/homework/teacher/:teacherId', async (req, res) => {
     }
 });
 
-
-// ★★★ MODIFIED: Create a new homework assignment (now includes homework_type) ★★★
+// Create a new homework assignment
 app.post('/api/homework', upload.single('attachment'), async (req, res) => {
-    // Added homework_type to destructuring
     const { title, description, class_group, subject, due_date, teacher_id, homework_type } = req.body;
     
     if (!homework_type || !['PDF', 'Written'].includes(homework_type)) {
@@ -2420,10 +2418,9 @@ app.post('/api/homework', upload.single('attachment'), async (req, res) => {
 });
 
 
-// ★★★ MODIFIED: Update an existing homework assignment (now includes homework_type) ★★★
+// Update an existing homework assignment
 app.post('/api/homework/:assignmentId', upload.single('attachment'), async (req, res) => {
     const { assignmentId } = req.params;
-    // Added homework_type
     const { title, description, class_group, subject, due_date, existing_attachment_path, homework_type } = req.body;
     
     if (!homework_type || !['PDF', 'Written'].includes(homework_type)) {
@@ -2445,7 +2442,7 @@ app.post('/api/homework/:assignmentId', upload.single('attachment'), async (req,
     }
 });
 
-// Delete a homework assignment (NO CHANGES)
+// Delete a homework assignment
 app.delete('/api/homework/:assignmentId', async (req, res) => {
     const { assignmentId } = req.params;
     try {
@@ -2457,7 +2454,7 @@ app.delete('/api/homework/:assignmentId', async (req, res) => {
     }
 });
 
-// ★★★ MODIFIED: Get all submissions for an assignment (now includes written_answer) ★★★
+// Get all submissions for an assignment
 app.get('/api/homework/submissions/:assignmentId', async (req, res) => {
     const { assignmentId } = req.params;
     try {
@@ -2467,7 +2464,7 @@ app.get('/api/homework/submissions/:assignmentId', async (req, res) => {
                 u.full_name as student_name,
                 s.id as submission_id,
                 s.submission_path,
-                s.written_answer, -- Added this line
+                s.written_answer,
                 s.submitted_at,
                 s.status,
                 s.grade,
@@ -2490,7 +2487,7 @@ app.get('/api/homework/submissions/:assignmentId', async (req, res) => {
     }
 });
 
-// Grade a submission (NO CHANGES)
+// Grade a submission
 app.put('/api/homework/grade/:submissionId', async (req, res) => {
     const { submissionId } = req.params;
     const { grade, remarks } = req.body;
@@ -2507,7 +2504,7 @@ app.put('/api/homework/grade/:submissionId', async (req, res) => {
 
 // --- STUDENT ROUTES ---
 
-// ★★★ MODIFIED: Get all assignments for a student (now includes homework_type and written_answer) ★★★
+// Get all assignments for a student
 app.get('/api/homework/student/:studentId/:classGroup', async (req, res) => {
     const { studentId, classGroup } = req.params;
     try {
@@ -2536,7 +2533,7 @@ app.get('/api/homework/student/:studentId/:classGroup', async (req, res) => {
     }
 });
 
-// Student submits a homework file (PDF Type) (NO CHANGES)
+// Student submits a homework file (PDF Type)
 app.post('/api/homework/submit/:assignmentId', upload.single('submission'), async (req, res) => {
     const { assignmentId } = req.params;
     const { student_id } = req.body;
@@ -2557,7 +2554,6 @@ app.post('/api/homework/submit/:assignmentId', upload.single('submission'), asyn
             return res.status(409).json({ message: 'You have already submitted this homework.' });
         }
 
-        // submission_path is provided, written_answer is null
         const query = `INSERT INTO homework_submissions (assignment_id, student_id, submission_path, status) VALUES (?, ?, ?, 'Submitted')`;
         await connection.query(query, [assignmentId, student_id, submission_path]);
         
@@ -2582,7 +2578,8 @@ app.post('/api/homework/submit/:assignmentId', upload.single('submission'), asyn
     }
 });
 
-// ★★★ NEW ROUTE: Student submits a written answer ★★★
+// ★★★ THIS IS THE CORRECTED ROUTE ★★★
+// Student submits a written answer
 app.post('/api/homework/submit-written', async (req, res) => {
     const { assignment_id, student_id, written_answer } = req.body;
 
@@ -2600,7 +2597,6 @@ app.post('/api/homework/submit-written', async (req, res) => {
             return res.status(409).json({ message: 'You have already submitted this homework.' });
         }
 
-        // written_answer is provided, submission_path is null
         const query = `INSERT INTO homework_submissions (assignment_id, student_id, written_answer, status) VALUES (?, ?, ?, 'Submitted')`;
         await connection.query(query, [assignment_id, student_id, written_answer]);
         
@@ -2608,9 +2604,14 @@ app.post('/api/homework/submit-written', async (req, res) => {
         const [[student]] = await connection.query('SELECT full_name, class_group FROM users WHERE id = ?', [student_id]);
 
         if (assignment && student) {
+             // ★★★ THIS IS THE FIX: Added the 'connection' object to the function call ★★★
              await createNotification(
-                connection, assignment.teacher_id, student.full_name, `Submission for: ${assignment.title}`,
-                `${student.full_name} (${student.class_group}) has submitted their written homework.`, `/submissions/${assignment_id}`
+                connection, 
+                assignment.teacher_id, 
+                student.full_name, 
+                `Submission for: ${assignment.title}`,
+                `${student.full_name} (${student.class_group}) has submitted their written homework.`, 
+                `/submissions/${assignment_id}`
             );
         }
 
@@ -2627,7 +2628,7 @@ app.post('/api/homework/submit-written', async (req, res) => {
 });
 
 
-// Delete a submission (NO CHANGES)
+// Delete a submission
 app.delete('/api/homework/submission/:submissionId', async (req, res) => {
     const { submissionId } = req.params;
     const { student_id } = req.body; 

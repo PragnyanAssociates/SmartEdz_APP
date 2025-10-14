@@ -76,7 +76,7 @@ const WelcomePage = () => {
         {/* The overlay is still here to ensure text readability */}
         <Animated.View style={[styles.overlay, animatedContainerStyle]}>
           <Animated.Image
-            source={require("../assets/vspngo-logo.png")}
+            source={require("../assets/logo.png")}
             style={[styles.logo, animatedLogoStyle]}
             resizeMode="contain"
           />
@@ -115,9 +115,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.5)', 
   },
   logo: {
-    width: width * 0.8,
-    height: height * 0.15,
-    marginBottom: 25,
+    width: 350,
+    height: 300,
+    marginBottom: -70,
   },
   tagline: {
     fontSize: 18,
@@ -129,6 +129,7 @@ const styles = StyleSheet.create({
     maxWidth: '95%',
     fontStyle: "italic",
     marginBottom: 60,
+    margintop: 0,
     // Adding a subtle text shadow to lift it off the background
     textShadowColor: 'rgba(255, 255, 255, 0.7)',
     textShadowOffset: { width: 0, height: 1 },
