@@ -3266,7 +3266,6 @@ app.get('/api/attempts/:attemptId/result', async (req, res) => {
 // --- STUDY MATERIALS API ROUTES ---
 // ==========================================================
 
-// --- TEACHER / ADMIN ROUTES ---
 
 // 📂 File: server.js (REPLACE THIS ROUTE)
 

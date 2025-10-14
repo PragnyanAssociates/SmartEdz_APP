@@ -131,42 +131,40 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
 
     const addQuestion = () => setQuestions([...questions, { id: Date.now(), question_text: '', question_type: 'multiple_choice', options: { A: '', B: '', C: '', D: '' }, correct_answer: '', marks: '1' }]);
     
-    // ★★★★★ FIX IS HERE ★★★★★
-    // This function now cleans up question properties when the type changes.
-    const handleQuestionChange = (id, field, value) => {
-        setQuestions(questions.map(q => {
-            if (q.id !== id) {
-                return q;
-            }
+    // Reverted to the original simple handler
+    const handleQuestionChange = (id, field, value) => setQuestions(questions.map(q => (q.id === id ? { ...q, [field]: value } : q)));
     
-            const updatedQuestion = { ...q, [field]: value };
-            
-            if (field === 'question_type') {
-                if (value === 'written_answer') {
-                    // Clean up MCQ-specific fields for a written answer
-                    updatedQuestion.options = null;
-                    updatedQuestion.correct_answer = null;
-                } else if (value === 'multiple_choice') {
-                    // Ensure MCQ fields exist when switching back
-                    updatedQuestion.options = q.options && typeof q.options === 'object' && q.options !== null
-                        ? q.options
-                        : { A: '', B: '', C: '', D: '' };
-                    updatedQuestion.correct_answer = q.correct_answer || '';
-                }
-            }
-            
-            return updatedQuestion;
-        }));
-    };
-
     const handleOptionChange = (id, optionKey, value) => setQuestions(questions.map(q => (q.id === id ? { ...q, options: { ...q.options, [optionKey]: value } } : q)));
     const handleRemoveQuestion = (id) => setQuestions(questions.filter(q => q.id !== id));
     
+    // ★★★★★ DEFINITIVE FIX IS APPLIED HERE ★★★★★
     const handleSave = async () => {
         if (!user?.id) return Alert.alert("Session Error", "Could not identify user.");
         if (!examDetails.title || !examDetails.class_group || questions.length === 0) return Alert.alert('Validation Error', 'Title, Class Group, and at least one question are required.');
+        
         setIsSaving(true);
-        const payload = { ...examDetails, questions, teacher_id: user.id };
+        
+        // Sanitize the questions array to build a clean payload for the API
+        const sanitizedQuestions = questions.map(q => {
+            // Base object with common properties
+            const questionPayload = {
+                question_text: q.question_text,
+                question_type: q.question_type,
+                marks: q.marks,
+            };
+
+            // If it's a multiple choice question, add the specific properties
+            if (q.question_type === 'multiple_choice') {
+                questionPayload.options = q.options;
+                questionPayload.correct_answer = q.correct_answer;
+            }
+            // For 'written_answer', `options` and `correct_answer` are simply left out.
+
+            return questionPayload;
+        });
+
+        const payload = { ...examDetails, questions: sanitizedQuestions, teacher_id: user.id };
+        
         try {
             if (isEditMode) {
                 await apiClient.put(`/exams/${examToEdit.exam_id}`, payload);
@@ -186,9 +184,9 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
     <View style={styles.pickerContainer}><Picker selectedValue={q.question_type} onValueChange={v => handleQuestionChange(q.id, 'question_type', v)}><Picker.Item label="Multiple Choice" value="multiple_choice" /><Picker.Item label="Written Answer" value="written_answer" /></Picker></View>
     
     {q.question_type === 'multiple_choice' && (<>
-        {Object.keys(q.options || {}).map(key => (<TextInput key={key} style={styles.input} placeholder={`Option ${key}`} value={(q.options || {})[key]} onChangeText={t => handleOptionChange(q.id, key, t)} />))}
+        {Object.keys(q.options).map(key => (<TextInput key={key} style={styles.input} placeholder={`Option ${key}`} value={q.options[key]} onChangeText={t => handleOptionChange(q.id, key, t)} />))}
         <Text style={styles.label}>Correct Answer</Text>
-        <View style={styles.pickerContainer}><Picker selectedValue={q.correct_answer} onValueChange={v => handleQuestionChange(q.id, 'correct_answer', v)}><Picker.Item label="-- Select correct option --" value="" />{Object.keys(q.options || {}).map(key => (q.options || {})[key] && <Picker.Item key={key} label={`Option ${key}`} value={key} />)}</Picker></View>
+        <View style={styles.pickerContainer}><Picker selectedValue={q.correct_answer} onValueChange={v => handleQuestionChange(q.id, 'correct_answer', v)}><Picker.Item label="-- Select correct option --" value="" />{Object.keys(q.options).map(key => q.options[key] && <Picker.Item key={key} label={`Option ${key}`} value={key} />)}</Picker></View>
     </>)}
 
     <Text style={styles.label}>Marks</Text><TextInput style={styles.input} keyboardType="number-pad" value={String(q.marks)} onChangeText={t => handleQuestionChange(q.id, 'marks', t)} /></View>))}<TouchableOpacity style={styles.addQuestionBtn} onPress={addQuestion}><Text style={styles.addQuestionBtnText}>+ Add Another Question</Text></TouchableOpacity></View><TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={isSaving}>{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>{isEditMode ? 'Save Changes' : 'Save and Publish Exam'}</Text>}</TouchableOpacity></ScrollView> );
