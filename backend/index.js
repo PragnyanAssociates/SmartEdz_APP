@@ -2561,9 +2561,14 @@ app.post('/api/homework/submit/:assignmentId', upload.single('submission'), asyn
         const [[student]] = await connection.query('SELECT full_name, class_group FROM users WHERE id = ?', [student_id]);
 
         if (assignment && student) {
-             await createNotification(
-                connection, assignment.teacher_id, student.full_name, `Submission for: ${assignment.title}`,
-                `${student.full_name} (${student.class_group}) has submitted their homework.`, `/submissions/${assignmentId}`
+             // Notifying a single teacher, so we use createBulkNotifications with an array of one ID.
+             await createBulkNotifications(
+                connection, 
+                [assignment.teacher_id], // The function expects an array of IDs
+                student.full_name, 
+                `Submission for: ${assignment.title}`,
+                `${student.full_name} (${student.class_group}) has submitted their homework.`, 
+                `/submissions/${assignmentId}`
             );
         }
         
@@ -2604,13 +2609,15 @@ app.post('/api/homework/submit-written', async (req, res) => {
         const [[student]] = await connection.query('SELECT full_name, class_group FROM users WHERE id = ?', [student_id]);
 
         if (assignment && student) {
-             // ★★★ THIS IS THE FIX: Added the 'connection' object to the function call ★★★
-             await createNotification(
-                connection, 
-                assignment.teacher_id, 
-                student.full_name, 
+            // ★★★ THIS IS THE FIX ★★★
+            // Changed `createNotification` to `createBulkNotifications` to match other routes
+            // and passed the teacher's ID in an array as required.
+             await createBulkNotifications(
+                connection,
+                [assignment.teacher_id],
+                student.full_name,
                 `Submission for: ${assignment.title}`,
-                `${student.full_name} (${student.class_group}) has submitted their written homework.`, 
+                `${student.full_name} (${student.class_group}) has submitted their written homework.`,
                 `/submissions/${assignment_id}`
             );
         }
