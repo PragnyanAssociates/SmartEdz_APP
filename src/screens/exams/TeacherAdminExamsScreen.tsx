@@ -131,22 +131,19 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
 
     const addQuestion = () => setQuestions([...questions, { id: Date.now(), question_text: '', question_type: 'multiple_choice', options: { A: '', B: '', C: '', D: '' }, correct_answer: '', marks: '1' }]);
     
-    // ★★★ FIX 1: CLEAN THE STATE WHEN QUESTION TYPE CHANGES ★★★
     const handleQuestionChange = (id, field, value) => {
         setQuestions(questions.map(q => {
             if (q.id !== id) return q;
 
-            // Create a new object with the updated field
             let newQ = { ...q, [field]: value };
 
-            // If the type was changed, clean the object structure
             if (field === 'question_type') {
-                if (value === 'written_answer') {
-                    // Use destructuring to remove properties cleanly
+                 // ★★★★★ FIX APPLIED HERE ★★★★★
+                 // When type is not MCQ, remove MCQ-specific properties to keep state clean.
+                if (value !== 'multiple_choice') {
                     const { options, correct_answer, ...rest } = newQ;
-                    return rest; // Return the object without MCQ properties
+                    return rest;
                 } else if (value === 'multiple_choice') {
-                    // Add back the default MCQ properties
                     newQ.options = { A: '', B: '', C: '', D: '' };
                     newQ.correct_answer = '';
                 }
@@ -164,22 +161,17 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
         
         setIsSaving(true);
         
-        // ★★★ FIX 2: CREATE A PERFECTLY SANITIZED PAYLOAD ★★★
         const sanitizedQuestions = questions.map(q => {
-            // Base object with properties common to all question types
-            const questionPayload = {
+            const questionPayload: any = {
                 question_text: q.question_text,
                 question_type: q.question_type,
-                // IMPORTANT: Ensure marks is always an integer number
                 marks: parseInt(q.marks, 10) || 1, 
             };
 
-            // Only add MCQ-specific properties if the type is correct
             if (q.question_type === 'multiple_choice') {
                 questionPayload.options = q.options;
                 questionPayload.correct_answer = q.correct_answer;
             }
-            // For 'written_answer', options/correct_answer are correctly excluded.
             return questionPayload;
         });
 
@@ -201,12 +193,18 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
     };
 
     if (isLoading) return <View style={styles.centered}><ActivityIndicator size="large" /><Text>Loading Exam Data...</Text></View>
-    return ( <ScrollView style={styles.containerDark}><TouchableOpacity onPress={onFinish} style={styles.backButton}><MaterialIcons name="arrow-back" size={24} color="#333" /><Text style={styles.backButtonText}>Back to Exam List</Text></TouchableOpacity><Text style={styles.headerTitle}>{isEditMode ? 'Edit Exam' : 'Create New Exam'}</Text><View style={styles.formSection}><Text style={styles.label}>Exam Title *</Text><TextInput style={styles.input} value={examDetails.title} onChangeText={t => setExamDetails({ ...examDetails, title: t })} /><Text style={styles.label}>Class *</Text><View style={styles.pickerContainer}><Picker selectedValue={examDetails.class_group} onValueChange={v => setExamDetails({ ...examDetails, class_group: v })}><Picker.Item label="-- Select a Class --" value="" />{studentClasses.map(c => <Picker.Item key={c} label={c} value={c} />)}</Picker></View><Text style={styles.label}>Time Limit (minutes)</Text><TextInput style={styles.input} keyboardType="number-pad" value={examDetails.time_limit_mins} onChangeText={t => setExamDetails({ ...examDetails, time_limit_mins: t })} /></View><View style={styles.formSection}><Text style={styles.headerTitleSecondary}>Questions</Text>{questions.map((q, index) => (<View key={q.id} style={styles.questionEditor}><View style={styles.cardHeader}><Text style={styles.questionEditorTitle}>Question {index + 1}</Text><TouchableOpacity onPress={() => handleRemoveQuestion(q.id)}><MaterialIcons name="close" size={22} color="#dc3545" /></TouchableOpacity></View><TextInput style={styles.input} multiline placeholder="Enter question text..." value={q.question_text} onChangeText={t => handleQuestionChange(q.id, 'question_text', t)} />
+    return ( <ScrollView style={styles.containerDark}><TouchableOpacity onPress={onFinish} style={styles.backButton}><MaterialIcons name="arrow-back" size={24} color="#333" /><Text style={styles.backButtonText}>Back to Exam List</Text></TouchableOpacity><Text style={styles.headerTitle}>{isEditMode ? 'Edit Exam' : 'Create New Exam'}</Text><View style={styles.formSection}><Text style={styles.label}>Exam Title *</Text><TextInput style={styles.input} value={examDetails.title} onChangeText={t => setExamDetails({ ...examDetails, title: t })} /><Text style={styles.label}>Class *</Text><View style={styles.pickerContainer}><Picker selectedValue={examDetails.class_group} onValueChange={v => setExamDetails({ ...examDetails, class_group: v })}><Picker.Item label="-- Select a Class --" value="" />{studentClasses.map(c => <Picker.Item key={c} label={c} value={c} />)}</Picker></View><Text style={styles.label}>Time Limit (minutes)</Text><TextInput style={styles.input} keyboardType="number-pad" value={examDetails.time_limit_mins} onChangeText={t => setExamDetails({ ...examDetails, time_limit_mins: t })} /></View><View style={styles.formSection}><Text style={styles.headerTitleSecondary}>Questions</Text>{questions.map((q: any, index) => (<View key={q.id} style={styles.questionEditor}><View style={styles.cardHeader}><Text style={styles.questionEditorTitle}>Question {index + 1}</Text><TouchableOpacity onPress={() => handleRemoveQuestion(q.id)}><MaterialIcons name="close" size={22} color="#dc3545" /></TouchableOpacity></View><TextInput style={styles.input} multiline placeholder="Enter question text..." value={q.question_text} onChangeText={t => handleQuestionChange(q.id, 'question_text', t)} />
     
     <Text style={styles.label}>Question Type</Text>
-    <View style={styles.pickerContainer}><Picker selectedValue={q.question_type} onValueChange={v => handleQuestionChange(q.id, 'question_type', v)}><Picker.Item label="Multiple Choice" value="multiple_choice" /><Picker.Item label="Written Answer" value="written_answer" /></Picker></View>
+    <View style={styles.pickerContainer}>
+        <Picker selectedValue={q.question_type} onValueChange={v => handleQuestionChange(q.id, 'question_type', v)}>
+            <Picker.Item label="Multiple Choice" value="multiple_choice" />
+             {/* ★★★★★ FIX APPLIED HERE ★★★★★ */}
+             {/* Changed value from "written_answer" to "short_answer" to match the DB ENUM */}
+            <Picker.Item label="Written Answer" value="short_answer" />
+        </Picker>
+    </View>
     
-    {/* ★★★ FIX 3: ADD SAFETY CHECKS TO JSX TO PREVENT CRASHES ★★★ */}
     {q.question_type === 'multiple_choice' && q.options && (<>
         {Object.keys(q.options).map(key => (<TextInput key={key} style={styles.input} placeholder={`Option ${key}`} value={q.options[key]} onChangeText={t => handleOptionChange(q.id, key, t)} />))}
         <Text style={styles.label}>Correct Answer</Text>

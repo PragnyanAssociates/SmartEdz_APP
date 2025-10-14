@@ -2937,7 +2937,7 @@ app.get('/api/exam-schedules/class/:classGroup', async (req, res) => {
     }
 });
 
-/// ==========================================================
+// ==========================================================
 // --- ONLINE EXAMS API ROUTES  -----------------------
 // ==========================================================
 
@@ -2979,9 +2979,6 @@ app.post('/api/exams', async (req, res) => {
         // --- Notification Logic ---
         const [students] = await connection.query("SELECT id FROM users WHERE role = 'student' AND class_group = ?", [class_group]);
         if (students.length > 0) {
-            // ★★★★★ DEFINITIVE FIX APPLIED HERE ★★★★★
-            // This safely fetches the teacher's name and provides a default
-            // value if the teacher is not found, preventing a server crash.
             const [teacherRows] = await connection.query("SELECT full_name FROM users WHERE id = ?", [teacher_id]);
             const senderName = (teacherRows[0] && teacherRows[0].full_name) ? teacherRows[0].full_name : "School Administration";
             
@@ -3001,7 +2998,7 @@ app.post('/api/exams', async (req, res) => {
 
     } catch (error) {
         await connection.rollback();
-        console.error("Error in POST /api/exams:", error); // This will now log the real error if something else goes wrong.
+        console.error("Error in POST /api/exams:", error);
         res.status(500).json({ message: 'Failed to create exam.' });
     } finally {
         connection.release();
@@ -3068,7 +3065,6 @@ app.put('/api/exams/:examId', async (req, res) => {
         // --- Notification Logic ---
         const [students] = await connection.query("SELECT id FROM users WHERE role = 'student' AND class_group = ?", [class_group]);
         if (students.length > 0) {
-            // ★★★★★ DEFINITIVE FIX APPLIED HERE (for update) ★★★★★
             const [teacherRows] = await connection.query("SELECT full_name FROM users WHERE id = ?", [teacher_id]);
             const senderName = (teacherRows[0] && teacherRows[0].full_name) ? teacherRows[0].full_name : "School Administration";
             

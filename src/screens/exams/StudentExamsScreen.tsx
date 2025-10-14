@@ -204,7 +204,7 @@ const TakeExamView = ({ exam, onFinish }) => {
                 )}
             </View>
 
-            {questions.map((q, index) => (
+            {questions.map((q: any, index) => (
                 <View key={q.question_id} style={styles.questionBox}>
                     <Text style={styles.questionText}>{index + 1}. {q.question_text}</Text>
                     <Text style={styles.marksText}>{q.marks} Marks</Text>
