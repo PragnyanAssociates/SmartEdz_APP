@@ -2961,15 +2961,19 @@ app.post('/api/exams', async (req, res) => {
 
         if (questions.length > 0) {
             const questionQuery = 'INSERT INTO exam_questions (exam_id, question_text, question_type, options, correct_answer, marks) VALUES ?';
-            // ★★★★★ FIX APPLIED HERE ★★★★★
-            const questionValues = questions.map(q => [
-                exam_id, 
-                q.question_text, 
-                q.question_type, 
-                q.question_type === 'multiple_choice' ? JSON.stringify(q.options) : null, 
-                q.question_type === 'multiple_choice' ? q.correct_answer : null, // Set correct_answer to NULL if not MCQ
-                q.marks
-            ]);
+            
+            // ★★★★★ FINAL ROBUST FIX APPLIED HERE ★★★★★
+            const questionValues = questions.map(q => {
+                const isMcq = q.question_type === 'multiple_choice';
+                return [
+                    exam_id, 
+                    q.question_text, 
+                    q.question_type, 
+                    isMcq ? JSON.stringify(q.options) : null, 
+                    (isMcq && q.correct_answer) ? q.correct_answer : null, // Ensures NULL for non-MCQ or empty MCQ answer
+                    q.marks
+                ];
+            });
             await connection.query(questionQuery, [questionValues]);
         }
 
@@ -2994,7 +2998,7 @@ app.post('/api/exams', async (req, res) => {
 
     } catch (error) {
         await connection.rollback();
-        console.error("Error in POST /api/exams:", error);
+        console.error("Error in POST /api/exams:", error); // Check your server console for detailed errors
         res.status(500).json({ message: 'Failed to create exam.' });
     } finally {
         connection.release();
@@ -3028,7 +3032,6 @@ app.get('/api/exams/:examId', async (req, res) => {
     }
 });
 
-
 // UPDATE an existing exam
 app.put('/api/exams/:examId', async (req, res) => {
     const { examId } = req.params;
@@ -3044,15 +3047,19 @@ app.put('/api/exams/:examId', async (req, res) => {
         await connection.query('DELETE FROM exam_questions WHERE exam_id = ?', [examId]);
         if (questions.length > 0) {
             const questionQuery = 'INSERT INTO exam_questions (exam_id, question_text, question_type, options, correct_answer, marks) VALUES ?';
-             // ★★★★★ FIX APPLIED HERE ★★★★★
-            const questionValues = questions.map(q => [
-                examId, 
-                q.question_text, 
-                q.question_type, 
-                q.question_type === 'multiple_choice' ? JSON.stringify(q.options) : null, 
-                q.question_type === 'multiple_choice' ? q.correct_answer : null, // Set correct_answer to NULL if not MCQ
-                q.marks
-            ]);
+            
+            // ★★★★★ FINAL ROBUST FIX APPLIED HERE ★★★★★
+            const questionValues = questions.map(q => {
+                const isMcq = q.question_type === 'multiple_choice';
+                return [
+                    examId, 
+                    q.question_text, 
+                    q.question_type, 
+                    isMcq ? JSON.stringify(q.options) : null, 
+                    (isMcq && q.correct_answer) ? q.correct_answer : null, // Ensures NULL for non-MCQ or empty MCQ answer
+                    q.marks
+                ];
+            });
             await connection.query(questionQuery, [questionValues]);
         }
         
@@ -3077,7 +3084,7 @@ app.put('/api/exams/:examId', async (req, res) => {
 
     } catch (error) {
         await connection.rollback();
-        console.error("Error in PUT /api/exams/:examId:", error);
+        console.error("Error in PUT /api/exams/:examId:", error); // Check your server console for detailed errors
         res.status(500).json({ message: 'Failed to update exam.' });
     } finally {
         connection.release();
@@ -3097,9 +3104,9 @@ app.delete('/api/exams/:examId', async (req, res) => {
     }
 });
 
-// --- SUBMISSION & GRADING ROUTES --- (No changes below this line, but included for completeness)
 
-// Get all submissions for a specific exam
+// --- SUBMISSION & GRADING ROUTES (No changes below) ---
+
 app.get('/api/exams/:examId/submissions', async (req, res) => {
     try {
         const { examId } = req.params;
@@ -3112,7 +3119,6 @@ app.get('/api/exams/:examId/submissions', async (req, res) => {
     }
 });
 
-// Get a single student's full submission for grading
 app.get('/api/submissions/:attemptId', async (req, res) => {
     try {
         const { attemptId } = req.params;
@@ -3125,7 +3131,6 @@ app.get('/api/submissions/:attemptId', async (req, res) => {
     }
 });
 
-// Grade a student's submission
 app.post('/api/submissions/:attemptId/grade', async (req, res) => {
     const { attemptId } = req.params;
     const { gradedAnswers, teacher_feedback, teacher_id } = req.body;
@@ -3162,7 +3167,8 @@ app.post('/api/submissions/:attemptId/grade', async (req, res) => {
     }
 });
 
-// --- STUDENT ROUTES ---
+
+// --- STUDENT ROUTES (No changes below) ---
 
 app.get('/api/exams/student/:studentId/:classGroup', async (req, res) => {
     try {

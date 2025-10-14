@@ -166,7 +166,6 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
     <Text style={styles.label}>Marks</Text><TextInput style={styles.input} keyboardType="number-pad" value={String(q.marks)} onChangeText={t => handleQuestionChange(q.id, 'marks', t)} /></View>))}<TouchableOpacity style={styles.addQuestionBtn} onPress={addQuestion}><Text style={styles.addQuestionBtnText}>+ Add Another Question</Text></TouchableOpacity></View><TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={isSaving}>{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>{isEditMode ? 'Save Changes' : 'Save and Publish Exam'}</Text>}</TouchableOpacity></ScrollView> );
 };
 
-
 // --- View 3: Submissions View ---
 const SubmissionsView = ({ exam, onBack }) => {
     const { user } = useAuth();

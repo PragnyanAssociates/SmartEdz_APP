@@ -107,7 +107,6 @@ const TakeExamView = ({ exam, onFinish }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [attemptId, setAttemptId] = useState(null);
-    // ★★★ NEW: State for the countdown timer ★★★
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
     useEffect(() => {
@@ -118,7 +117,6 @@ const TakeExamView = ({ exam, onFinish }) => {
                 const { attempt_id } = startRes.data;
                 setAttemptId(attempt_id);
 
-                // ★★★ NEW: Initialize timer based on exam details ★★★
                 if (exam.time_limit_mins > 0) {
                     setTimeLeft(exam.time_limit_mins * 60);
                 }
@@ -140,12 +138,11 @@ const TakeExamView = ({ exam, onFinish }) => {
         startAndFetch();
     }, [exam.exam_id, user?.id, onFinish, exam.time_limit_mins]);
 
-    // ★★★ NEW: useEffect hook to handle the timer countdown and auto-submission ★★★
     useEffect(() => {
         if (timeLeft === null || isSubmitting) return;
 
         if (timeLeft <= 0) {
-            performSubmit(true); // Auto-submit when time is up
+            performSubmit(true);
             return;
         }
 
@@ -153,14 +150,13 @@ const TakeExamView = ({ exam, onFinish }) => {
             setTimeLeft(prevTime => (prevTime ? prevTime - 1 : 0));
         }, 1000);
 
-        return () => clearInterval(intervalId); // Cleanup interval on component unmount
+        return () => clearInterval(intervalId);
     }, [timeLeft, isSubmitting]);
 
     const handleAnswerChange = (questionId, value) => setAnswers(prev => ({ ...prev, [questionId]: value }));
 
-    // ★★★ NEW: Refactored submission logic to be reusable for both manual and auto-submit ★★★
     const performSubmit = async (isAutoSubmit = false) => {
-        if (isSubmitting || !user?.id) return; // Prevent multiple submissions
+        if (isSubmitting || !user?.id) return;
         
         setIsSubmitting(true);
         try {
@@ -170,11 +166,11 @@ const TakeExamView = ({ exam, onFinish }) => {
                 isAutoSubmit
                     ? "Time's up! Your exam has been automatically submitted."
                     : 'Your exam has been submitted!',
-                [{ text: 'OK', onPress: onFinish }] // Go back to list on success
+                [{ text: 'OK', onPress: onFinish }]
             );
         } catch (e: any) {
             Alert.alert('Error', e.response?.data?.message || e.message);
-            setIsSubmitting(false); // Allow user to try again on failure
+            setIsSubmitting(false);
         }
     };
 
@@ -188,7 +184,6 @@ const TakeExamView = ({ exam, onFinish }) => {
         ]);
     };
     
-    // ★★★ NEW: Helper to format time for display ★★★
     const formatTime = (seconds: number) => {
         if (seconds < 0) return '00:00';
         const mins = Math.floor(seconds / 60);
@@ -201,7 +196,6 @@ const TakeExamView = ({ exam, onFinish }) => {
         <ScrollView style={styles.container}>
              <View style={styles.examHeader}>
                 <Text style={styles.headerTitle}>{exam.title}</Text>
-                {/* ★★★ NEW: Timer Display ★★★ */}
                 {timeLeft !== null && (
                     <View style={styles.timerContainer}>
                         <MaterialIcons name="timer" size={20} color="#dc3545" />
@@ -214,7 +208,6 @@ const TakeExamView = ({ exam, onFinish }) => {
                 <View key={q.question_id} style={styles.questionBox}>
                     <Text style={styles.questionText}>{index + 1}. {q.question_text}</Text>
                     <Text style={styles.marksText}>{q.marks} Marks</Text>
-                    {/* ★★★ MODIFICATION: Render input based on question_type ★★★ */}
                     {q.question_type === 'multiple_choice' ? (
                         <View>
                             {q.options && Object.entries(q.options).map(([key, value]) => (
@@ -279,7 +272,6 @@ const ResultView = ({ attemptId, onBack }) => {
                 <View key={item.question_id} style={styles.questionBox}>
                     <Text style={styles.questionText}>{index + 1}. {item.question_text}</Text>
                     <Text style={styles.yourAnswer}>Your Answer: {item.answer_text || 'Not Answered'}</Text>
-                    {/* ★★★ MODIFICATION: Show correct answer only for multiple choice ★★★ */}
                     {item.question_type === 'multiple_choice' && item.options && <Text style={styles.correctAnswer}>Correct Answer: {item.options[item.correct_answer]}</Text>}
                     <Text style={styles.marksAwarded}>Marks Awarded: {item.marks_awarded} / {item.marks}</Text>
                 </View>
@@ -323,7 +315,6 @@ const styles = StyleSheet.create({
     radioOuterCircleSelected: { borderColor: '#007bff', },
     radioInnerCircle: { height: 10, width: 10, borderRadius: 5, backgroundColor: '#007bff', },
     radioLabel: { fontSize: 16, color: '#333', },
-    // ★★★ NEW STYLES for Timer ★★★
     examHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 15, marginTop: 15, marginBottom: 5 },
     timerContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8d7da', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#dc3545', },
     timerText: { fontSize: 16, fontWeight: 'bold', color: '#721c24', marginLeft: 5, },
