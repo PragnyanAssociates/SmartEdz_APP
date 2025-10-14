@@ -33,6 +33,7 @@ import TimetableScreen from '../screens/TimetableScreen';
 import AttendanceScreen from '../screens/AttendanceScreen';
 import TeacherAdminHomeworkScreen from '../screens/homework/TeacherAdminHomeworkScreen';
 import AboutUs from './AboutUs';
+import TeacherAdminExamsScreen from '../screens/exams/TeacherAdminExamsScreen';
 
 // --- Constants & Colors ---
 const { width: windowWidth } = Dimensions.get('window');
@@ -95,6 +96,7 @@ const TeacherDashboard = ({ navigation }) => {
     { id: 'qa14', title: 'Home Work', imageSource: 'https://cdn-icons-png.flaticon.com/128/11647/11647336.png', navigateToTab: 'TeacherAdminHomeworkScreen' },
     { id: 'qa18', title: 'Gallery', imageSource: 'https://cdn-icons-png.flaticon.com/128/8418/8418513.png', navigateTo: 'Gallery' },
     { id: 'qa21', title: 'About Us', imageSource: 'https://cdn-icons-png.flaticon.com/128/3815/3815523.png', navigateToTab: 'AboutUs' },
+    { id: 'qa4', title: 'Exams', imageSource: 'https://cdn-icons-png.flaticon.com/128/12886/12886027.png', navigateToTab: 'TeacherAdminExamsScreen' },
   ];
 
   const [filteredItems, setFilteredItems] = useState(allQuickAccessItems);
@@ -165,6 +167,7 @@ const TeacherDashboard = ({ navigation }) => {
       case 'Timetable': return ( <><ContentScreenHeader title="My Timetable" onBack={handleBack} /><TimetableScreen /></> );
       case 'Attendance': return ( <><ContentScreenHeader title="Attendance Report" onBack={handleBack} /><AttendanceScreen /></> );
       case 'AboutUs': return ( <><ContentScreenHeader title="About Us" onBack={handleBack} /><AboutUs /></> );
+      case 'TeacherAdminExamsScreen': return ( <><ContentScreenHeader title="Exams" onBack={handleBack} /><TeacherAdminExamsScreen /></> );
       default: return ( <><ContentScreenHeader title={capitalize(activeTab)} onBack={handleBack} /><View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content not available yet.</Text></View></> );
     }
   };

@@ -75,7 +75,8 @@ import WrittenAnswerScreen from './src/screens/homework/WrittenAnswerScreen'; //
 // import StudentResultsScreen from './src/screens/results/StudentResultsScreen';
 // import StudentSyllabusScreen from './src/screens/syllabus/StudentSyllabusScreen';
 
-// import StudentExamsScreen from './src/screens/exams/StudentExamsScreen';
+import StudentExamsScreen from './src/screens/exams/StudentExamsScreen';
+import TeacherAdminExamsScreen from './src/screens/exams/TeacherAdminExamsScreen';
 // import StudentSportsScreen from './src/screens/sports/StudentSportsScreen';
 // import StudentEventsScreen from './src/screens/events/StudentEventsScreen';
 // import StudentPTMScreen from './src/screens/ptm/StudentPTMScreen';
@@ -220,10 +221,10 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="StudentExamScreen" component={StudentExamScreen} />
       <Stack.Screen name="StudentMaterialsScreen" component={StudentMaterialsScreen} />
       
-      <Stack.Screen name="StudentSyllabusScreen" component={StudentSyllabusScreen} />
-      <Stack.Screen name="StudentExamsScreen" component={StudentExamsScreen} /> */}
+      <Stack.Screen name="StudentSyllabusScreen" component={StudentSyllabusScreen} /> */}
+      <Stack.Screen name="StudentExamsScreen" component={StudentExamsScreen} />
       
-      
+      <Stack.Screen name="TeacherAdminExamsScreen" component={TeacherAdminExamsScreen} />
       {/* <Stack.Screen name="TeacherAdminPTMScreen" component={TeacherAdminPTMScreen} />
       <Stack.Screen name="StudentPTMScreen" component={StudentPTMScreen} />
       <Stack.Screen name="TeacherAdminLabsScreen" component={TeacherAdminLabsScreen} /> */}
