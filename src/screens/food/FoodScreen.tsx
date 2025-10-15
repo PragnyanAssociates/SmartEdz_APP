@@ -13,18 +13,19 @@ const THEME = {
     border: '#e9ecef', dark: '#343a40',
 };
 
+// MODIFIED: Only showing days relevant to the school week
 const ORDERED_DAYS = [
     { full: 'Monday', short: 'Mon' }, { full: 'Tuesday', short: 'Tue' }, { full: 'Wednesday', short: 'Wed' },
     { full: 'Thursday', short: 'Thu' }, { full: 'Friday', short: 'Fri' }, { full: 'Saturday', short: 'Sat' },
 ];
 
+// MODIFIED: Only showing Lunch
 const MEAL_TYPES = ['Lunch'];
 
 const FoodScreen = () => {
     const { user } = useAuth();
     const [menuData, setMenuData] = useState({});
     const [loading, setLoading] = useState(true);
-    // MODIFIED: Modal state now includes the 'mode' ('add' or 'edit')
     const [modalInfo, setModalInfo] = useState({ visible: false, mode: null, data: null });
 
     const fetchMenu = useCallback(() => {
@@ -40,18 +41,14 @@ const FoodScreen = () => {
     const openModal = (mode, data) => setModalInfo({ visible: true, mode, data });
     const closeModal = () => setModalInfo({ visible: false, mode: null, data: null });
 
-    // NEW: Handles clicking on any cell, whether it has data or not
     const handleCellPress = (meal, day, mealType) => {
         if (meal) {
-            // If meal data exists, open in 'edit' mode
             openModal('edit', meal);
         } else {
-            // If no meal data, open in 'add' mode with the day/type info
             openModal('add', { day_of_week: day, meal_type: mealType });
         }
     };
     
-    // MODIFIED: handleSave now manages both creating (POST) and updating (PUT)
     const handleSave = (values) => {
         if (!user) return;
         const { mode, data } = modalInfo;
@@ -70,11 +67,12 @@ const FoodScreen = () => {
 
         request
         .then(() => {
-            // Refresh the entire menu to show the new/updated data
             fetchMenu(); 
         })
         .catch((error) => {
-            Alert.alert("Error", error.response?.data?.message || "An error occurred while saving.");
+            // Provide a more specific error message from the server if available
+            const errorMessage = error.response?.data?.message || "An error occurred while saving.";
+            Alert.alert("Error", errorMessage);
         });
     };
 
@@ -102,8 +100,8 @@ const FoodMenuTable = ({ menuData, isAdmin, onCellPress }) => {
         <View style={styles.table}>
             <View style={styles.tableHeaderRow}>
                 <View style={[styles.tableHeaderCell, styles.dayHeaderCell]}><Text style={styles.headerDayText}>Day</Text></View>
-                {MEAL_TYPES.map((mealType, index) => (
-                    <View key={mealType} style={[ styles.tableHeaderCell, styles.mealHeaderCell, index === MEAL_TYPES.length - 1 && styles.lastCell ]}>
+                {MEAL_TYPES.map((mealType) => (
+                    <View key={mealType} style={[ styles.tableHeaderCell, styles.mealHeaderCell, styles.lastCell ]}>
                         <Text style={styles.headerMealTypeText}>{mealType}</Text>
                     </View>
                 ))}
@@ -111,15 +109,18 @@ const FoodMenuTable = ({ menuData, isAdmin, onCellPress }) => {
             {ORDERED_DAYS.map(({ full, short }) => (
                 <View key={full} style={styles.tableRow}>
                     <View style={[styles.tableCell, styles.dayCell]}><Text style={styles.dayCellText}>{short}</Text></View>
-                    {MEAL_TYPES.map((mealType, index) => {
+                    {MEAL_TYPES.map((mealType) => {
                         const meal = getMealForCell(full, mealType);
                         return (
-                            // MODIFIED: Now enabled for admin even if 'meal' is null. Passes all necessary info.
+                            // ★★★ CRITICAL FIX HERE ★★★
+                            // The 'disabled' prop logic was incorrect. It should simply be '!isAdmin'.
+                            // This ensures that if the user IS an admin, the button is ALWAYS clickable.
+                            // If the user is NOT an admin, it is ALWAYS disabled.
                             <TouchableOpacity 
                                 key={mealType} 
-                                style={[ styles.tableCell, styles.mealCell, index === MEAL_TYPES.length - 1 && styles.lastCell ]} 
+                                style={[ styles.tableCell, styles.mealCell, styles.lastCell ]} 
                                 onPress={() => onCellPress(meal, full, mealType)} 
-                                disabled={!isAdmin}
+                                disabled={!isAdmin} // This is the corrected logic
                             >
                                 <Text style={meal?.food_item ? styles.mealItemText : styles.notSetText} numberOfLines={2}>{meal?.food_item || 'Not set'}</Text>
                                 <Text style={meal?.meal_time ? styles.mealTimeText : styles.notSetText} numberOfLines={1}>{meal?.meal_time || 'No time set'}</Text>
@@ -147,7 +148,6 @@ const EditMenuModal = ({ modalInfo, onClose, onSave }) => {
 
     if (!data) return null;
     
-    // MODIFIED: Dynamic title based on 'add' or 'edit' mode
     const title = mode === 'add' 
         ? `Add ${data.day_of_week} ${data.meal_type}` 
         : `Edit ${data.day_of_week} ${data.meal_type}`;
@@ -162,7 +162,6 @@ const EditMenuModal = ({ modalInfo, onClose, onSave }) => {
                     <Text style={styles.inputLabel}>Time</Text>
                     <TextInput style={styles.input} value={mealTime} onChangeText={setMealTime} placeholder="e.g., 1:00 PM - 2:00 PM" />
                     <TouchableOpacity style={styles.saveButton} onPress={handleSavePress}><Text style={styles.saveButtonText}>Save Changes</Text></TouchableOpacity>
-                    {/* MODIFIED: Show clear button only when editing an existing item */}
                     {mode === 'edit' && (<TouchableOpacity style={styles.clearButton} onPress={handleClearPress}><Text style={styles.clearButtonText}>Clear Food Entry</Text></TouchableOpacity>)}
                     <TouchableOpacity onPress={onClose}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
                 </View>
@@ -171,7 +170,7 @@ const EditMenuModal = ({ modalInfo, onClose, onSave }) => {
     );
 };
 
-// Styles remain the same as the previous version
+// Styles remain the same
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: THEME.background },
     scrollContainer: { padding: 10 },

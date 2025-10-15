@@ -5335,17 +5335,16 @@ app.delete('/api/permanent-inventory/:id', async (req, res) => {
 
 
 // ==========================================================
-// --- FOOD MENU API ROUTES (FINAL & CORRECTED) ---
+// --- REVISED & SIMPLIFIED FOOD MENU API ROUTES ---
 // ==========================================================
 
 // GET the full weekly food menu (Accessible to all roles)
 app.get('/api/food-menu', async (req, res) => {
     try {
+        // OPTIMIZED: The query now only sorts by day, as we only care about Lunch.
         const query = `
             SELECT * FROM food_menu 
-            ORDER BY 
-                FIELD(day_of_week, "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"), 
-                FIELD(meal_type, "Tiffin", "Lunch", "Snacks", "Dinner")
+            ORDER BY FIELD(day_of_week, "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
         `;
         const [menuItems] = await db.query(query);
 
@@ -5379,20 +5378,17 @@ app.post('/api/food-menu', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        // Step 1: Check admin role
         const [[editor]] = await connection.query('SELECT role, full_name FROM users WHERE id = ?', [editorId]);
         if (!editor || editor.role !== 'admin') {
             await connection.rollback();
             return res.status(403).json({ message: 'Forbidden: You do not have permission to perform this action.' });
         }
         
-        // Step 2: Insert the new menu item
         await connection.query(
             'INSERT INTO food_menu (day_of_week, meal_type, food_item, meal_time) VALUES (?, ?, ?, ?)',
             [day_of_week, meal_type, food_item, meal_time]
         );
 
-        // Step 3: Notification Logic
         const [usersToNotify] = await connection.query("SELECT id FROM users WHERE role IN ('student', 'teacher') AND id != ?", [editorId]);
         if (usersToNotify.length > 0) {
             const recipientIds = usersToNotify.map(u => u.id);
@@ -5407,20 +5403,22 @@ app.post('/api/food-menu', async (req, res) => {
         res.status(201).json({ message: 'Menu item created successfully.' });
 
     } catch (error) {
-        await connection.rollback();
+        // ★★★ BETTER ERROR LOGGING ★★★
         console.error("Error creating food menu item:", error);
-        res.status(500).json({ message: 'Error creating menu item.' });
+        // Send a more specific error message if it's a database constraint issue
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ message: 'This menu item already exists. Please edit it instead.'});
+        }
+        res.status(500).json({ message: 'Error creating menu item on the server.' });
     } finally {
         connection.release();
     }
 });
 
 
-// ★★★ REPLACE BOTH OLD PUT ROUTES WITH THIS SINGLE ONE ★★★
 // PUT (update) a SINGLE food item's text and/or time (Admin only)
 app.put('/api/food-menu/:id', async (req, res) => {
     const { id } = req.params;
-    // Now accepts both food_item and meal_time
     const { food_item, meal_time, editorId } = req.body;
 
     if (!editorId) {
@@ -5431,14 +5429,12 @@ app.put('/api/food-menu/:id', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        // Step 1: Check admin role
         const [[editor]] = await connection.query('SELECT role, full_name FROM users WHERE id = ?', [editorId]);
         if (!editor || editor.role !== 'admin') {
             await connection.rollback();
             return res.status(403).json({ message: 'Forbidden: You do not have permission to perform this action.' });
         }
 
-        // Step 2: Update the food item and/or time
         const [result] = await connection.query(
             'UPDATE food_menu SET food_item = ?, meal_time = ? WHERE id = ?',
             [food_item, meal_time, id]
@@ -5449,7 +5445,6 @@ app.put('/api/food-menu/:id', async (req, res) => {
             return res.status(404).json({ message: 'Menu item not found.' });
         }
 
-        // Step 3: Notification Logic
         const [usersToNotify] = await connection.query("SELECT id FROM users WHERE role IN ('student', 'teacher') AND id != ?", [editorId]);
         if (usersToNotify.length > 0) {
             const [[mealDetails]] = await connection.query("SELECT day_of_week, meal_type FROM food_menu WHERE id = ?", [id]);
@@ -5465,9 +5460,8 @@ app.put('/api/food-menu/:id', async (req, res) => {
         res.status(200).json({ message: 'Menu item updated successfully.' });
 
     } catch (error) {
-        await connection.rollback();
         console.error("Error updating food menu item:", error);
-        res.status(500).json({ message: 'Error updating menu item.' });
+        res.status(500).json({ message: 'Error updating menu item on the server.' });
     } finally {
         connection.release();
     }
