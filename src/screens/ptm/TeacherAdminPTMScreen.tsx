@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
 import { MeetingCard, Meeting } from './MeetingCard';
 import { Picker } from '@react-native-picker/picker';
-// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
 import apiClient from '../../api/client';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../../context/AuthContext';
@@ -29,7 +28,6 @@ const TeacherAdminPTMScreen = () => {
 
   const fetchAllData = useCallback(async () => {
       try {
-          // ★★★ 2. USE apiClient FOR ALL FETCH CALLS ★★★
           const [meetingsRes, teachersRes, classesRes] = await Promise.all([
             apiClient.get('/ptm'),
             apiClient.get('/ptm/teachers'),
@@ -37,7 +35,8 @@ const TeacherAdminPTMScreen = () => {
           ]);
           setMeetings(meetingsRes.data);
           setTeachers(teachersRes.data);
-          setClasses(classesRes.data);
+          // ★★★★★ MODIFICATION: Added 'All' to the beginning of the classes array ★★★★★
+          setClasses(['All', ...classesRes.data]);
       } catch (error: any) {
           Alert.alert("Error", error.response?.data?.message || "Failed to load data.");
       } finally {
@@ -139,8 +138,8 @@ const TeacherAdminPTMScreen = () => {
                 <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
                     <ScrollView>
                         <Text style={styles.modalTitle}>{editingMeeting ? "Edit Meeting" : "New Meeting"}</Text>
-                        <Text style={styles.label}>Teacher:</Text>
-                        <View style={styles.pickerContainer}><Picker selectedValue={formData.teacher_id} onValueChange={itemValue => setFormData({...formData, teacher_id: itemValue})} enabled={!editingMeeting}><Picker.Item label="-- Select a Teacher --" value="" />{teachers.map(t => <Picker.Item key={t.id} label={t.full_name} value={t.id.toString()} />)}</Picker></View>
+                        <Text style={styles.label}>Teacher / Admin:</Text>
+                        <View style={styles.pickerContainer}><Picker selectedValue={formData.teacher_id} onValueChange={itemValue => setFormData({...formData, teacher_id: itemValue})} enabled={!editingMeeting}><Picker.Item label="-- Select Person --" value="" />{teachers.map(t => <Picker.Item key={t.id} label={t.full_name} value={t.id.toString()} />)}</Picker></View>
                         <Text style={styles.label}>Class:</Text>
                         <View style={styles.pickerContainer}><Picker selectedValue={formData.class_group} onValueChange={itemValue => setFormData({...formData, class_group: itemValue})} enabled={!editingMeeting}><Picker.Item label="-- Select a Class --" value="" />{classes.map(c => <Picker.Item key={c} label={c} value={c} />)}</Picker></View>
                         <Text style={styles.label}>Subject Focus:</Text>
@@ -164,6 +163,5 @@ const TeacherAdminPTMScreen = () => {
   );
 };
 
-// Styles remain the same
 const styles = StyleSheet.create({ center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }, container: { flex: 1, backgroundColor: '#f0f4f7' }, header: { flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: 'white' }, headerIcon: { fontSize: 32, marginRight: 15, color: '#5a67d8' }, headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#2d3748' }, headerSubtitle: { fontSize: 14, color: '#718096' }, scheduleBtn: { backgroundColor: '#4CAF50', padding: 15, borderRadius: 8, marginHorizontal: 20, marginVertical: 10, alignItems: 'center' }, scheduleBtnText: { color: 'white', fontSize: 16, fontWeight: 'bold' }, emptyText: { textAlign: 'center', marginTop: 30, fontSize: 16, color: '#718096' }, modalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }, modalContent: { backgroundColor: 'white', borderRadius: 10, padding: 20, width: '90%', maxHeight: '80%' }, modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' }, label: { fontSize: 16, fontWeight: '500', color: '#333', marginBottom: 5, marginTop: 5 }, input: { borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 5, marginBottom: 15, backgroundColor: '#fff', minHeight: 40, justifyContent: 'center' }, pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 5, marginBottom: 15, backgroundColor: '#fff' }, modalActions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 20, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 20 }, modalButton: { paddingVertical: 10, paddingHorizontal: 30, borderRadius: 5 }, cancelButton: { backgroundColor: '#e0e0e0' }, saveButton: { backgroundColor: '#4CAF50' }, saveButtonText: { color: 'white', fontWeight: 'bold' }});
 export default TeacherAdminPTMScreen;

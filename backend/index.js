@@ -1999,14 +1999,15 @@ app.get('/api/ptm', verifyToken, async (req, res) => {
     }
 });
 
-// GET list of all teachers for the form
+// GET list of all teachers and admins for the form
 app.get('/api/ptm/teachers', verifyToken, async (req, res) => {
     try {
-        const [teachers] = await db.query("SELECT id, full_name FROM users WHERE role = 'teacher' ORDER BY full_name ASC");
-        res.status(200).json(teachers);
+        // ★★★★★ MODIFICATION: Changed query to include both 'teacher' and 'admin' roles ★★★★★
+        const [users] = await db.query("SELECT id, full_name FROM users WHERE role IN ('teacher', 'admin') ORDER BY full_name ASC");
+        res.status(200).json(users);
     } catch (error) {
         console.error("GET /api/ptm/teachers Error:", error);
-        res.status(500).json({ message: 'Could not fetch the list of teachers.' });
+        res.status(500).json({ message: 'Could not fetch the list of teachers and admins.' });
     }
 });
 
@@ -2017,7 +2018,8 @@ app.get('/api/ptm/classes', verifyToken, async (req, res) => {
         const [results] = await db.query(query);
         const classes = results.map(item => item.class_group);
         res.status(200).json(classes);
-    } catch (error) {
+    } catch (error)
+    {
         console.error("GET /api/ptm/classes Error:", error);
         res.status(500).json({ message: 'Could not fetch the list of classes.' });
     }
@@ -2130,6 +2132,7 @@ app.delete('/api/ptm/:id', verifyToken, async (req, res) => {
         res.status(500).json({ message: 'An error occurred while deleting the meeting.' });
     }
 });
+
 
 
 // ==========================================================
