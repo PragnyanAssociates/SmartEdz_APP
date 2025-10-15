@@ -2,48 +2,29 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  Linking,
-  ActivityIndicator,
-  Modal,
-  TextInput,
-  Platform,
-  FlatList
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking,
+  ActivityIndicator, Modal, TextInput, FlatList, Platform
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useAuth } from '../../context/AuthContext'; 
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
 import apiClient from '../../api/client';
+import DocumentPicker, { DocumentPickerResponse } from 'react-native-document-picker';
+import Video from 'react-native-video';
 
 // --- TYPE DEFINITIONS ---
 interface OnlineClass {
-  id: number;
-  title: string;
-  class_group: string;
-  subject: string;
-  teacher_id: number;
-  teacher_name: string;
-  class_datetime: string;
-  meet_link: string;
-  description?: string | null;
-  created_by?: number;
+  id: number; title: string; class_group: string; subject: string; teacher_id: number;
+  teacher_name: string; class_datetime: string; meet_link?: string | null;
+  description?: string | null; created_by?: number; class_type: 'live' | 'recorded';
+  topic?: string | null; video_url?: string | null;
 }
 interface Teacher { id: number; full_name: string; }
 interface FormData {
-  title: string;
-  class_group: string;
-  subject: string;
-  teacher_id: number | '';
-  meet_link: string;
-  description: string;
+  title: string; class_group: string; subject: string; teacher_id: number | '';
+  meet_link: string; description: string; topic: string;
 }
 
 const formatDateTime = (isoString: string): string => {
@@ -62,30 +43,32 @@ const OnlineClassScreen: React.FC = () => {
     const [teachers, setTeachers] = useState<Teacher[]>([]);
     const [classGroups, setClassGroups] = useState<string[]>([]);
     const [subjects, setSubjects] = useState<string[]>([]);
-    
     const [loading, setLoading] = useState<boolean>(true);
+    const [isSaving, setIsSaving] = useState<boolean>(false);
     const [modalVisible, setModalVisible] = useState<boolean>(false);
     const [isEditing, setIsEditing] = useState<boolean>(false);
     const [currentClass, setCurrentClass] = useState<OnlineClass | null>(null);
-
-    const initialFormState: FormData = { title: '', class_group: '', subject: '', teacher_id: '', meet_link: '', description: '' };
+    const [view, setView] = useState<'live' | 'recorded'>('live');
+    const [modalClassType, setModalClassType] = useState<'live' | 'recorded'>('live');
+    const initialFormState: FormData = { title: '', class_group: '', subject: '', teacher_id: '', meet_link: '', description: '', topic: '' };
     const [formData, setFormData] = useState<FormData>(initialFormState);
-    
     const [date, setDate] = useState(new Date());
     const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
+    const [selectedVideo, setSelectedVideo] = useState<DocumentPickerResponse | null>(null);
+    const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
+    const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
 
     const isPrivilegedUser = user?.role === 'admin' || user?.role === 'teacher';
 
     const fetchInitialData = useCallback(async () => {
         try {
             setLoading(true);
-            // ★★★ 2. USE apiClient FOR ALL FETCH CALLS ★★★
             const [classesRes, classGroupsRes] = await Promise.all([
                 apiClient.get('/online-classes'),
                 apiClient.get('/student-classes'),
             ]);
             setAllClasses(classesRes.data);
-            setClassGroups(classGroupsRes.data);
+            setClassGroups(['All', ...classGroupsRes.data]);
         } catch (error: any) {
             Alert.alert("Error", error.response?.data?.message || 'An unknown error occurred.');
         } finally {
@@ -96,31 +79,39 @@ const OnlineClassScreen: React.FC = () => {
     useEffect(() => {
         fetchInitialData();
     }, [fetchInitialData]);
-
+    
     useEffect(() => {
         const fetchClassSpecificData = async () => {
-            if (formData.class_group && !isEditing) {
+            if (!modalVisible || isEditing) return;
+
+            setSubjects([]); 
+            setTeachers([]);
+
+            if (formData.class_group === 'All') {
+                try {
+                    const [subjectsRes, teachersRes] = await Promise.all([
+                        apiClient.get('/subjects/all-unique'),
+                        apiClient.get('/all-teachers-and-admins')
+                    ]);
+                    setSubjects(subjectsRes.data);
+                    setTeachers(teachersRes.data);
+                } catch (error: any) {
+                    Alert.alert("Error fetching details", error.response?.data?.message || 'Could not load details for "All" classes.');
+                }
+            } else if (formData.class_group) {
                 try {
                     const [subjectsRes, teachersRes] = await Promise.all([
                         apiClient.get(`/subjects-for-class/${formData.class_group}`),
                         apiClient.get(`/teachers-for-class/${formData.class_group}`)
                     ]);
-                    let fetchedSubjects = subjectsRes.data;
-                    if (fetchedSubjects.length === 0) {
-                        const allSubjectsRes = await apiClient.get('/subjects/all-unique');
-                        fetchedSubjects = allSubjectsRes.data;
-                    }
-                    setSubjects(fetchedSubjects);
+                    setSubjects(subjectsRes.data);
                     setTeachers(teachersRes.data);
                 } catch (error: any) {
                     Alert.alert("Error fetching details", error.response?.data?.message || 'Could not load class details.');
-                    setSubjects([]); setTeachers([]);
                 }
-            } else if (!formData.class_group) {
-                setSubjects([]); setTeachers([]);
             }
         };
-        if (modalVisible) fetchClassSpecificData();
+        fetchClassSpecificData();
     }, [formData.class_group, modalVisible, isEditing]);
 
     const handleClassChange = (classValue: string) => {
@@ -128,12 +119,22 @@ const OnlineClassScreen: React.FC = () => {
     };
 
     const filteredClasses = useMemo(() => {
-        if (!user) return [];
-        if (user.role === 'admin') return allClasses;
-        if (user.role === 'teacher') return allClasses.filter(c => String(c.teacher_id) === String(user.id) || String(c.created_by) === String(user.id));
-        if (user.role === 'student') return allClasses.filter(c => c.class_group === user.class_group);
-        return [];
+      if (!user) return [];
+      if (user.role === 'admin') return allClasses;
+      if (user.role === 'teacher') return allClasses.filter(c => String(c.teacher_id) === String(user.id) || String(c.created_by) === String(user.id));
+      if (user.role === 'student') return allClasses.filter(c => c.class_group === user.class_group || c.class_group === 'All');
+      return [];
     }, [user, allClasses]);
+
+    const { liveClasses, recordedClasses } = useMemo(() => {
+        const live = filteredClasses.filter(c => c.class_type === 'live');
+        const recorded = filteredClasses.filter(c => c.class_type === 'recorded');
+        
+        live.sort((a, b) => new Date(a.class_datetime).getTime() - new Date(b.class_datetime).getTime());
+        recorded.sort((a, b) => new Date(b.class_datetime).getTime() - new Date(a.class_datetime).getTime());
+
+        return { liveClasses, recordedClasses };
+    }, [filteredClasses]);
 
     const onPickerChange = (event: DateTimePickerEvent, selectedValue?: Date) => {
         setPickerMode(null);
@@ -153,42 +154,78 @@ const OnlineClassScreen: React.FC = () => {
     
     const handleOpenModal = (classItem: OnlineClass | null = null) => {
         if (classItem) {
-            setIsEditing(true);
+            setIsEditing(true); 
             setCurrentClass(classItem);
+            setModalClassType(classItem.class_type);
             setFormData({
                 title: classItem.title, class_group: classItem.class_group,
                 subject: classItem.subject, teacher_id: classItem.teacher_id,
-                meet_link: classItem.meet_link, description: classItem.description || '',
+                meet_link: classItem.meet_link || '', description: classItem.description || '',
+                topic: classItem.topic || '',
             });
             setDate(new Date(classItem.class_datetime));
+            setSelectedVideo(null); // Clear video selection when editing
         } else {
-            setIsEditing(false);
+            setIsEditing(false); 
             setCurrentClass(null);
-            setFormData(initialFormState);
+            setFormData(initialFormState); 
+            setSelectedVideo(null);
+            setModalClassType('live'); 
             setDate(new Date());
         }
         setModalVisible(true);
     };
+
+    const handleSelectVideo = async () => {
+        try {
+            const res = await DocumentPicker.pickSingle({ type: [DocumentPicker.types.video] });
+            setSelectedVideo(res);
+        } catch (err) {
+            if (!DocumentPicker.isCancel(err)) {
+                Alert.alert("Error", "Could not select video file.");
+            }
+        }
+    };
     
     const handleSave = async () => {
         if (!user) return Alert.alert("Error", "User not found.");
-        const bodyPayload = isEditing
-            ? { title: formData.title, meet_link: formData.meet_link, description: formData.description }
-            : { ...formData, teacher_id: Number(formData.teacher_id), class_datetime: date.toISOString(), created_by: user.id };
-        if (!isEditing && (!bodyPayload.title || !bodyPayload.class_group || !bodyPayload.subject || !bodyPayload.teacher_id)) {
-            Alert.alert("Validation Error", "Please fill in Title, Class, Subject, and Teacher.");
-            return;
-        }
-        try {
-            if (isEditing) {
-                await apiClient.put(`/online-classes/${currentClass?.id}`, bodyPayload);
+        setIsSaving(true);
+        
+        const data = new FormData();
+        data.append('title', formData.title);
+        data.append('class_group', formData.class_group);
+        data.append('subject', formData.subject);
+        data.append('teacher_id', String(formData.teacher_id));
+        data.append('class_datetime', date.toISOString());
+        data.append('description', formData.description);
+
+        if (isEditing) {
+            data.append('topic', formData.topic);
+            data.append('meet_link', formData.meet_link);
+            try {
+                // Note: File update is not supported in this simplified edit flow.
+                await apiClient.put(`/online-classes/${currentClass?.id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } });
+                Alert.alert("Success", "Class updated.");
+            } catch (error: any) { Alert.alert("Save Error", error.response?.data?.message || 'Failed to update.'); }
+        } else {
+            data.append('class_type', modalClassType);
+            if (modalClassType === 'live') {
+                if (!formData.meet_link) { setIsSaving(false); return Alert.alert("Validation Error", "Meeting Link is required."); }
+                data.append('meet_link', formData.meet_link);
             } else {
-                await apiClient.post('/online-classes', bodyPayload);
+                if (!selectedVideo || !formData.topic) { setIsSaving(false); return Alert.alert("Validation Error", "Topic and a video file are required."); }
+                data.append('topic', formData.topic);
+                data.append('videoFile', { uri: selectedVideo.uri, type: selectedVideo.type, name: selectedVideo.name });
             }
-            Alert.alert("Success", `Class ${isEditing ? 'updated' : 'scheduled'} successfully.`);
-            fetchInitialData();
-            setModalVisible(false);
-        } catch (error: any) { Alert.alert("Save Error", error.response?.data?.message || 'Failed to save class.'); }
+            try {
+                await apiClient.post('/online-classes', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+                Alert.alert("Success", `Class ${modalClassType === 'live' ? 'scheduled' : 'uploaded'}.`);
+            } catch (error: any) { Alert.alert("Save Error", error.response?.data?.message || 'Failed to save.'); }
+        }
+        
+        setIsSaving(false);
+        setModalVisible(false);
+        fetchInitialData();
     };
 
     const handleDelete = (classId: number) => {
@@ -204,30 +241,25 @@ const OnlineClassScreen: React.FC = () => {
         );
     };
     
-    const handleJoinClass = (url: string) => {
-        if (url) {
-            Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open the meeting link."));
+    const handleJoinOrWatch = (classItem: OnlineClass) => {
+        if (classItem.class_type === 'live' && classItem.meet_link) {
+            Linking.openURL(classItem.meet_link).catch(() => Alert.alert("Error", "Could not open the link."));
+        } else if (classItem.class_type === 'recorded' && classItem.video_url) {
+            setCurrentVideoUrl(classItem.video_url);
+            setVideoPlayerVisible(true);
         }
     };
 
-    if (loading) {
-        return <View style={styles.center}><ActivityIndicator size="large" color="#007bff" /></View>;
-    }
+    if (loading) { return <View style={styles.center}><ActivityIndicator size="large" color="#007bff" /></View>; }
+
+    const dataToShow = view === 'live' ? liveClasses : recordedClasses;
 
     return (
         <View style={styles.container}>
             <FlatList
-                data={filteredClasses}
+                data={dataToShow}
                 keyExtractor={(item) => item.id.toString()}
-                renderItem={({ item }) => (
-                    <ClassCard 
-                        classItem={item} 
-                        onEdit={isPrivilegedUser ? handleOpenModal : undefined} 
-                        onDelete={isPrivilegedUser ? handleDelete : undefined}
-                        onJoin={user?.role === 'student' ? handleJoinClass : undefined}
-                        userRole={user?.role}
-                    />
-                )}
+                renderItem={({ item }) => <ClassCard classItem={item} onEdit={isPrivilegedUser ? handleOpenModal : undefined} onDelete={isPrivilegedUser ? handleDelete : undefined} onJoinOrWatch={handleJoinOrWatch} userRole={user?.role} />}
                 ListHeaderComponent={
                     <>
                         <View style={styles.header}>
@@ -237,20 +269,23 @@ const OnlineClassScreen: React.FC = () => {
                                 <Text style={styles.headerSubtitle}>View and manage all online sessions.</Text>
                             </View>
                         </View>
+                        <View style={styles.tabContainer}>
+                            <TouchableOpacity style={[styles.tab, view === 'live' && styles.activeTab]} onPress={() => setView('live')}>
+                                <Text style={[styles.tabText, view === 'live' && styles.activeTabText]}>Live Classes</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.tab, view === 'recorded' && styles.activeTab]} onPress={() => setView('recorded')}>
+                                <Text style={[styles.tabText, view === 'recorded' && styles.activeTabText]}>Recorded Classes</Text>
+                            </TouchableOpacity>
+                        </View>
                         {isPrivilegedUser && (
                             <TouchableOpacity style={styles.scheduleButton} onPress={() => handleOpenModal()}>
                                 <FontAwesome name="plus" size={16} color="white" />
-                                <Text style={styles.scheduleButtonText}>Schedule New Class</Text>
+                                <Text style={styles.scheduleButtonText}>Add New Class</Text>
                             </TouchableOpacity>
                         )}
                     </>
                 }
-                ListEmptyComponent={
-                    <View style={styles.center}>
-                        <MaterialIcons name="event-busy" size={60} color="#cccccc" />
-                        <Text style={styles.emptyText}>No Online Classes Found</Text>
-                    </View>
-                }
+                ListEmptyComponent={ <View style={styles.center}> <MaterialIcons name="event-busy" size={60} color="#cccccc" /> <Text style={styles.emptyText}>{`No ${view} classes found.`}</Text> </View> }
                 contentContainerStyle={styles.listContentContainer}
             />
           
@@ -258,9 +293,20 @@ const OnlineClassScreen: React.FC = () => {
                 <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setModalVisible(false)}>
                     <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
                         <ScrollView>
-                            <Text style={styles.modalTitle}>{isEditing ? 'Edit Online Class' : 'Schedule New Class'}</Text>
+                            <Text style={styles.modalTitle}>{isEditing ? 'Edit Class' : 'Add New Class'}</Text>
+                             {!isEditing && ( <View style={styles.modalTabContainer}>
+                                    <TouchableOpacity style={[styles.modalTab, modalClassType === 'live' && styles.modalActiveTab]} onPress={() => setModalClassType('live')}>
+                                        <Text style={[styles.modalTabText, modalClassType === 'live' && styles.modalActiveTabText]}>Live Class</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.modalTab, modalClassType === 'recorded' && styles.modalActiveTab]} onPress={() => setModalClassType('recorded')}>
+                                        <Text style={[styles.modalTabText, modalClassType === 'recorded' && styles.modalActiveTabText]}>Recorded Class</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+
                             <Text style={styles.label}>Title:</Text>
-                            <TextInput style={styles.input} placeholder="e.g., Algebra Review" value={formData.title} onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}/>
+                            <TextInput style={styles.input} placeholder="e.g., Algebra Chapter 5 Review" value={formData.title} onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}/>
+                            
                             <Text style={styles.label}>Class:</Text>
                             <View style={styles.pickerContainer}>
                                 <Picker enabled={!isEditing} selectedValue={formData.class_group} onValueChange={(itemValue) => handleClassChange(itemValue)}>
@@ -268,43 +314,85 @@ const OnlineClassScreen: React.FC = () => {
                                     {classGroups.map((c, i) => <Picker.Item key={i} label={c} value={c} />)}
                                 </Picker>
                             </View>
+
                             <Text style={styles.label}>Subject:</Text>
                             <View style={styles.pickerContainer}>
-                                <Picker enabled={!isEditing && !!formData.class_group} selectedValue={formData.subject} onValueChange={(itemValue) => setFormData(prev => ({ ...prev, subject: itemValue }))}>
+                                <Picker enabled={!isEditing} selectedValue={formData.subject} onValueChange={(itemValue) => setFormData(prev => ({ ...prev, subject: itemValue }))}>
                                     <Picker.Item label="-- Select Subject --" value="" />
                                     {subjects.map((s, i) => <Picker.Item key={i} label={s} value={s} />)}
                                 </Picker>
                             </View>
-                            <Text style={styles.label}>Teacher:</Text>
+
+                            <Text style={styles.label}>Teacher / Admin:</Text>
                             <View style={styles.pickerContainer}>
-                                <Picker enabled={!isEditing && !!formData.class_group} selectedValue={String(formData.teacher_id)} onValueChange={(itemValue) => setFormData(prev => ({ ...prev, teacher_id: Number(itemValue) }))}>
-                                    <Picker.Item label="-- Select Teacher --" value="" />
+                                <Picker enabled={!isEditing} selectedValue={String(formData.teacher_id)} onValueChange={(itemValue) => setFormData(prev => ({ ...prev, teacher_id: Number(itemValue) }))}>
+                                    <Picker.Item label="-- Select Person --" value="" />
                                     {teachers.map((t) => <Picker.Item key={t.id} label={t.full_name} value={String(t.id)} />)}
                                 </Picker>
                             </View>
+                            
                             <Text style={styles.label}>Date & Time:</Text>
                             <TouchableOpacity disabled={isEditing} onPress={() => setPickerMode('date')} style={styles.input}><Text style={{ color: '#333' }}>{formatDateTime(date.toISOString())}</Text></TouchableOpacity>
                             {pickerMode && <DateTimePicker value={date} mode={pickerMode} is24Hour={true} display="default" onChange={onPickerChange}/>}
-                            <Text style={styles.label}>Meeting Link:</Text>
-                            <TextInput style={styles.input} placeholder="https://meet.google.com/xyz" value={formData.meet_link} onChangeText={(text) => setFormData(prev => ({ ...prev, meet_link: text }))} keyboardType="url"/>
+                            
+                            {modalClassType === 'live' ? (
+                                <>
+                                    <Text style={styles.label}>Meeting Link:</Text>
+                                    <TextInput style={styles.input} placeholder="https://meet.google.com/xyz" value={formData.meet_link} onChangeText={(text) => setFormData(prev => ({ ...prev, meet_link: text }))}/>
+                                </>
+                            ) : (
+                                <>
+                                    <Text style={styles.label}>Topic:</Text>
+                                    <TextInput style={styles.input} placeholder="e.g., Solving Linear Equations" value={formData.topic} onChangeText={(text) => setFormData(prev => ({ ...prev, topic: text }))}/>
+                                    
+                                    <Text style={styles.label}>Video File:</Text>
+                                    <TouchableOpacity style={styles.filePickerButton} onPress={handleSelectVideo} disabled={isEditing}>
+                                        <FontAwesome name="upload" size={16} color="#007bff" />
+                                        <Text style={styles.filePickerText} numberOfLines={1}>{selectedVideo ? selectedVideo.name : (isEditing ? 'Cannot change existing video' : 'Select Video File')}</Text>
+                                    </TouchableOpacity>
+                                </>
+                            )}
+                            
                             <Text style={styles.label}>Description (Optional):</Text>
                             <TextInput style={[styles.input, styles.textArea]} placeholder="Topics to be covered..." value={formData.description} onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))} multiline/>
+                            
                             <View style={styles.modalActions}>
                                 <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setModalVisible(false)}><Text style={styles.saveButtonText}>Cancel</Text></TouchableOpacity>
-                                <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleSave}><Text style={styles.saveButtonText}>Save</Text></TouchableOpacity>
+                                <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleSave} disabled={isSaving}>
+                                    {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save</Text>}
+                                </TouchableOpacity>
                             </View>
                         </ScrollView>
                     </TouchableOpacity>
                 </TouchableOpacity>
             </Modal>
+
+            <Modal visible={videoPlayerVisible} transparent={true} onRequestClose={() => { setCurrentVideoUrl(null); setVideoPlayerVisible(false); }}>
+                <View style={styles.videoModalContainer}>
+                    <TouchableOpacity style={styles.videoCloseButton} onPress={() => { setCurrentVideoUrl(null); setVideoPlayerVisible(false); }}>
+                         <FontAwesome name="close" size={24} color="white" />
+                    </TouchableOpacity>
+                    {currentVideoUrl && (
+                        <Video
+                            source={{ uri: currentVideoUrl }}
+                            style={styles.videoPlayer}
+                            controls={true}
+                            resizeMode="contain"
+                            onError={(e) => { console.error('Video Error:', e); Alert.alert('Video Error', 'Could not load the video.'); }}
+                            onEnd={() => setVideoPlayerVisible(false)}
+                            fullscreen={true}
+                        />
+                    )}
+                </View>
+            </Modal>
         </View>
     );
 };
 
-const ClassCard = ({ classItem, onEdit, onDelete, onJoin, userRole }) => (
+const ClassCard = ({ classItem, onEdit, onDelete, onJoinOrWatch, userRole }) => (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <View>
+        <View style={{flex: 1, paddingRight: 8}}>
             <Text style={styles.cardTitle}>{classItem.title}</Text>
             <Text style={styles.cardSubtitle}>{formatDateTime(classItem.class_datetime)}</Text>
         </View>
@@ -320,16 +408,23 @@ const ClassCard = ({ classItem, onEdit, onDelete, onJoin, userRole }) => (
         )}
       </View>
       <View style={styles.cardBody}>
-          <InfoRow icon="user" text={`Teacher: ${classItem.teacher_name}`} />
+          <InfoRow icon="user" text={`By: ${classItem.teacher_name}`} />
           <InfoRow icon="university" text={`Class: ${classItem.class_group}`} />
           <InfoRow icon="book" text={`Subject: ${classItem.subject}`} />
+          {classItem.topic && <InfoRow icon="lightbulb-o" text={`Topic: ${classItem.topic}`} />}
           {classItem.description && <InfoRow icon="info-circle" text={`Notes: ${classItem.description}`} />}
       </View>
-      {userRole === 'student' && (
-          <TouchableOpacity style={styles.joinButton} onPress={() => onJoin(classItem.meet_link)}>
+      {userRole === 'student' && classItem.class_type === 'live' && new Date(classItem.class_datetime) >= new Date() && (
+          <TouchableOpacity style={styles.joinButton} onPress={() => onJoinOrWatch(classItem)}>
               <FontAwesome name="video-camera" size={18} color="white" />
-              <Text style={styles.joinButtonText}>Join Class</Text>
+              <Text style={styles.joinButtonText}>Join Live Class</Text>
           </TouchableOpacity>
+      )}
+      {classItem.class_type === 'recorded' && classItem.video_url && (
+           <TouchableOpacity style={[styles.joinButton, styles.watchButton]} onPress={() => onJoinOrWatch(classItem)}>
+              <FontAwesome name="play-circle" size={18} color="white" />
+              <Text style={styles.joinButtonText}>Watch Recording</Text>
+           </TouchableOpacity>
       )}
     </View>
 );
@@ -338,7 +433,57 @@ const InfoRow: React.FC<{icon: string, text: string}> = ({ icon, text }) => (
     <View style={styles.infoRow}><FontAwesome name={icon} size={16} color="#555" style={styles.icon} /><Text style={styles.infoText} numberOfLines={2}>{text}</Text></View>
 );
 
-// Styles remain the same
-const styles = StyleSheet.create({ center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }, container: { flex: 1, backgroundColor: '#f0f2f5' }, listContentContainer: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 20 }, header: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, backgroundColor: '#f0f2f5' }, headerTextContainer: { marginLeft: 15 }, headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#333' }, headerSubtitle: { fontSize: 15, color: '#666' }, scheduleButton: { flexDirection: 'row', backgroundColor: '#28a745', padding: 15, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 }, scheduleButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold', marginLeft: 10 }, emptyText: { textAlign: 'center', marginTop: 30, fontSize: 16, color: '#999' }, card: { backgroundColor: 'white', borderRadius: 16, padding: 20, marginBottom: 16, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 5 }, cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingBottom: 12, marginBottom: 12 }, cardTitle: { fontSize: 20, fontWeight: 'bold', color: '#2c3e50' }, cardSubtitle: { fontSize: 14, color: '#7f8c8d', marginTop: 4 }, buttonGroup: { flexDirection: 'row' }, iconButton: { marginLeft: 16, padding: 5 }, cardBody: { marginBottom: 15 }, infoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 }, icon: { width: 24, textAlign: 'center', marginRight: 12, color: '#34495e' }, infoText: { fontSize: 16, color: '#34495e', flex: 1 }, joinButton: { flexDirection: 'row', backgroundColor: '#007bff', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10, elevation: 2, shadowColor: '#007bff', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 }, joinButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold', marginLeft: 10 }, modalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' }, modalContent: { backgroundColor: 'white', borderRadius: 10, padding: 20, width: '90%', maxHeight: '85%' }, modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center', color: '#333' }, label: { fontSize: 16, fontWeight: '500', color: '#555', marginBottom: 8, marginTop: 12 }, input: { borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, marginBottom: 15, backgroundColor: '#f9f9f9', fontSize: 16, color: '#333' }, pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 15, backgroundColor: '#f9f9f9', justifyContent: 'center' }, textArea: { height: 100, textAlignVertical: 'top' }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20 }, modalButton: { paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8, marginLeft: 10, alignItems: 'center' }, cancelButton: { backgroundColor: '#6c757d' }, saveButton: { backgroundColor: '#28a745' }, saveButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 }});
+const styles = StyleSheet.create({ 
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }, 
+    container: { flex: 1, backgroundColor: '#f0f2f5' }, 
+    listContentContainer: { paddingBottom: 20 }, 
+    header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f2f5', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, }, 
+    headerTextContainer: { marginLeft: 15 }, 
+    headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#333' }, 
+    headerSubtitle: { fontSize: 15, color: '#666' }, 
+    scheduleButton: { flexDirection: 'row', backgroundColor: '#28a745', padding: 15, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginHorizontal: 16, marginBottom: 10, elevation: 3 }, 
+    scheduleButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold', marginLeft: 10 }, 
+    emptyText: { textAlign: 'center', marginTop: 30, fontSize: 16, color: '#999' }, 
+    card: { backgroundColor: 'white', borderRadius: 16, padding: 20, marginHorizontal: 16, marginBottom: 16, elevation: 4 }, 
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', borderBottomWidth: 1, borderBottomColor: '#f0f0f0', paddingBottom: 12, marginBottom: 12 }, 
+    cardTitle: { fontSize: 20, fontWeight: 'bold', color: '#2c3e50' }, 
+    cardSubtitle: { fontSize: 14, color: '#7f8c8d', marginTop: 4 }, 
+    buttonGroup: { flexDirection: 'row' }, 
+    iconButton: { marginLeft: 16, padding: 5 }, 
+    cardBody: {}, 
+    infoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 }, 
+    icon: { width: 24, textAlign: 'center', marginRight: 12, color: '#34495e' }, 
+    infoText: { fontSize: 16, color: '#34495e', flex: 1 }, 
+    joinButton: { flexDirection: 'row', backgroundColor: '#007bff', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 15, elevation: 2 }, 
+    watchButton: { backgroundColor: '#5a67d8' },
+    joinButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold', marginLeft: 10 }, 
+    modalBackdrop: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' }, 
+    modalContent: { backgroundColor: 'white', borderRadius: 10, padding: 20, width: '90%', maxHeight: '85%' }, 
+    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, textAlign: 'center', color: '#333' }, 
+    label: { fontSize: 16, fontWeight: '500', color: '#555', marginBottom: 8, marginTop: 12 }, 
+    input: { borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, marginBottom: 15, backgroundColor: '#f9f9f9', fontSize: 16, color: '#333' }, 
+    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 15, backgroundColor: '#f9f9f9', justifyContent: 'center' }, 
+    textArea: { height: 100, textAlignVertical: 'top' }, 
+    modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20 }, 
+    modalButton: { paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8, marginLeft: 10, alignItems: 'center' }, 
+    cancelButton: { backgroundColor: '#6c757d' }, 
+    saveButton: { backgroundColor: '#28a745' }, 
+    saveButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+    tabContainer: { flexDirection: 'row', justifyContent: 'center', marginHorizontal: 16, marginBottom: 20, backgroundColor: '#e4e7ed', borderRadius: 12, },
+    tab: { flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 12, },
+    activeTab: { backgroundColor: '#007bff', elevation: 3 },
+    tabText: { fontSize: 16, fontWeight: '600', color: '#606266' },
+    activeTabText: { color: '#ffffff' },
+    modalTabContainer: { flexDirection: 'row', backgroundColor: '#e9ecef', borderRadius: 8, padding: 4, marginBottom: 15 },
+    modalTab: { flex: 1, paddingVertical: 10, borderRadius: 6, alignItems: 'center' },
+    modalActiveTab: { backgroundColor: 'white', elevation: 2 },
+    modalTabText: { color: '#495057', fontWeight: '600' },
+    modalActiveTabText: { color: '#007bff' },
+    filePickerButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e9f5ff', borderWidth: 1, borderColor: '#007bff', padding: 12, borderRadius: 8, marginBottom: 15 },
+    filePickerText: { marginLeft: 10, color: '#007bff', flex: 1, fontSize: 16 },
+    videoModalContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
+    videoPlayer: { width: '100%', height: '100%' },
+    videoCloseButton: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 30, right: 20, zIndex: 1, padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20 }
+});
 
 export default OnlineClassScreen;

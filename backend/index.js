@@ -104,6 +104,32 @@ const galleryStorage = multer.diskStorage({
 });
 const galleryUpload = multer({ storage: galleryStorage });
 
+// ★★★★★ NEW: Multer Configuration for Recorded Class Videos ★★★★★
+const videoStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        // We use the same destination as your other uploads for consistency
+        cb(null, '/data/uploads'); 
+    },
+    filename: (req, file, cb) => {
+        // A unique filename pattern for recorded videos
+        cb(null, `recorded-class-${Date.now()}${path.extname(file.originalname)}`);
+    }
+});
+
+const videoUpload = multer({ 
+    storage: videoStorage,
+    limits: { fileSize: 200 * 1024 * 1024 }, // Set a 200MB file size limit (adjust as needed)
+    fileFilter: (req, file, cb) => {
+        // Ensure only video files are uploaded
+        if (file.mimetype.startsWith('video/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only video files are allowed.'), false);
+        }
+    }
+});
+
+
 const db = mysql.createPool({
     uri: process.env.DATABASE_URL,
     waitForConnections: true,
@@ -5884,40 +5910,36 @@ app.put('/api/notifications/:notificationId/read', verifyToken, async (req, res)
 // ★★★ START: ONLINE CLASS MODULE API ROUTES (CORRECTED & FINAL) ★★★
 // ==========================================================
 
-// GET all online classes (NOW WITH ROLE-AWARE FILTERING)
+// GET all online classes (NOW WITH FULL VIDEO URL)
 app.get('/api/online-classes', verifyToken, async (req, res) => {
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
     try {
-        // Admins and teachers see all online classes
-        if (userRole === 'admin' || userRole === 'teacher') {
-            const query = 'SELECT * FROM online_classes ORDER BY class_datetime DESC';
-            const [classes] = await db.query(query);
-            return res.status(200).json(classes);
-        }
+        let query = 'SELECT * FROM online_classes';
+        const params = [];
 
-        // Students only see classes for their group or for 'All' classes
-        if (userRole === 'student') {
-            const [[user]] = await db.query('SELECT class_group FROM users WHERE id = ?', [userId]);
-            if (!user || !user.class_group) {
-                const query = `SELECT * FROM online_classes WHERE class_group = 'All' ORDER BY class_datetime DESC`;
-                const [classes] = await db.query(query);
-                return res.status(200).json(classes);
+        if (req.user.role === 'student') {
+            const [[user]] = await db.query('SELECT class_group FROM users WHERE id = ?', [req.user.id]);
+            const classGroup = user ? user.class_group : null;
+            if (classGroup) {
+                query += ` WHERE class_group = ? OR class_group = 'All'`;
+                params.push(classGroup);
+            } else {
+                query += ` WHERE class_group = 'All'`;
             }
-
-            const studentClassGroup = user.class_group;
-            const query = `
-                SELECT * FROM online_classes 
-                WHERE class_group = ? OR class_group = 'All' 
-                ORDER BY class_datetime DESC
-            `;
-            const [classes] = await db.query(query, [studentClassGroup]);
-            return res.status(200).json(classes);
         }
         
-        // Deny access for other roles
-        res.status(403).json({ message: "You do not have permission to view online classes." });
+        query += ' ORDER BY class_datetime DESC';
+        const [classes] = await db.query(query, params);
+
+        // Construct the full URL for video files
+        const classesWithFullUrls = classes.map(cls => {
+            if (cls.class_type === 'recorded' && cls.video_url) {
+                const fullUrl = `${req.protocol}://${req.get('host')}${cls.video_url}`;
+                return { ...cls, video_url: fullUrl };
+            }
+            return cls;
+        });
+        
+        return res.status(200).json(classesWithFullUrls);
 
     } catch (error) {
         console.error("GET /api/online-classes Error:", error);
@@ -5925,28 +5947,26 @@ app.get('/api/online-classes', verifyToken, async (req, res) => {
     }
 });
 
-// GET list of classes for the form
-app.get('/api/student-classes', verifyToken, async (req, res) => {
-    try {
-        const query = "SELECT DISTINCT class_group FROM users WHERE role = 'student' AND class_group IS NOT NULL AND class_group != '' ORDER BY class_group ASC";
-        const [results] = await db.query(query);
-        const classes = results.map(item => item.class_group);
-        res.status(200).json(classes);
-    } catch (error) {
-        console.error("GET /api/student-classes Error:", error);
-        res.status(500).json({ message: 'Could not fetch student classes.' });
-    }
-});
 
-// POST a new online class (NOW WITH CORRECT NOTIFICATION LOGIC)
-app.post('/api/online-classes', verifyToken, async (req, res) => {
-    const { title, class_group, subject, teacher_id, class_datetime, meet_link, description } = req.body;
+// POST a new online class (HANDLES VIDEO FILE UPLOAD)
+app.post('/api/online-classes', verifyToken, videoUpload.single('videoFile'), async (req, res) => {
+    // The field name 'videoFile' must match the key in the frontend FormData
+    const { title, class_group, subject, teacher_id, class_datetime, meet_link, description, class_type, topic } = req.body;
     const created_by = req.user.id;
-    
-    if (!title || !class_group || !subject || !teacher_id || !class_datetime || !meet_link) {
-        return res.status(400).json({ message: 'All required fields must be filled.' });
-    }
 
+    // Validation
+    if (!title || !class_group || !subject || !teacher_id || !class_datetime || !class_type) {
+        return res.status(400).json({ message: 'Core fields are required.' });
+    }
+    if (class_type === 'live' && !meet_link) return res.status(400).json({ message: 'A meeting link is required for live classes.' });
+    if (class_type === 'recorded' && !req.file) return res.status(400).json({ message: 'A video file is required for recorded classes.' });
+
+    let video_url_path = null;
+    if (class_type === 'recorded' && req.file) {
+        // Store the public URL path, not the absolute file system path
+        video_url_path = `/uploads/${req.file.filename}`;
+    }
+    
     const jsDate = new Date(class_datetime);
     const formattedMysqlDatetime = jsDate.toISOString().slice(0, 19).replace('T', ' ');
 
@@ -5960,55 +5980,53 @@ app.post('/api/online-classes', verifyToken, async (req, res) => {
             return res.status(404).json({ message: 'Selected teacher not found.' });
         }
 
-        const query = `INSERT INTO online_classes (title, class_group, subject, teacher_id, teacher_name, class_datetime, meet_link, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-        await connection.query(query, [title, class_group, subject, teacher_id, teacher.full_name, formattedMysqlDatetime, meet_link, description]);
+        const query = `INSERT INTO online_classes (title, class_group, subject, teacher_id, teacher_name, class_datetime, meet_link, description, class_type, topic, video_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        await connection.query(query, [title, class_group, subject, teacher_id, teacher.full_name, formattedMysqlDatetime, meet_link || null, description || null, class_type, topic || null, video_url_path]);
 
-        // --- Corrected Notification Logic ---
-        let studentsQuery = "SELECT id FROM users WHERE role = 'student'";
-        const queryParams = [];
-        if (class_group !== 'All') {
-            studentsQuery += " AND class_group = ?";
-            queryParams.push(class_group);
-        }
+        if (class_type === 'live') {
+            let studentsQuery = "SELECT id FROM users WHERE role = 'student'";
+            const queryParams = [];
+            if (class_group !== 'All') {
+                studentsQuery += " AND class_group = ?";
+                queryParams.push(class_group);
+            }
+            const [students] = await connection.query(studentsQuery, queryParams);
+            const studentIds = students.map(s => s.id);
+            const recipientIds = [...new Set([parseInt(teacher_id, 10), ...studentIds])];
+            if (recipientIds.length > 0) {
+                 const senderName = req.user.full_name || "School Administration";
+                 const displayClass = class_group === 'All' ? 'all classes' : class_group;
+                 const notificationTitle = `New Online Class: ${subject}`;
+                 const eventDate = new Date(class_datetime).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+                 const notificationMessage = `A class on "${title}" for ${displayClass} with ${teacher.full_name} is scheduled for ${eventDate}.`;
 
-        const [students] = await connection.query(studentsQuery, queryParams);
-        const studentIds = students.map(s => s.id);
-        const recipientIds = [...new Set([parseInt(teacher_id, 10), ...studentIds])];
-
-        if (recipientIds.length > 0) {
-            const senderName = req.user.full_name || "School Administration";
-            const displayClass = class_group === 'All' ? 'all classes' : class_group;
-            const notificationTitle = `New Online Class: ${subject}`;
-            const eventDate = new Date(class_datetime).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-            const notificationMessage = `A class on "${title}" for ${displayClass} with ${teacher.full_name} is scheduled for ${eventDate}.`;
-
-            await createBulkNotifications(connection, recipientIds, senderName, notificationTitle, notificationMessage, '/online-class');
+                 await createBulkNotifications(connection, recipientIds, senderName, notificationTitle, notificationMessage, '/online-class');
+            }
         }
 
         await connection.commit();
-        res.status(201).json({ message: 'Online class scheduled and users notified successfully!' });
+        res.status(201).json({ message: `Class ${class_type === 'live' ? 'scheduled' : 'uploaded'} successfully!` });
 
     } catch (error) {
         await connection.rollback();
         console.error("POST /api/online-classes Error:", error);
-        res.status(500).json({ message: 'Failed to schedule the class.' });
+        res.status(500).json({ message: 'Failed to save the class.' });
     } finally {
         connection.release();
     }
 });
 
-// PUT (update) an existing class
+
+// PUT (update) an existing class (Does not handle file change for simplicity)
 app.put('/api/online-classes/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
-    const { title, meet_link, description } = req.body;
+    const { title, meet_link, description, topic } = req.body;
 
     try {
-        const query = `UPDATE online_classes SET title = ?, meet_link = ?, description = ? WHERE id = ?`;
-        const [result] = await db.query(query, [title, meet_link, description || null, id]);
+        const query = `UPDATE online_classes SET title = ?, meet_link = ?, description = ?, topic = ? WHERE id = ?`;
+        const [result] = await db.query(query, [title, meet_link || null, description || null, topic || null, id]);
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Class not found.' });
-        }
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Class not found.' });
         res.status(200).json({ message: 'Class updated successfully!' });
     } catch (error) {
         console.error(`PUT /api/online-classes/${id} Error:`, error);
@@ -6016,32 +6034,59 @@ app.put('/api/online-classes/:id', verifyToken, async (req, res) => {
     }
 });
 
-// DELETE a class
+
+// DELETE a class (Now also deletes the associated video file)
 app.delete('/api/online-classes/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
+    const connection = await db.getConnection();
     try {
+        await connection.beginTransaction();
+        
+        const [[classToDelete]] = await connection.query('SELECT video_url FROM online_classes WHERE id = ?', [id]);
+        
         const query = 'DELETE FROM online_classes WHERE id = ?';
-        const [result] = await db.query(query, [id]);
+        const [result] = await connection.query(query, [id]);
 
         if (result.affectedRows === 0) {
+            await connection.rollback();
             return res.status(404).json({ message: 'Class not found.' });
         }
+        
+        if (classToDelete && classToDelete.video_url) {
+            const filename = path.basename(classToDelete.video_url);
+            const filePath = path.join('/data/uploads', filename);
+            
+            fs.unlink(filePath, (err) => {
+                if (err) console.error("Error deleting video file:", err);
+                else console.log("Deleted video file:", filePath);
+            });
+        }
+        
+        await connection.commit();
         res.status(200).json({ message: 'Class deleted successfully.' });
     } catch (error) {
+        await connection.rollback();
         console.error(`DELETE /api/online-classes/${id} Error:`, error);
         res.status(500).json({ message: 'Failed to delete class.' });
+    } finally {
+        connection.release();
     }
 });
 
-// ==========================================================
-// --- DYNAMIC FORM DATA API ROUTES ---
-// ==========================================================
-
-// ★★★ NEW ROUTE 1: GET SUBJECTS FOR A SPECIFIC CLASS ★★★
+app.get('/api/student-classes', verifyToken, async (req, res) => {
+    try {
+        const query = "SELECT DISTINCT class_group FROM users WHERE role = 'student' AND class_group IS NOT NULL AND class_group != '' ORDER BY class_group ASC";
+        const [results] = await db.query(query);
+        const classes = results.map(item => item.class_group);
+        res.status(200).json(classes);
+    } catch (error) {
+        console.error("GET /api/student-classes Error:", error);
+        res.status(500).json({ message: 'Could not fetch student classes.' });
+    }
+});
 app.get('/api/subjects-for-class/:classGroup', async (req, res) => {
     const { classGroup } = req.params;
     try {
-        // This query finds all unique subjects assigned to a class in the timetable.
         const query = "SELECT DISTINCT subject_name FROM timetables WHERE class_group = ? ORDER BY subject_name ASC";
         const [results] = await db.query(query, [classGroup]);
         const subjects = results.map(item => item.subject_name);
@@ -6051,17 +6096,14 @@ app.get('/api/subjects-for-class/:classGroup', async (req, res) => {
         res.status(500).json({ message: 'Could not fetch subjects for the selected class.' });
     }
 });
-
-// ★★★ NEW ROUTE 2: GET TEACHERS FOR A SPECIFIC CLASS ★★★
 app.get('/api/teachers-for-class/:classGroup', async (req, res) => {
     const { classGroup } = req.params;
     try {
-        // This query finds all unique teachers assigned to a class in the timetable.
         const query = `
             SELECT DISTINCT u.id, u.full_name 
             FROM users u
             JOIN timetables t ON u.id = t.teacher_id
-            WHERE t.class_group = ? AND u.role = 'teacher'
+            WHERE t.class_group = ? AND u.role IN ('teacher', 'admin')
             ORDER BY u.full_name ASC
         `;
         const [teachers] = await db.query(query, [classGroup]);
@@ -6071,14 +6113,33 @@ app.get('/api/teachers-for-class/:classGroup', async (req, res) => {
         res.status(500).json({ message: 'Could not fetch teachers for the selected class.' });
     }
 });
+app.get('/api/all-teachers-and-admins', verifyToken, async (req, res) => {
+    try {
+        const query = "SELECT id, full_name FROM users WHERE role IN ('teacher', 'admin') ORDER BY full_name ASC";
+        const [users] = await db.query(query);
+        res.status(200).json(users);
+    } catch (error) {
+        console.error("GET /api/all-teachers-and-admins Error:", error);
+        res.status(500).json({ message: 'Could not fetch teachers and admins.' });
+    }
+});
+app.get('/api/subjects/all-unique', verifyToken, async (req, res) => {
+    try {
+        const query = "SELECT DISTINCT subject_name FROM timetables ORDER BY subject_name ASC";
+        const [results] = await db.query(query);
+        const subjects = results.map(item => item.subject_name);
+        res.status(200).json(subjects);
+    } catch (error) {
+        console.error("GET /api/subjects/all-unique Error:", error);
+        res.status(500).json({ message: 'Could not fetch all subjects.' });
+    }
+});
 
 
 
 // ==========================================================
 // --- ALUMNI RECORDS API ROUTES (WITH IMAGE UPLOAD) ---
 // ==========================================================
-
-
 
 // Add a dedicated multer storage config for alumni photos
 const alumniStorage = multer.diskStorage({
