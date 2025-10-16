@@ -5920,7 +5920,6 @@ app.get('/api/online-classes', verifyToken, async (req, res) => {
 
 // POST a new online class (HANDLES VIDEO FILE UPLOAD)
 app.post('/api/online-classes', verifyToken, videoUpload.single('videoFile'), async (req, res) => {
-    // The field name 'videoFile' must match the key in the frontend FormData
     const { title, class_group, subject, teacher_id, class_datetime, meet_link, description, class_type, topic } = req.body;
     const created_by = req.user.id;
 
@@ -5933,7 +5932,6 @@ app.post('/api/online-classes', verifyToken, videoUpload.single('videoFile'), as
 
     let video_url_path = null;
     if (class_type === 'recorded' && req.file) {
-        // Store the public URL path, not the absolute file system path
         video_url_path = `/uploads/${req.file.filename}`;
     }
     
@@ -5978,9 +5976,8 @@ app.post('/api/online-classes', verifyToken, videoUpload.single('videoFile'), as
         res.status(201).json({ message: `Class ${class_type === 'live' ? 'scheduled' : 'uploaded'} successfully!` });
 
     } catch (error) {
-        // Log the full error for debugging
-        console.error("POST /api/online-classes Error:", error);
         await connection.rollback();
+        console.error("POST /api/online-classes Error:", error);
         res.status(500).json({ message: 'Failed to save the class.' });
     } finally {
         connection.release();
