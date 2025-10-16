@@ -18,7 +18,7 @@ export interface Meeting {
 // These are the props (parameters) that our MeetingCard component accepts.
 interface MeetingCardProps {
   meeting: Meeting;
-  isAdmin: boolean; 
+  isAdmin: boolean;
   onEdit?: (meeting: Meeting) => void;
   onDelete?: (id: number) => void;
   onJoin?: (link: string) => void; 
@@ -40,9 +40,9 @@ const formatMeetingDate = (isoDate: string): string => {
 
 // This is the main MeetingCard component.
 export const MeetingCard = ({ meeting, isAdmin, onEdit, onDelete, onJoin }: MeetingCardProps) => {
-  
-  // This logic is correct. It will work once the backend sends the `meeting_link`.
-  const canJoin = meeting.status === 'Scheduled' && meeting.meeting_link && onJoin;
+
+  // Render Join Meeting button for any role if meeting is Scheduled, meeting_link exists, and onJoin prop is given
+  const canJoin = meeting.status === 'Scheduled' && meeting.meeting_link && typeof onJoin === 'function';
 
   return (
     <View style={styles.cardContainer}>
@@ -54,7 +54,6 @@ export const MeetingCard = ({ meeting, isAdmin, onEdit, onDelete, onJoin }: Meet
               <Text style={styles.headerSubtitle}>Parent-Teacher Meeting</Text>
             </View>
         </View>
-
         {isAdmin && onEdit && onDelete && (
             <View style={styles.cardActions}>
               <TouchableOpacity onPress={() => onEdit(meeting)} style={[styles.actionBtn, styles.editBtn]}>
@@ -66,7 +65,6 @@ export const MeetingCard = ({ meeting, isAdmin, onEdit, onDelete, onJoin }: Meet
             </View>
         )}
       </View>
-
       <View style={styles.cardBody}>
         <View style={styles.detailRow}>
             <Text style={styles.icon}>🧑‍🏫</Text>
@@ -88,7 +86,6 @@ export const MeetingCard = ({ meeting, isAdmin, onEdit, onDelete, onJoin }: Meet
             </View>
         </View>
       </View>
-
       <View>
         {canJoin && (
             <TouchableOpacity style={styles.joinButton} onPress={() => onJoin(meeting.meeting_link!)}>
@@ -96,7 +93,6 @@ export const MeetingCard = ({ meeting, isAdmin, onEdit, onDelete, onJoin }: Meet
                 <Text style={styles.joinButtonText}>Join Meeting</Text>
             </TouchableOpacity>
         )}
-
         {meeting.notes ? (
             <View style={styles.notesContainer}>
               <Text style={styles.notesTitle}>Notes/Summary:</Text>
