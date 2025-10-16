@@ -5921,7 +5921,7 @@ app.get('/api/online-classes', verifyToken, async (req, res) => {
 // POST a new online class (HANDLES VIDEO FILE UPLOAD)
 app.post('/api/online-classes', verifyToken, videoUpload.single('videoFile'), async (req, res) => {
     const { title, class_group, subject, teacher_id, class_datetime, meet_link, description, class_type, topic } = req.body;
-    const created_by = req.user.id;
+    const created_by = req.user.id; // This value will now be saved
 
     // Validation
     if (!title || !class_group || !subject || !teacher_id || !class_datetime || !class_type) {
@@ -5948,8 +5948,9 @@ app.post('/api/online-classes', verifyToken, videoUpload.single('videoFile'), as
             return res.status(404).json({ message: 'Selected teacher not found.' });
         }
 
-        const query = `INSERT INTO online_classes (title, class_group, subject, teacher_id, teacher_name, class_datetime, meet_link, description, class_type, topic, video_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        await connection.query(query, [title, class_group, subject, teacher_id, teacher.full_name, formattedMysqlDatetime, meet_link || null, description || null, class_type, topic || null, video_url_path]);
+        // MODIFIED: Added `created_by` to the query and parameters
+        const query = `INSERT INTO online_classes (title, class_group, subject, teacher_id, teacher_name, class_datetime, meet_link, description, class_type, topic, video_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        await connection.query(query, [title, class_group, subject, teacher_id, teacher.full_name, formattedMysqlDatetime, meet_link || null, description || null, class_type, topic || null, video_url_path, created_by]);
 
         if (class_type === 'live') {
             let studentsQuery = "SELECT id FROM users WHERE role = 'student'";
@@ -6102,6 +6103,7 @@ app.get('/api/subjects/all-unique', verifyToken, async (req, res) => {
         res.status(500).json({ message: 'Could not fetch all subjects.' });
     }
 });
+
 
 
 // ==========================================================
