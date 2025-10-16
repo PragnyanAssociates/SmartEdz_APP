@@ -386,6 +386,9 @@ app.get('/api/profiles/:userId', async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Database error fetching profile' }); }
 });
 
+// ==========================================================
+// --- MODIFIED PROFILE UPDATE ROUTE ---
+// ==========================================================
 app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res) => {
     const userId = parseInt(req.params.userId, 10);
     const { 
@@ -393,13 +396,46 @@ app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res)
         admission_no, parent_name, aadhar_no, pen_no 
     } = req.body;
     const connection = await db.getConnection();
+
     try {
         await connection.beginTransaction();
+
+        // Update the separate 'users' table if needed
         if (full_name !== undefined || class_group !== undefined) {
             await connection.query('UPDATE users SET full_name = ?, class_group = ? WHERE id = ?', [full_name, class_group, userId]);
         }
-        let profile_image_url = req.body.profile_image_url === 'null' ? null : req.body.profile_image_url;
-        if (req.file) profile_image_url = `/uploads/${req.file.filename}`;
+        
+        // --- Handle Profile Image File Deletion Logic ---
+        const [currentUserProfileRows] = await connection.query('SELECT profile_image_url FROM user_profiles WHERE user_id = ?', [userId]);
+        const currentImageUrl = currentUserProfileRows[0]?.profile_image_url;
+        let newImageUrl = currentImageUrl; // Default to keeping the existing image
+
+        const deleteCurrentImageFile = () => {
+            if (currentImageUrl) {
+                // IMPORTANT: This path assumes your server file is in the project root,
+                // and you have a 'public' folder which contains the 'uploads' folder.
+                // Adjust this path if your folder structure is different.
+                // For example: path.join(__dirname, '..', 'public', currentImageUrl);
+                const imagePath = path.join(__dirname, 'public', currentImageUrl);
+                fs.unlink(imagePath, (err) => {
+                    if (err) console.error(`Failed to delete old image at ${imagePath}:`, err);
+                    else console.log(`Deleted old image: ${imagePath}`);
+                });
+            }
+        };
+
+        if (req.file) { 
+            // Case 1: New image was uploaded. Delete the old one.
+            deleteCurrentImageFile();
+            newImageUrl = `/uploads/${req.file.filename}`;
+        } else if (req.body.profile_image_url === 'null') { 
+            // Case 2: User requested to remove the image. Delete the old one.
+            deleteCurrentImageFile();
+            newImageUrl = null;
+        }
+        // Case 3 (else): No image change was requested, newImageUrl remains unchanged.
+
+        // Update the 'user_profiles' table with all data and the final image URL
         const profileSql = `
             INSERT INTO user_profiles (user_id, email, dob, gender, phone, address, profile_image_url, admission_date, roll_no, admission_no, parent_name, aadhar_no, pen_no) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
@@ -410,14 +446,31 @@ app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res)
                 admission_no = VALUES(admission_no), parent_name = VALUES(parent_name),
                 aadhar_no = VALUES(aadhar_no), pen_no = VALUES(pen_no)
         `;
-        await connection.query(profileSql, [userId, email, dob, gender, phone, address, profile_image_url, admission_date, roll_no, admission_no, parent_name, aadhar_no, pen_no]);
+        await connection.query(profileSql, [userId, email, dob, gender, phone, address, newImageUrl, admission_date, roll_no, admission_no, parent_name, aadhar_no, pen_no]);
+        
         await connection.commit();
-        res.status(200).json({ message: 'Profile updated successfully!', profile_image_url: profile_image_url });
+        res.status(200).json({ message: 'Profile updated successfully!', profile_image_url: newImageUrl });
+
     } catch (error) {
         await connection.rollback();
+        console.error("Profile Update Error:", error);
+        
+        // If the database transaction fails, delete the newly uploaded file to prevent orphaned files
+        if (req.file) {
+            const uploadedFilePath = path.join(__dirname, 'public', 'uploads', req.file.filename);
+            fs.unlink(uploadedFilePath, (err) => {
+                if (err) console.error(`Failed to delete orphaned upload ${uploadedFilePath}:`, err);
+            });
+        }
+        
         res.status(500).json({ message: 'An error occurred while updating the profile.' });
-    } finally { connection.release(); }
+    } finally { 
+        connection.release(); 
+    }
 });
+// ==========================================================
+// --- END OF MODIFIED ROUTE ---
+// ==========================================================
 
 app.patch('/api/users/:id/reset-password', async (req, res) => {
     const { id } = req.params;
