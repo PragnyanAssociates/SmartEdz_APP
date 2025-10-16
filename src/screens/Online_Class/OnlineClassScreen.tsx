@@ -1,10 +1,9 @@
-// 📂 File: src/screens/Online_Class/OnlineClassScreen.tsx
+// 📂 File: src/screens/Online_Class/OnlineClassScreen.tsx (FINAL CORRECTED VERSION)
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking,
-  // MODIFIED: Added PermissionsAndroid and Platform
-  ActivityIndicator, Modal, TextInput, FlatList, Platform, PermissionsAndroid
+  ActivityIndicator, Modal, TextInput, FlatList, Platform
 } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -12,7 +11,8 @@ import { useAuth } from '../../context/AuthContext';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import apiClient from '../../api/client';
-import DocumentPicker, { DocumentPickerResponse } from '@react-native-documents/picker';
+// MODIFIED: Replaced DocumentPicker with ImagePicker
+import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import Video from 'react-native-video';
 
 // --- TYPE DEFINITIONS ---
@@ -55,7 +55,8 @@ const OnlineClassScreen: React.FC = () => {
     const [formData, setFormData] = useState<FormData>(initialFormState);
     const [date, setDate] = useState(new Date());
     const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
-    const [selectedVideo, setSelectedVideo] = useState<DocumentPickerResponse | null>(null);
+    // MODIFIED: Changed state type to Asset from react-native-image-picker
+    const [selectedVideo, setSelectedVideo] = useState<Asset | null>(null);
     const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
     const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
 
@@ -69,7 +70,8 @@ const OnlineClassScreen: React.FC = () => {
                 apiClient.get('/student-classes'),
             ]);
             setAllClasses(classesRes.data);
-            setClassGroups(['All', ...classGroupsRes.data]);
+            // MODIFIED: Removed 'All' from the class groups list
+            setClassGroups(classGroupsRes.data);
         } catch (error: any) {
             Alert.alert("Error", error.response?.data?.message || 'An unknown error occurred.');
         } finally {
@@ -83,33 +85,21 @@ const OnlineClassScreen: React.FC = () => {
     
     useEffect(() => {
         const fetchClassSpecificData = async () => {
-            if (!modalVisible || isEditing) return;
+            if (!modalVisible || isEditing || !formData.class_group) return;
 
             setSubjects([]); 
             setTeachers([]);
 
-            if (formData.class_group === 'All') {
-                try {
-                    const [subjectsRes, teachersRes] = await Promise.all([
-                        apiClient.get('/subjects/all-unique'),
-                        apiClient.get('/all-teachers-and-admins')
-                    ]);
-                    setSubjects(subjectsRes.data);
-                    setTeachers(teachersRes.data);
-                } catch (error: any) {
-                    Alert.alert("Error fetching details", error.response?.data?.message || 'Could not load details for "All" classes.');
-                }
-            } else if (formData.class_group) {
-                try {
-                    const [subjectsRes, teachersRes] = await Promise.all([
-                        apiClient.get(`/subjects-for-class/${formData.class_group}`),
-                        apiClient.get(`/teachers-for-class/${formData.class_group}`)
-                    ]);
-                    setSubjects(subjectsRes.data);
-                    setTeachers(teachersRes.data);
-                } catch (error: any) {
-                    Alert.alert("Error fetching details", error.response?.data?.message || 'Could not load class details.');
-                }
+            // MODIFIED: Simplified logic since 'All' is removed from the creation dropdown
+            try {
+                const [subjectsRes, teachersRes] = await Promise.all([
+                    apiClient.get(`/subjects-for-class/${formData.class_group}`),
+                    apiClient.get(`/teachers-for-class/${formData.class_group}`)
+                ]);
+                setSubjects(subjectsRes.data);
+                setTeachers(teachersRes.data);
+            } catch (error: any) {
+                Alert.alert("Error fetching details", error.response?.data?.message || 'Could not load class details.');
             }
         };
         fetchClassSpecificData();
@@ -177,49 +167,24 @@ const OnlineClassScreen: React.FC = () => {
         setModalVisible(true);
     };
 
-    // ==========================================================
-    // ★★★ MODIFIED & REWRITTEN: handleSelectVideo function ★★★
-    // ==========================================================
-    const requestStoragePermission = async () => {
-        if (Platform.OS !== 'android') return true;
-        try {
-            // Use READ_MEDIA_VIDEO for Android 13+
-            const permission = Platform.Version >= 33 
-                ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO
-                : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
-            
-            const granted = await PermissionsAndroid.request(permission, {
-                title: "Storage Permission Needed",
-                message: "This app needs access to your storage to select a video.",
-                buttonNeutral: "Ask Me Later",
-                buttonNegative: "Cancel",
-                buttonPositive: "OK"
-            });
-            return granted === PermissionsAndroid.RESULTS.GRANTED;
-        } catch (err) {
-            console.warn(err);
-            return false;
-        }
-    };
-    
+    // MODIFIED: Replaced DocumentPicker with react-native-image-picker
     const handleSelectVideo = async () => {
-        const hasPermission = await requestStoragePermission();
-        if (!hasPermission) {
-            Alert.alert("Permission Denied", "You need to grant storage permission to select a video file.");
+        const result = await launchImageLibrary({
+            mediaType: 'video',
+            videoQuality: 'high',
+        });
+
+        if (result.didCancel) {
+            console.log('User cancelled video picker');
             return;
         }
-
-        try {
-            const res = await DocumentPicker.pickSingle({ 
-              type: [DocumentPicker.types.video],
-              copyTo: 'cachesDirectory' 
-            });
-            setSelectedVideo(res);
-        } catch (err) {
-            if (!DocumentPicker.isCancel(err)) {
-                Alert.alert("Error", "Could not select video file.");
-                console.error("Document Picker Error: ", err);
-            }
+        if (result.errorCode) {
+            console.log('ImagePicker Error: ', result.errorMessage);
+            Alert.alert('Error', 'Could not select video. Please try again.');
+            return;
+        }
+        if (result.assets && result.assets.length > 0) {
+            setSelectedVideo(result.assets[0]);
         }
     };
     
@@ -280,7 +245,8 @@ const OnlineClassScreen: React.FC = () => {
             data.append('videoFile', {
                 uri: selectedVideo.uri,
                 type: selectedVideo.type,
-                name: selectedVideo.name,
+                // MODIFIED: Use fileName from react-native-image-picker
+                name: selectedVideo.fileName,
             } as any);
         }
 
@@ -360,7 +326,7 @@ const OnlineClassScreen: React.FC = () => {
             <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
                 <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setModalVisible(false)}>
                     <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
-                        <ScrollView>
+                        <ScrollView showsVerticalScrollIndicator={false}>
                             <Text style={styles.modalTitle}>{isEditing ? 'Edit Class' : 'Add New Class'}</Text>
                              {!isEditing && ( <View style={styles.modalTabContainer}>
                                     <TouchableOpacity style={[styles.modalTab, modalClassType === 'live' && styles.modalActiveTab]} onPress={() => setModalClassType('live')}>
@@ -416,7 +382,8 @@ const OnlineClassScreen: React.FC = () => {
                                     <Text style={styles.label}>Video File:</Text>
                                     <TouchableOpacity style={styles.filePickerButton} onPress={handleSelectVideo} disabled={isEditing}>
                                         <FontAwesome name="upload" size={16} color="#007bff" />
-                                        <Text style={styles.filePickerText} numberOfLines={1}>{selectedVideo ? selectedVideo.name : (isEditing ? 'Cannot change existing video' : 'Select Video File')}</Text>
+                                        {/* MODIFIED: Use fileName to display the selected video name */}
+                                        <Text style={styles.filePickerText} numberOfLines={1}>{selectedVideo ? selectedVideo.fileName : (isEditing ? 'Cannot change existing video' : 'Select Video File')}</Text>
                                     </TouchableOpacity>
                                 </>
                             )}
@@ -457,45 +424,54 @@ const OnlineClassScreen: React.FC = () => {
     );
 };
 
-const ClassCard = ({ classItem, onEdit, onDelete, onJoinOrWatch, userRole }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={{flex: 1, paddingRight: 8}}>
-            <Text style={styles.cardTitle}>{classItem.title}</Text>
-            <Text style={styles.cardSubtitle}>{formatDateTime(classItem.class_datetime)}</Text>
+const ClassCard = ({ classItem, onEdit, onDelete, onJoinOrWatch, userRole }) => {
+    // MODIFIED: Logic to show Join button for admin/teacher and only future classes for students
+    const isFutureClass = new Date(classItem.class_datetime) >= new Date();
+    const canJoin = (userRole === 'admin' || userRole === 'teacher') || (userRole === 'student' && isFutureClass);
+
+    return (
+        <View style={styles.card}>
+            <View style={styles.cardHeader}>
+                <View style={{flex: 1, paddingRight: 8}}>
+                    <Text style={styles.cardTitle}>{classItem.title}</Text>
+                    <Text style={styles.cardSubtitle}>{formatDateTime(classItem.class_datetime)}</Text>
+                </View>
+                {(userRole === 'admin' || userRole === 'teacher') && (
+                <View style={styles.buttonGroup}>
+                    <TouchableOpacity style={styles.iconButton} onPress={() => onEdit(classItem)}>
+                        <FontAwesome name="pencil" size={18} color="#ffc107" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.iconButton} onPress={() => onDelete(classItem.id)}>
+                        <FontAwesome name="trash" size={18} color="#dc3545" />
+                    </TouchableOpacity>
+                </View>
+                )}
+            </View>
+            <View style={styles.cardBody}>
+                <InfoRow icon="user" text={`By: ${classItem.teacher_name}`} />
+                <InfoRow icon="university" text={`Class: ${classItem.class_group}`} />
+                <InfoRow icon="book" text={`Subject: ${classItem.subject}`} />
+                {classItem.topic && <InfoRow icon="lightbulb-o" text={`Topic: ${classItem.topic}`} />}
+                {classItem.description && <InfoRow icon="info-circle" text={`Notes: ${classItem.description}`} />}
+            </View>
+            
+            {/* MODIFIED: Updated condition to show Join button */}
+            {classItem.class_type === 'live' && classItem.meet_link && canJoin && (
+                <TouchableOpacity style={styles.joinButton} onPress={() => onJoinOrWatch(classItem)}>
+                    <FontAwesome name="video-camera" size={18} color="white" />
+                    <Text style={styles.joinButtonText}>Join Live Class</Text>
+                </TouchableOpacity>
+            )}
+
+            {classItem.class_type === 'recorded' && classItem.video_url && (
+                <TouchableOpacity style={[styles.joinButton, styles.watchButton]} onPress={() => onJoinOrWatch(classItem)}>
+                    <FontAwesome name="play-circle" size={18} color="white" />
+                    <Text style={styles.joinButtonText}>Watch Recording</Text>
+                </TouchableOpacity>
+            )}
         </View>
-        {(userRole === 'admin' || userRole === 'teacher') && (
-           <View style={styles.buttonGroup}>
-              <TouchableOpacity style={styles.iconButton} onPress={() => onEdit(classItem)}>
-                  <FontAwesome name="pencil" size={18} color="#ffc107" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconButton} onPress={() => onDelete(classItem.id)}>
-                  <FontAwesome name="trash" size={18} color="#dc3545" />
-              </TouchableOpacity>
-           </View>
-        )}
-      </View>
-      <View style={styles.cardBody}>
-          <InfoRow icon="user" text={`By: ${classItem.teacher_name}`} />
-          <InfoRow icon="university" text={`Class: ${classItem.class_group}`} />
-          <InfoRow icon="book" text={`Subject: ${classItem.subject}`} />
-          {classItem.topic && <InfoRow icon="lightbulb-o" text={`Topic: ${classItem.topic}`} />}
-          {classItem.description && <InfoRow icon="info-circle" text={`Notes: ${classItem.description}`} />}
-      </View>
-      {userRole === 'student' && classItem.class_type === 'live' && new Date(classItem.class_datetime) >= new Date() && (
-          <TouchableOpacity style={styles.joinButton} onPress={() => onJoinOrWatch(classItem)}>
-              <FontAwesome name="video-camera" size={18} color="white" />
-              <Text style={styles.joinButtonText}>Join Live Class</Text>
-          </TouchableOpacity>
-      )}
-      {classItem.class_type === 'recorded' && classItem.video_url && (
-           <TouchableOpacity style={[styles.joinButton, styles.watchButton]} onPress={() => onJoinOrWatch(classItem)}>
-              <FontAwesome name="play-circle" size={18} color="white" />
-              <Text style={styles.joinButtonText}>Watch Recording</Text>
-           </TouchableOpacity>
-      )}
-    </View>
-);
+    );
+};
 
 const InfoRow: React.FC<{icon: string, text: string}> = ({ icon, text }) => (
     <View style={styles.infoRow}><FontAwesome name={icon} size={16} color="#555" style={styles.icon} /><Text style={styles.infoText} numberOfLines={2}>{text}</Text></View>
