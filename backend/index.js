@@ -171,6 +171,18 @@ const isAdmin = (req, res, next) => {
     }
 };
 
+// ★★★ THIS IS THE MISSING FUNCTION THAT WAS ADDED ★★★
+const isTeacherOrAdmin = (req, res, next) => {
+    // This middleware runs AFTER verifyToken, so req.user is available.
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'teacher')) {
+        // If the user is an admin or a teacher, allow them to proceed.
+        next();
+    } else {
+        // Otherwise, deny access.
+        res.status(403).json({ message: 'Access denied. Admin or Teacher role required.' });
+    }
+};
+
 
 // ==========================================================
 // --- NOTIFICATION HELPER FUNCTIONS ---
@@ -5778,19 +5790,13 @@ app.post('/api/admin/ad-payment-details', [verifyToken, isAdmin], paymentUpload.
 
 // ★★★ 1. Multer Storage Configuration for Group Chat Media ★★★
 const chatStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // Use your consistent '/data/uploads' path
-        cb(null, '/data/uploads'); 
-    },
-    filename: (req, file, cb) => {
-        cb(null, `chat-media-${Date.now()}${path.extname(file.originalname)}`);
-    }
+    destination: (req, file, cb) => { cb(null, '/data/uploads'); },
+    filename: (req, file, cb) => { cb(null, `chat-media-${Date.now()}${path.extname(file.originalname)}`); }
 });
 const chatUpload = multer({ storage: chatStorage });
 
 // ★★★ 2. API Routes for Group Management (All Secured with verifyToken) ★★★
 
-// Get all users (for adding to a group)
 app.get('/api/users', verifyToken, async (req, res) => {
     try {
         const [users] = await db.query('SELECT id, full_name, role FROM users ORDER BY full_name ASC');
@@ -5801,7 +5807,7 @@ app.get('/api/users', verifyToken, async (req, res) => {
     }
 });
 
-// Create a new group (Only for Teachers and Admins)
+// Create a new group (Only for Teachers and Admins) - NOW THIS LINE WILL WORK
 app.post('/api/groups', verifyToken, isTeacherOrAdmin, async (req, res) => {
     try {
         const { name, description, memberIds } = req.body;
@@ -5813,7 +5819,6 @@ app.post('/api/groups', verifyToken, isTeacherOrAdmin, async (req, res) => {
         
         const connection = await db.getConnection();
         await connection.beginTransaction();
-
         try {
             const [groupResult] = await connection.query('INSERT INTO `groups` (name, description, created_by) VALUES (?, ?, ?)', [name, description || null, creatorId]);
             const groupId = groupResult.insertId;
@@ -5834,7 +5839,6 @@ app.post('/api/groups', verifyToken, isTeacherOrAdmin, async (req, res) => {
     }
 });
 
-// Get all groups for the currently logged-in user
 app.get('/api/groups', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -5853,7 +5857,6 @@ app.get('/api/groups', verifyToken, async (req, res) => {
 
 // ★★★ 3. API Routes for Chat Messages (All Secured with verifyToken) ★★★
 
-// Get message history for a SPECIFIC group
 app.get('/api/groups/:groupId/history', verifyToken, async (req, res) => {
     try {
         const { groupId } = req.params;
@@ -5880,13 +5883,12 @@ app.get('/api/groups/:groupId/history', verifyToken, async (req, res) => {
     }
 });
 
-// API to upload chat media
 app.post('/api/group-chat/upload-media', verifyToken, chatUpload.single('media'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-    // The URL path that the client will use
     const fileUrl = `/uploads/${req.file.filename}`;
     res.status(201).json({ fileUrl: fileUrl });
 });
+
 
 // ==========================================================
 // --- Group_chat SERVER AND SOCKET.IO INITIALIZATION ---
@@ -5898,7 +5900,6 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 io.on('connection', (socket) => {
     console.log(`🔌 A user connected: ${socket.id}`);
 
-    // Event for a user to join a specific group's chat room
     socket.on('joinGroup', (data) => {
         const { groupId } = data;
         if (groupId) {
@@ -5907,7 +5908,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Event for sending a message to a specific group
     socket.on('sendMessage', async (data) => {
         const { userId, groupId, messageType, messageText, fileUrl } = data;
         if (!userId || !groupId || !messageType || (messageType === 'text' && !messageText?.trim()) || (messageType !== 'text' && !fileUrl)) return;
@@ -5929,7 +5929,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Event for deleting a message within a specific group
     socket.on('deleteMessage', async (data) => {
         const { messageId, userId, groupId } = data;
         if (!messageId || !userId || !groupId) return;
@@ -5956,7 +5955,6 @@ io.on('connection', (socket) => {
         console.log(`🔌 User disconnected: ${socket.id}`);
     });
 });
-
 
 
 
