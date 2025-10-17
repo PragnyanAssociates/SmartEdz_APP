@@ -5793,7 +5793,20 @@ const chatStorage = multer.diskStorage({
     destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => { cb(null, `chat-media-${Date.now()}${path.extname(file.originalname)}`); }
 });
-const chatUpload = multer({ storage: chatStorage });
+
+const chatUpload = multer({ 
+    storage: chatStorage,
+    fileFilter: (req, file, cb) => {
+        // Allow images, videos, and common audio formats
+        const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|mkv|mp3|m4a|wav|aac/;
+        const mimetype = allowedTypes.test(file.mimetype);
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        if (mimetype && extname) {
+            return cb(null, true);
+        }
+        cb(new Error('File type not supported: ' + file.mimetype));
+    }
+});
 
 // ★★★ 2. API Routes for Group Management ★★★
 app.get('/api/chat/group-options', verifyToken, async (req, res) => {
@@ -5922,7 +5935,7 @@ app.delete('/api/groups/:groupId', verifyToken, isGroupCreator, async (req, res)
     }
 });
 
-// ★★★ 4. API Routes for Chat Messages ★★★
+// ★★★ 3. API Routes for Chat Messages ★★★
 app.get('/api/groups/:groupId/history', verifyToken, async (req, res) => {
     try {
         const { groupId } = req.params;
@@ -5941,18 +5954,14 @@ app.post('/api/group-chat/upload-media', verifyToken, chatUpload.single('media')
     res.status(201).json({ fileUrl: fileUrl });
 });
 
-// ★★★ 5. Real-Time Socket.IO Logic ★★★
+// ★★★ 4. Real-Time Socket.IO Logic ★★★
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 io.on('connection', (socket) => {
     console.log(`🔌 A user connected: ${socket.id}`);
     socket.on('joinGroup', (data) => {
-        const { groupId } = data;
-        if (groupId) {
-            socket.join(`group-${groupId}`);
-            console.log(`User ${socket.id} joined room: group-${groupId}`);
-        }
+        if (data.groupId) socket.join(`group-${data.groupId}`);
     });
     socket.on('sendMessage', async (data) => {
         const { userId, groupId, messageType, messageText, fileUrl } = data;
@@ -5979,12 +5988,9 @@ io.on('connection', (socket) => {
         const connection = await db.getConnection();
         try {
             const [[message]] = await connection.query('SELECT user_id FROM group_chat_messages WHERE id = ?', [messageId]);
-            if (!message || message.user_id != userId) {
-                 console.error(`🔒 SECURITY ALERT: User ${userId} tried to delete message ${messageId} they do not own.`); return;
-            }
+            if (!message || message.user_id != userId) return;
             await connection.query('DELETE FROM group_chat_messages WHERE id = ?', [messageId]);
             io.to(roomName).emit('messageDeleted', messageId);
-            console.log(`🗑️ Message ${messageId} deleted by user ${userId} in group ${groupId}.`);
         } catch (error) {
             console.error(`❌ CRITICAL ERROR: Failed to delete message ${messageId}.`, error);
         } finally {
@@ -5998,9 +6004,7 @@ io.on('connection', (socket) => {
         const connection = await db.getConnection();
         try {
             const [[message]] = await connection.query('SELECT user_id FROM group_chat_messages WHERE id = ?', [messageId]);
-            if (!message || message.user_id != userId) {
-                console.error(`🔒 SECURITY ALERT: User ${userId} tried to edit message ${messageId} they do not own.`); return;
-            }
+            if (!message || message.user_id != userId) return;
             await connection.query('UPDATE group_chat_messages SET message_text = ?, is_edited = TRUE WHERE id = ?', [newText, messageId]);
             const [[updatedMessage]] = await connection.query(`SELECT m.id, m.message_text, m.timestamp, m.user_id, m.group_id, m.message_type, m.file_url, m.is_edited, u.full_name, u.role, u.class_group, p.profile_image_url, p.roll_no FROM group_chat_messages m JOIN users u ON m.user_id = u.id LEFT JOIN user_profiles p ON m.user_id = p.user_id WHERE m.id = ?`, [messageId]);
             io.to(roomName).emit('messageEdited', updatedMessage);

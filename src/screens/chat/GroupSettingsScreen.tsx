@@ -5,7 +5,7 @@ import apiClient from '../../api/client';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { getProfileImageSource } from '../../utils/imageHelpers'; // <-- IMPORT THE HELPER
+import { getProfileImageSource } from '../../utils/imageHelpers';
 
 const THEME = { primary: '#007bff', background: '#f4f7fc', text: '#212529', border: '#dee2e6', white: '#ffffff', danger: '#dc3545', muted: '#6c757d' };
 
@@ -70,10 +70,7 @@ const GroupSettingsScreen = () => {
         <SafeAreaView style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContainer}>
                 <View style={styles.dpContainer}>
-                    <Image
-                        source={getProfileImageSource(group.group_dp_url)} // <-- USE THE HELPER
-                        style={styles.dpImage}
-                    />
+                    <Image source={getProfileImageSource(group.group_dp_url)} style={styles.dpImage} />
                     {isCreator && (
                         <TouchableOpacity style={styles.dpEditButton} onPress={handlePickImage}>
                             <Icon name="camera" size={24} color={THEME.white} />

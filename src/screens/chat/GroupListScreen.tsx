@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { getProfileImageSource } from '../../utils/imageHelpers'; // <-- IMPORT THE HELPER
+import { getProfileImageSource } from '../../utils/imageHelpers';
 
 const THEME = { primary: '#007bff', background: '#f4f7fc', text: '#212529', muted: '#86909c', border: '#dee2e6', white: '#ffffff' };
 
@@ -40,10 +40,7 @@ const GroupListScreen = () => {
 
     const renderGroupItem = ({ item }: { item: any }) => (
         <TouchableOpacity style={styles.groupItem} onPress={() => navigation.navigate('GroupChat', { group: item })}>
-            <Image
-                source={getProfileImageSource(item.group_dp_url)} // <-- USE THE HELPER
-                style={styles.avatar}
-            />
+            <Image source={getProfileImageSource(item.group_dp_url)} style={styles.avatar} />
             <View style={styles.groupInfo}>
                 <Text style={styles.groupName}>{item.name}</Text>
                 <Text style={styles.groupDesc} numberOfLines={1}>{item.description || "Tap to open chat"}</Text>
