@@ -5393,7 +5393,7 @@ app.delete('/api/permanent-inventory/:id', async (req, res) => {
 
 
 // ==========================================================
-// --- REVISED & SIMPLIFIED FOOD MENU API ROUTES (WITH FIX) ---
+// --- FINAL CORRECTED FOOD MENU API ROUTES ---
 // ==========================================================
 
 // GET the full weekly food menu (Accessible to all roles)
@@ -5471,10 +5471,10 @@ app.post('/api/food-menu', async (req, res) => {
 });
 
 
-// ✅ FIX: PUT (update) a SINGLE food item's text ONLY
+// ✅ CORRECTED: PUT (update) a SINGLE food item's text ONLY.
 app.put('/api/food-menu/:id', async (req, res) => {
     const { id } = req.params;
-    // The request now only contains food_item, not meal_time
+    // This route now only expects and handles the food_item.
     const { food_item, editorId } = req.body;
 
     if (!editorId) {
@@ -5491,7 +5491,7 @@ app.put('/api/food-menu/:id', async (req, res) => {
             return res.status(403).json({ message: 'Forbidden: You do not have permission to perform this action.' });
         }
 
-        // The SQL query is now simpler, only updating the food_item
+        // The SQL query is now simpler and only updates the food_item.
         const [result] = await connection.query(
             'UPDATE food_menu SET food_item = ? WHERE id = ?',
             [food_item, id]
@@ -5525,7 +5525,7 @@ app.put('/api/food-menu/:id', async (req, res) => {
 });
 
 
-// CORRECT: PUT route to update all meal times for a specific type (e.g., all 'Lunch' times)
+// CORRECT: PUT route to update all meal times for a specific type (e.g., all 'Lunch' times).
 app.put('/api/food-menu/time', async (req, res) => {
     const { meal_type, meal_time, editorId } = req.body;
 

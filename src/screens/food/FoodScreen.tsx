@@ -189,8 +189,8 @@ const EditMenuModal = ({ modalInfo, onClose, onSave }) => {
     if (!data) return null;
     
     const title = mode === 'add' 
-        ? `Add ${data.day_of_week} Lunch` 
-        ? `Edit ${data.day_of_week} Lunch`;
+    ? `Add ${data.day_of_week} Lunch` 
+    : `Edit ${data.day_of_week} Lunch`; // <-- CORRECT
 
     return (
         <Modal visible={true} transparent animationType="fade" onRequestClose={onClose}>
