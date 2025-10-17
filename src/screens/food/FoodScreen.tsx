@@ -1,4 +1,4 @@
-// 📂 File: src/screens/food/FoodScreen.tsx (CORRECTED AND FINAL)
+// 📂 File: src/screens/food/FoodScreen.tsx (DEFINITIVE AND FINAL)
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
@@ -20,8 +20,6 @@ const ORDERED_DAYS = [
     { full: 'Thursday', short: 'Thu' }, { full: 'Friday', short: 'Fri' }, { full: 'Saturday', short: 'Sat' },
 ];
 
-const MEAL_TYPES = ['Lunch'];
-
 const FoodScreen = () => {
     const { user } = useAuth();
     const [menuData, setMenuData] = useState({});
@@ -32,7 +30,7 @@ const FoodScreen = () => {
     const fetchMenu = useCallback(() => {
         setLoading(true);
         apiClient.get('/food-menu')
-            .then(res => setMenuData(res.data))
+            .then(res => setMenuData(res.data || {}))
             .catch(() => Alert.alert("Error", "Could not fetch the food menu."))
             .finally(() => setLoading(false));
     }, []);
@@ -50,11 +48,11 @@ const FoodScreen = () => {
     const openItemModal = (mode, data) => setItemModalInfo({ visible: true, mode, data });
     const closeItemModal = () => setItemModalInfo({ visible: false, mode: null, data: null });
 
-    const handleCellPress = (meal, day, mealType) => {
+    const handleCellPress = (meal, day) => {
         if (meal) {
             openItemModal('edit', meal);
         } else {
-            openItemModal('add', { day_of_week: day, meal_type: mealType });
+            openItemModal('add', { day_of_week: day, meal_type: 'Lunch' });
         }
     };
     
@@ -66,13 +64,11 @@ const FoodScreen = () => {
         let request;
 
         if (mode === 'edit') {
-            // ✅ FIX: Only send the food_item and editorId when editing.
             request = apiClient.put(`/food-menu/${data.id}`, { 
                 food_item: requestBody.food_item, 
                 editorId: requestBody.editorId 
             });
-        } else { // 'add' mode
-            // When adding, we must include the day, type, and the current global time.
+        } else {
             const addRequestBody = { 
                 ...requestBody, 
                 day_of_week: data.day_of_week, 
@@ -148,49 +144,39 @@ const FoodMenuTable = ({ menuData, isAdmin, onCellPress, onHeaderPress, displayT
                     <Text style={styles.headerMealTimeText}>{displayTime}</Text>
                 </TouchableOpacity>
             </View>
-            {ORDERED_DAYS.map(({ full, short }) => (
-                <View key={full} style={styles.tableRow}>
-                    <View style={[styles.tableCell, styles.dayCell]}><Text style={styles.dayCellText}>{short}</Text></View>
-                    {MEAL_TYPES.map((mealType) => {
-                        const meal = getMealForCell(full, mealType);
-                        return (
-                            <TouchableOpacity 
-                                key={mealType} 
-                                style={[ styles.tableCell, styles.mealCell, styles.lastCell ]} 
-                                onPress={() => onCellPress(meal, full, mealType)} 
-                                disabled={!isAdmin}
-                            >
-                                <Text style={meal?.food_item ? styles.mealItemText : styles.notSetText} numberOfLines={3}>
-                                    {meal?.food_item || 'Not set'}
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-            ))}
+            {ORDERED_DAYS.map(({ full, short }) => {
+                const meal = getMealForCell(full, 'Lunch');
+                return (
+                    <View key={full} style={styles.tableRow}>
+                        <View style={[styles.tableCell, styles.dayCell]}><Text style={styles.dayCellText}>{short}</Text></View>
+                        <TouchableOpacity 
+                            style={[ styles.tableCell, styles.mealCell, styles.lastCell ]} 
+                            onPress={() => onCellPress(meal, full)} 
+                            disabled={!isAdmin}
+                        >
+                            <Text style={meal?.food_item ? styles.mealItemText : styles.notSetText} numberOfLines={3}>
+                                {meal?.food_item || 'Not set'}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                );
+            })}
         </View>
     );
 };
 
-// ✅ FIX: This modal now ONLY ever shows the Food Item input.
 const EditMenuModal = ({ modalInfo, onClose, onSave }) => {
     const { mode, data } = modalInfo;
     const [foodItem, setFoodItem] = useState(data?.food_item || '');
 
-    const handleSavePress = () => {
-        // Only pass the foodItem back.
-        onSave({ food_item: foodItem });
-    };
-    
-    const handleClearPress = () => { 
-        onSave({ food_item: '' }); 
-    };
+    const handleSavePress = () => { onSave({ food_item: foodItem }); };
+    const handleClearPress = () => { onSave({ food_item: '' }); };
 
     if (!data) return null;
     
     const title = mode === 'add' 
-    ? `Add ${data.day_of_week} Lunch` 
-    : `Edit ${data.day_of_week} Lunch`; // <-- CORRECT
+        ? `Add ${data.day_of_week} Lunch` 
+        : `Edit ${data.day_of_week} Lunch`;
 
     return (
         <Modal visible={true} transparent animationType="fade" onRequestClose={onClose}>
@@ -200,8 +186,6 @@ const EditMenuModal = ({ modalInfo, onClose, onSave }) => {
                     <Text style={styles.inputLabel}>Food Item</Text>
                     <TextInput style={styles.input} value={foodItem} onChangeText={setFoodItem} placeholder="e.g., Rice & Dal" />
                     
-                    {/* The Time input is now permanently removed from this modal */}
-
                     <TouchableOpacity style={styles.saveButton} onPress={handleSavePress}><Text style={styles.saveButtonText}>Save Changes</Text></TouchableOpacity>
                     {mode === 'edit' && (<TouchableOpacity style={styles.clearButton} onPress={handleClearPress}><Text style={styles.clearButtonText}>Clear Food Entry</Text></TouchableOpacity>)}
                     <TouchableOpacity onPress={onClose}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
