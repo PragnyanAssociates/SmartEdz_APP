@@ -5788,43 +5788,107 @@ app.post('/api/admin/ad-payment-details', [verifyToken, isAdmin], paymentUpload.
 // --- GROUP CHAT API & REAL-TIME ROUTES (WITH MEDIA) ---
 // ==========================================================
 
-// ★★★ 1. Multer Storage Configuration for Group Chat Media ★★★
+// ★★★ 1. Multer Storage Configuration for Group Chat Media (Unchanged) ★★★
 const chatStorage = multer.diskStorage({
     destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => { cb(null, `chat-media-${Date.now()}${path.extname(file.originalname)}`); }
 });
 const chatUpload = multer({ storage: chatStorage });
 
-// ★★★ 2. API Routes for Group Management (All Secured with verifyToken) ★★★
+// ★★★ 2. API Routes for Group Management (REVISED LOGIC) ★★★
 
-app.get('/api/users', verifyToken, async (req, res) => {
+// NEW ENDPOINT: Get available options (classes, roles) for creating a group.
+app.get('/api/chat/group-options', verifyToken, async (req, res) => {
     try {
-        const [users] = await db.query('SELECT id, full_name, role FROM users ORDER BY full_name ASC');
-        res.json(users);
+        // Query to get all unique, non-empty class groups from students
+        const classQuery = `
+            SELECT DISTINCT class_group 
+            FROM users 
+            WHERE role = 'student' AND class_group IS NOT NULL AND class_group != '' 
+            ORDER BY class_group ASC;
+        `;
+        const [classes] = await db.query(classQuery);
+        
+        // Extract just the class names into an array
+        const classList = classes.map(c => c.class_group);
+
+        res.json({
+            classes: classList,
+            // We can hardcode the available roles for creation
+            roles: ['Admins', 'Teachers']
+        });
     } catch (error) {
-        console.error("Error fetching users:", error);
-        res.status(500).json({ message: "Error fetching user list." });
+        console.error("Error fetching group options:", error);
+        res.status(500).json({ message: "Error fetching group creation options." });
     }
 });
 
-// Create a new group (Only for Teachers and Admins) - NOW THIS LINE WILL WORK
+
+// REVISED ENDPOINT: Create a group based on categories instead of individual IDs.
 app.post('/api/groups', verifyToken, isTeacherOrAdmin, async (req, res) => {
     try {
-        const { name, description, memberIds } = req.body;
-        const creatorId = req.user.id;
+        const { name, description, selectedCategories } = req.body;
+        const creator = req.user; // { id, role }
 
-        if (!name || !memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
-            return res.status(400).json({ message: 'Group name and members are required.' });
+        if (!name || !selectedCategories || !Array.isArray(selectedCategories) || selectedCategories.length === 0) {
+            return res.status(400).json({ message: 'Group name and at least one category are required.' });
         }
+
+        // --- Teacher Permission Logic ---
+        // If the creator is a teacher, filter out any non-class selections for security.
+        let finalCategories = selectedCategories;
+        if (creator.role === 'teacher') {
+            finalCategories = selectedCategories.filter(cat => cat !== 'All' && cat !== 'Admins' && cat !== 'Teachers');
+            if (finalCategories.length === 0) {
+                 return res.status(403).json({ message: 'Teachers can only create groups for classes.' });
+            }
+        }
+
+        // --- Resolve Categories to User IDs ---
+        let whereClauses = [];
+        let queryParams = [];
+
+        finalCategories.forEach(category => {
+            if (category === 'All' && creator.role === 'admin') {
+                whereClauses.push("1=1"); // Select all users
+            } else if (category === 'Admins') {
+                whereClauses.push("role = ?");
+                queryParams.push('admin');
+            } else if (category === 'Teachers') {
+                whereClauses.push("role = ?");
+                queryParams.push('teacher');
+            } else { // Assumes it's a class name
+                whereClauses.push("class_group = ?");
+                queryParams.push(category);
+            }
+        });
+
+        // If 'All' was selected, we don't need other clauses
+        const finalWhereClause = whereClauses.includes("1=1") ? "1=1" : whereClauses.join(' OR ');
+
+        const getUsersQuery = `SELECT id FROM users WHERE ${finalWhereClause}`;
+        const [usersToAd] = await db.query(getUsersQuery, queryParams);
         
+        let memberIds = usersToAd.map(u => u.id);
+
+        // --- Create Group in Database ---
         const connection = await db.getConnection();
         await connection.beginTransaction();
         try {
-            const [groupResult] = await connection.query('INSERT INTO `groups` (name, description, created_by) VALUES (?, ?, ?)', [name, description || null, creatorId]);
+            const [groupResult] = await connection.query('INSERT INTO `groups` (name, description, created_by) VALUES (?, ?, ?)', [name, description || null, creator.id]);
             const groupId = groupResult.insertId;
-            const allMemberIds = [...new Set([creatorId, ...memberIds.map(id => parseInt(id, 10))])];
+
+            // Ensure the creator is always in the group and remove duplicates
+            const allMemberIds = [...new Set([creator.id, ...memberIds])];
+            
+            if (allMemberIds.length === 0) {
+                await connection.rollback();
+                return res.status(400).json({ message: "No members found for the selected categories." });
+            }
+
             const memberValues = allMemberIds.map(userId => [groupId, userId]);
             await connection.query('INSERT INTO group_members (group_id, user_id) VALUES ?', [memberValues]);
+            
             await connection.commit();
             res.status(201).json({ message: 'Group created successfully!', groupId });
         } catch (err) {
@@ -5838,6 +5902,7 @@ app.post('/api/groups', verifyToken, isTeacherOrAdmin, async (req, res) => {
         res.status(500).json({ message: "Server error while creating group." });
     }
 });
+
 
 app.get('/api/groups', verifyToken, async (req, res) => {
     try {

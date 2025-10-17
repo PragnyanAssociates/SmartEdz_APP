@@ -231,7 +231,11 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="PreAdmissionsScreen" component={PreAdmissionsScreen} />
       <Stack.Screen name="KitchenScreen" component={KitchenScreen} />
       <Stack.Screen name="OnlineClassScreen" component={OnlineClassScreen} />
-      <Stack.Screen name="ChatFeature" component={ChatStackNavigator} options={{ headerShown: false }} />
+      <Stack.Screen name="ChatFeature" component={ChatStackNavigator} options={{ headerShown: true, 
+          title: 'Group chat',
+          headerStyle: { backgroundColor: '#e0f2f7' },
+          headerTintColor: '#008080',
+          headerTitleStyle: { fontWeight: 'bold' } }} />
       {/* <Stack.Screen name="ChatAIScreen" component={ChatAIScreen} />
       <Stack.Screen name="DonorSuggestionsScreen" component={DonorSuggestionsScreen} />
       <Stack.Screen name="AdminSuggestionsScreen" component={AdminSuggestionsScreen} />

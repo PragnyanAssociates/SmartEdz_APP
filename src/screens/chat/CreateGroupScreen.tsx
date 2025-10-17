@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, FlatList, Alert, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, FlatList, Alert, ActivityIndicator, Platform } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { useNavigation } from '@react-navigation/native';
@@ -10,47 +10,76 @@ const THEME = { primary: '#007bff', background: '#f4f7fc', text: '#212529', mute
 const CreateGroupScreen = () => {
     const { user } = useAuth();
     const navigation = useNavigation();
+
+    // State for the form
     const [groupName, setGroupName] = useState('');
-    const [allUsers, setAllUsers] = useState([]);
-    const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    
+    // State for data and selections
+    const [groupOptions, setGroupOptions] = useState<{ classes: string[], roles: string[] }>({ classes: [], roles: [] });
+    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+    
+    // State for UI feedback
     const [loading, setLoading] = useState(true);
     const [isCreating, setIsCreating] = useState(false);
 
+    // Fetch available classes and roles from the backend
     useEffect(() => {
-        const fetchUsers = async () => {
+        const fetchOptions = async () => {
             try {
-                const response = await apiClient.get('/users');
-                setAllUsers(response.data.filter((u: any) => u.id !== user!.id));
+                const response = await apiClient.get('/chat/group-options');
+                setGroupOptions(response.data);
             } catch (error: any) {
-                Alert.alert("Error", "Could not fetch user list.");
+                Alert.alert("Error", "Could not fetch group options.");
             } finally {
                 setLoading(false);
             }
         };
-        if (user) {
-            fetchUsers();
-        }
-    }, [user]);
+        fetchOptions();
+    }, []);
 
-    const handleToggleUser = (userId: number) => {
-        setSelectedUsers(prev =>
-            prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    // Memoize the list of options to display based on user role and search query
+    const filteredOptions = useMemo(() => {
+        let availableOptions: string[] = [];
+
+        if (user?.role === 'admin') {
+            availableOptions = ['All', ...groupOptions.roles, ...groupOptions.classes];
+        } else if (user?.role === 'teacher') {
+            availableOptions = [...groupOptions.classes];
+        }
+
+        if (!searchQuery) {
+            return availableOptions;
+        }
+
+        return availableOptions.filter(option =>
+            option.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [user, groupOptions, searchQuery]);
+
+    // Handler to select/deselect a category
+    const handleToggleCategory = (category: string) => {
+        setSelectedCategories(prev =>
+            prev.includes(category)
+                ? prev.filter(item => item !== category)
+                : [...prev, category]
         );
     };
 
+    // Handler to submit the new group
     const handleCreateGroup = async () => {
         if (!groupName.trim()) {
             return Alert.alert("Validation Error", "Group name is required.");
         }
-        if (selectedUsers.length === 0) {
-            return Alert.alert("Validation Error", "Please select at least one member to add.");
+        if (selectedCategories.length === 0) {
+            return Alert.alert("Validation Error", "Please select at least one category (class, teachers, etc.).");
         }
 
         setIsCreating(true);
         try {
             await apiClient.post('/groups', {
                 name: groupName.trim(),
-                memberIds: selectedUsers,
+                selectedCategories: selectedCategories, // Send categories instead of user IDs
             });
             Alert.alert("Success", "Group created successfully!");
             navigation.goBack();
@@ -61,21 +90,25 @@ const CreateGroupScreen = () => {
         }
     };
 
-    const renderUserItem = ({ item }: { item: any }) => {
-        const isSelected = selectedUsers.includes(item.id);
+    // Render each item in the category list
+    const renderCategoryItem = ({ item }: { item: string }) => {
+        const isSelected = selectedCategories.includes(item);
         return (
-            <TouchableOpacity style={styles.userItem} onPress={() => handleToggleUser(item.id)}>
+            <TouchableOpacity style={styles.userItem} onPress={() => handleToggleCategory(item)}>
                 <View style={styles.userInfo}>
-                    <Text style={styles.userName}>{item.full_name}</Text>
-                    <Text style={styles.userRole}>{item.role}</Text>
+                    <Text style={styles.userName}>{item}</Text>
                 </View>
-                <Icon name={isSelected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={24} color={isSelected ? THEME.primary : THEME.muted} />
+                <Icon
+                    name={isSelected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                    size={24}
+                    color={isSelected ? THEME.primary : THEME.muted}
+                />
             </TouchableOpacity>
         );
     };
 
     if (loading) {
-        return <ActivityIndicator size="large" color={THEME.primary} style={{ flex: 1 }} />;
+        return <ActivityIndicator size="large" color={THEME.primary} style={styles.loader} />;
     }
 
     return (
@@ -83,36 +116,56 @@ const CreateGroupScreen = () => {
             <View style={styles.form}>
                 <TextInput
                     style={styles.input}
-                    placeholder="Group Name"
+                    placeholder="Group Name (e.g., Class 10 Announcements)"
                     placeholderTextColor={THEME.muted}
                     value={groupName}
                     onChangeText={setGroupName}
                 />
-                <Text style={styles.listHeader}>Select Members ({selectedUsers.length} selected)</Text>
+                <View style={styles.searchContainer}>
+                    <Icon name="magnify" size={20} color={THEME.muted} style={styles.searchIcon} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Search for a class or group..."
+                        placeholderTextColor={THEME.muted}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                    />
+                </View>
             </View>
+
             <FlatList
-                data={allUsers}
-                renderItem={renderUserItem}
-                keyExtractor={(item) => item.id.toString()}
-                style={{ flex: 1 }}
+                data={filteredOptions}
+                renderItem={renderCategoryItem}
+                keyExtractor={(item) => item}
+                ListHeaderComponent={<Text style={styles.listHeader}>Select Members ({selectedCategories.length} selected)</Text>}
+                ListEmptyComponent={<Text style={styles.emptyText}>No results found.</Text>}
+                contentContainerStyle={{ paddingBottom: 100 }}
             />
-            <TouchableOpacity style={[styles.createButton, isCreating && styles.disabledButton]} onPress={handleCreateGroup} disabled={isCreating}>
-                {isCreating ? <ActivityIndicator color={THEME.white} /> : <Text style={styles.createButtonText}>Create Group</Text>}
-            </TouchableOpacity>
+
+            <View style={styles.footer}>
+                <TouchableOpacity style={[styles.createButton, isCreating && styles.disabledButton]} onPress={handleCreateGroup} disabled={isCreating}>
+                    {isCreating ? <ActivityIndicator color={THEME.white} /> : <Text style={styles.createButtonText}>Create Group</Text>}
+                </TouchableOpacity>
+            </View>
         </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: THEME.background },
-    form: { padding: 20, backgroundColor: THEME.white, borderBottomWidth: 1, borderBottomColor: THEME.border },
-    input: { backgroundColor: '#f0f0f0', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 8, fontSize: 16, borderWidth: 1, borderColor: THEME.border },
-    listHeader: { fontSize: 18, fontWeight: '600', marginTop: 20, marginBottom: 10, color: THEME.text },
-    userItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, backgroundColor: THEME.white, borderBottomWidth: 1, borderBottomColor: THEME.border },
+    loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    form: { padding: 16, backgroundColor: THEME.white, borderBottomWidth: 1, borderBottomColor: THEME.border },
+    input: { backgroundColor: '#f0f0f0', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 8, fontSize: 16, borderWidth: 1, borderColor: THEME.border, marginBottom: 16 },
+    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: THEME.border },
+    searchIcon: { paddingLeft: 12 },
+    searchInput: { flex: 1, height: 44, paddingHorizontal: 10, fontSize: 16 },
+    listHeader: { fontSize: 18, fontWeight: '600', color: THEME.text, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 10 },
+    userItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20, backgroundColor: THEME.white, borderBottomWidth: 1, borderBottomColor: THEME.border },
     userInfo: { flex: 1 },
     userName: { fontSize: 16, fontWeight: '500', color: THEME.text },
-    userRole: { fontSize: 12, color: THEME.muted, textTransform: 'capitalize', marginTop: 2 },
-    createButton: { backgroundColor: THEME.primary, padding: 15, margin: 20, borderRadius: 8, alignItems: 'center' },
+    emptyText: { textAlign: 'center', marginTop: 30, color: THEME.muted, fontSize: 16 },
+    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, backgroundColor: THEME.white, borderTopWidth: 1, borderTopColor: THEME.border },
+    createButton: { backgroundColor: THEME.primary, paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
     disabledButton: { backgroundColor: THEME.muted },
     createButtonText: { color: THEME.white, fontSize: 18, fontWeight: 'bold' },
 });
