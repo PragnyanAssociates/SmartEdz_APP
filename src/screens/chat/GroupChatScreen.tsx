@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image, Keyboard, PermissionsAndroid } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image, Keyboard } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { SERVER_URL } from '../../../apiConfig';
@@ -9,52 +9,10 @@ import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/nativ
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import { getProfileImageSource } from '../../utils/imageHelpers';
 import Video from 'react-native-video';
-import AudioRecorderPlayer, { PlayBackType } from 'react-native-audio-recorder-player';
 import EmojiPicker, { EmojiType } from 'rn-emoji-keyboard';
 
 const THEME = { primary: '#007bff', text: '#212529', muted: '#86909c', border: '#dee2e6', myMessageBg: '#dcf8c6', otherMessageBg: '#ffffff', white: '#ffffff' };
 
-// --- Audio Player Component ---
-const audioRecorderPlayer = new AudioRecorderPlayer();
-const AudioPlayer = ({ fileUrl }: { fileUrl: string }) => {
-    const [isPlaying, setIsPlaying] = useState(false);
-    const [duration, setDuration] = useState('00:00');
-    const [playTime, setPlayTime] = useState('00:00');
-
-    const onStartPlay = async () => {
-        try {
-            await audioRecorderPlayer.startPlayer(SERVER_URL + fileUrl);
-            setIsPlaying(true);
-            audioRecorderPlayer.addPlayBackListener((e: PlayBackType) => {
-                setPlayTime(audioRecorderPlayer.mmssss(Math.floor(e.currentPosition / 1000)));
-                setDuration(audioRecorderPlayer.mmssss(Math.floor(e.duration / 1000)));
-                if (e.currentPosition === e.duration) {
-                    onStopPlay();
-                }
-            });
-        } catch (err) {
-            console.log('startPlayer error', err);
-        }
-    };
-
-    const onStopPlay = async () => {
-        await audioRecorderPlayer.stopPlayer();
-        audioRecorderPlayer.removePlayBackListener();
-        setIsPlaying(false);
-    };
-
-    return (
-        <View style={styles.audioPlayerContainer}>
-            <TouchableOpacity onPress={isPlaying ? onStopPlay : onStartPlay} style={styles.playButton}>
-                <Icon name={isPlaying ? "pause" : "play"} size={24} color={THEME.primary} />
-            </TouchableOpacity>
-            <Text style={styles.durationText}>{isPlaying ? playTime : duration}</Text>
-        </View>
-    );
-};
-
-
-// --- Main Chat Screen Component ---
 const GroupChatScreen = () => {
     const { user } = useAuth();
     const route = useRoute<any>();
@@ -67,8 +25,6 @@ const GroupChatScreen = () => {
     const [editingMessage, setEditingMessage] = useState<any>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-    const [isRecording, setIsRecording] = useState(false);
-    const [recordTime, setRecordTime] = useState('00:00');
 
     const socketRef = useRef<Socket | null>(null);
     const flatListRef = useRef<FlatList | null>(null);
@@ -78,8 +34,12 @@ const GroupChatScreen = () => {
             try {
                 const response = await apiClient.get('/groups');
                 const updatedGroup = response.data.find((g: any) => g.id === group.id);
-                if (updatedGroup) setGroup(updatedGroup);
-            } catch (error) { console.log("Could not refetch group details."); }
+                if (updatedGroup) {
+                    setGroup(updatedGroup);
+                }
+            } catch (error) {
+                console.log("Could not refetch group details.");
+            }
         };
         fetchGroupDetails();
     }, []));
@@ -89,28 +49,46 @@ const GroupChatScreen = () => {
             try {
                 const response = await apiClient.get(`/groups/${group.id}/history`);
                 setMessages(response.data);
-            } catch (error) { Alert.alert("Error", "Could not load chat history."); } 
-            finally { setLoading(false); }
+            } catch (error) {
+                Alert.alert("Error", "Could not load chat history.");
+            } finally {
+                setLoading(false);
+            }
         };
         fetchHistory();
 
         socketRef.current = io(SERVER_URL, { transports: ['websocket'] });
-        socketRef.current.on('connect', () => { socketRef.current?.emit('joinGroup', { groupId: group.id }); });
-        socketRef.current.on('newMessage', (msg) => { if(msg.group_id === group.id) setMessages(prev => [...prev, msg]); });
-        socketRef.current.on('messageDeleted', (id) => { setMessages(prev => prev.filter(msg => msg.id !== id)); });
-        socketRef.current.on('messageEdited', (msg) => { if(msg.group_id === group.id) setMessages(prev => prev.map(m => m.id === msg.id ? msg : m)); });
-        return () => { socketRef.current?.disconnect(); };
+        socketRef.current.on('connect', () => {
+            console.log("Socket connected for group chat");
+            socketRef.current?.emit('joinGroup', { groupId: group.id });
+        });
+        socketRef.current.on('newMessage', (msg) => {
+            if (msg.group_id === group.id) setMessages(prev => [...prev, msg]);
+        });
+        socketRef.current.on('messageDeleted', (id) => {
+            setMessages(prev => prev.filter(msg => msg.id !== id));
+        });
+        socketRef.current.on('messageEdited', (msg) => {
+            if (msg.group_id === group.id) setMessages(prev => prev.map(m => m.id === msg.id ? msg : m));
+        });
+
+        return () => {
+            socketRef.current?.disconnect();
+        };
     }, [group.id]);
 
-    const uploadFileAndSendMessage = async (file: Asset, type: 'image' | 'video' | 'audio') => {
+    const uploadFileAndSendMessage = async (file: Asset, type: 'image' | 'video') => {
         setIsUploading(true);
         const formData = new FormData();
         formData.append('media', { uri: file.uri, type: file.type, name: file.fileName });
         try {
-            const res = await apiClient.post('/group-chat/upload-media', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
+            const res = await apiClient.post('/group-chat/upload-media', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
             socketRef.current?.emit('sendMessage', { userId: user?.id, groupId: group.id, messageType: type, fileUrl: res.data.fileUrl });
-        } catch (error) { Alert.alert("Upload Failed", "Could not send the file."); } 
-        finally { setIsUploading(false); }
+        } catch (error) {
+            Alert.alert("Upload Failed", "Could not send the file.");
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handlePickMedia = () => {
@@ -120,30 +98,6 @@ const GroupChatScreen = () => {
             const type = file.type?.startsWith('video') ? 'video' : 'image';
             uploadFileAndSendMessage(file, type);
         });
-    };
-
-    const onStartRecord = async () => {
-        if (Platform.OS === 'android') {
-            const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-            if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-                Alert.alert("Permission Denied", "Microphone permission is required to record audio.");
-                return;
-            }
-        }
-        setIsRecording(true);
-        await audioRecorderPlayer.startRecorder();
-        audioRecorderPlayer.addRecordBackListener((e) => {
-            setRecordTime(audioRecorderPlayer.mmssss(Math.floor(e.currentPosition / 1000)));
-        });
-    };
-
-    const onStopRecord = async () => {
-        const result = await audioRecorderPlayer.stopRecorder();
-        audioRecorderPlayer.removeRecordBackListener();
-        setIsRecording(false);
-        setRecordTime('00:00');
-        const file = { uri: result, type: 'audio/mp4', fileName: `voice-${Date.now()}.mp4` };
-        uploadFileAndSendMessage(file as Asset, 'audio');
     };
 
     const handleSend = () => {
@@ -157,12 +111,20 @@ const GroupChatScreen = () => {
         setNewMessage('');
         Keyboard.dismiss();
     };
-    
+
     const onLongPressMessage = (message: any) => {
         if (message.user_id !== user?.id) return;
-        const options: any[] = [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete for Everyone', style: 'destructive', onPress: () => handleDeleteMessage(message.id) }];
+        const options: any[] = [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete for Everyone', style: 'destructive', onPress: () => handleDeleteMessage(message.id) },
+        ];
         if (message.message_type === 'text') {
-            options.push({ text: 'Edit', onPress: () => { setEditingMessage(message); setNewMessage(message.message_text); }});
+            options.push({
+                text: 'Edit', onPress: () => {
+                    setEditingMessage(message);
+                    setNewMessage(message.message_text);
+                }
+            });
         }
         Alert.alert('Message Options', '', options);
     };
@@ -171,19 +133,27 @@ const GroupChatScreen = () => {
         socketRef.current?.emit('deleteMessage', { messageId, userId: user?.id, groupId: group.id });
     };
 
-    const cancelEdit = () => { setEditingMessage(null); setNewMessage(''); Keyboard.dismiss(); };
+    const cancelEdit = () => {
+        setEditingMessage(null);
+        setNewMessage('');
+        Keyboard.dismiss();
+    };
 
     const renderMessageItem = ({ item }: { item: any }) => {
         const isMyMessage = item.user_id === user?.id;
         const messageTime = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
         const renderContent = () => {
-            switch(item.message_type) {
-                case 'image': return <Image source={{uri: SERVER_URL + item.file_url}} style={styles.mediaMessage} />;
-                case 'video': return <Video source={{uri: SERVER_URL + item.file_url}} style={styles.mediaMessage} controls paused resizeMode="cover" />;
-                case 'audio': return <AudioPlayer fileUrl={item.file_url} />;
-                default: return <Text style={styles.messageText}>{item.message_text}</Text>;
+            switch (item.message_type) {
+                case 'image':
+                    return <Image source={{ uri: SERVER_URL + item.file_url }} style={styles.mediaMessage} />;
+                case 'video':
+                    return <Video source={{ uri: SERVER_URL + item.file_url }} style={styles.mediaMessage} controls paused resizeMode="cover" />;
+                default:
+                    return <Text style={styles.messageText}>{item.message_text}</Text>;
             }
         };
+
         return (
             <TouchableOpacity onLongPress={() => onLongPressMessage(item)} activeOpacity={0.8}>
                 <View style={[styles.messageRow, isMyMessage ? styles.myMessageRow : styles.otherMessageRow]}>
@@ -196,7 +166,9 @@ const GroupChatScreen = () => {
                             </View>
                         )}
                         {renderContent()}
-                        <Text style={[styles.messageTime, item.message_type === 'image' || item.message_type === 'video' ? styles.mediaTime : {}]}>{item.is_edited ? 'Edited • ' : ''}{messageTime}</Text>
+                        <Text style={[styles.messageTime, item.message_type === 'image' || item.message_type === 'video' ? styles.mediaTime : {}]}>
+                            {item.is_edited ? 'Edited • ' : ''}{messageTime}
+                        </Text>
                     </View>
                 </View>
             </TouchableOpacity>
@@ -204,33 +176,60 @@ const GroupChatScreen = () => {
     };
 
     return (
-        <SafeAreaView style={{flex: 1, backgroundColor: THEME.white}}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: THEME.white }}>
             <View style={styles.header}>
-                <Icon name="arrow-left" size={24} color={THEME.primary} onPress={() => navigation.goBack()} style={{padding: 5}}/>
+                <Icon name="arrow-left" size={24} color={THEME.primary} onPress={() => navigation.goBack()} style={{ padding: 5 }} />
                 <TouchableOpacity style={styles.headerContent} onPress={() => navigation.navigate('GroupSettings', { group })}>
                     <Image source={getProfileImageSource(group.group_dp_url)} style={styles.headerDp} />
                     <Text style={styles.headerTitle}>{group.name}</Text>
                 </TouchableOpacity>
-                <View style={{width: 34}} />
+                <View style={{ width: 34 }} />
             </View>
-            <KeyboardAvoidingView style={{flex: 1, backgroundColor: group.background_color || '#e5ddd5'}} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
-                {loading ? <ActivityIndicator style={{flex: 1}} size="large" /> :
-                <FlatList ref={flatListRef} data={messages} renderItem={renderMessageItem} keyExtractor={(item, index) => `${item.id}-${index}`} contentContainerStyle={{ paddingVertical: 10 }} onContentSizeChange={() => flatListRef.current?.scrollToEnd({animated: false})} onLayout={() => flatListRef.current?.scrollToEnd({animated: false})} />}
+            <KeyboardAvoidingView style={{ flex: 1, backgroundColor: group.background_color || '#e5ddd5' }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
+                {loading ? <ActivityIndicator style={{ flex: 1 }} size="large" /> :
+                    <FlatList
+                        ref={flatListRef}
+                        data={messages}
+                        renderItem={renderMessageItem}
+                        keyExtractor={(item, index) => `${item.id}-${index}`}
+                        contentContainerStyle={{ paddingVertical: 10 }}
+                        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                        onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+                    />}
                 <View>
-                    {editingMessage && (<View style={styles.editingBanner}><Icon name="pencil" size={16} color={THEME.primary} /><Text style={styles.editingText}>Editing Message</Text><Icon name="close" size={20} color={THEME.muted} onPress={cancelEdit} /></View>)}
+                    {editingMessage && (
+                        <View style={styles.editingBanner}>
+                            <Icon name="pencil" size={16} color={THEME.primary} />
+                            <Text style={styles.editingText}>Editing Message</Text>
+                            <Icon name="close" size={20} color={THEME.muted} onPress={cancelEdit} />
+                        </View>
+                    )}
                     <View style={styles.inputContainer}>
-                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setIsEmojiPickerOpen(true); }} style={styles.iconButton}><Icon name="emoticon-outline" size={24} color={THEME.muted} /></TouchableOpacity>
-                        <TextInput style={styles.input} value={newMessage} onChangeText={setNewMessage} placeholder={isRecording ? `Recording... ${recordTime}` : "Type a message..."} multiline editable={!isRecording} onFocus={()=>setIsEmojiPickerOpen(false)} />
-                        <TouchableOpacity onPress={handlePickMedia} style={styles.iconButton}><Icon name="paperclip" size={24} color={THEME.muted} /></TouchableOpacity>
-                        {newMessage.trim().length > 0 || editingMessage ? (
-                            <TouchableOpacity style={styles.sendButton} onPress={handleSend}><Icon name={editingMessage ? "check" : "send"} size={24} color={THEME.white} /></TouchableOpacity>
-                        ) : (
-                            <TouchableOpacity style={styles.sendButton} onPressIn={onStartRecord} onPressOut={onStopRecord}><Icon name="microphone" size={24} color={THEME.white} /></TouchableOpacity>
-                        )}
+                        <TouchableOpacity onPress={() => { Keyboard.dismiss(); setIsEmojiPickerOpen(true); }} style={styles.iconButton}>
+                            <Icon name="emoticon-outline" size={24} color={THEME.muted} />
+                        </TouchableOpacity>
+                        <TextInput
+                            style={styles.input}
+                            value={newMessage}
+                            onChangeText={setNewMessage}
+                            placeholder="Type a message..."
+                            multiline
+                            onFocus={() => setIsEmojiPickerOpen(false)}
+                        />
+                        <TouchableOpacity onPress={handlePickMedia} style={styles.iconButton}>
+                            <Icon name="paperclip" size={24} color={THEME.muted} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+                            <Icon name={editingMessage ? "check" : "send"} size={24} color={THEME.white} />
+                        </TouchableOpacity>
                     </View>
                 </View>
             </KeyboardAvoidingView>
-            <EmojiPicker onEmojiSelected={(emoji) => setNewMessage(prev => prev + emoji.emoji)} open={isEmojiPickerOpen} onClose={() => setIsEmojiPickerOpen(false)} />
+            <EmojiPicker
+                onEmojiSelected={(emoji) => setNewMessage(prev => prev + emoji.emoji)}
+                open={isEmojiPickerOpen}
+                onClose={() => setIsEmojiPickerOpen(false)}
+            />
         </SafeAreaView>
     );
 };
@@ -244,7 +243,7 @@ const styles = StyleSheet.create({
     myMessageRow: { justifyContent: 'flex-end' },
     otherMessageRow: { justifyContent: 'flex-start' },
     senderDp: { width: 36, height: 36, borderRadius: 18, marginRight: 8, marginBottom: 5, backgroundColor: '#eee' },
-    messageContainer: { maxWidth: '80%', padding: 10, borderRadius: 12, elevation: 1, shadowColor: '#000', shadowOffset: {width: 0, height: 1}, shadowOpacity: 0.1, shadowRadius: 1 },
+    messageContainer: { maxWidth: '80%', padding: 10, borderRadius: 12, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1 },
     myMessageContainer: { backgroundColor: THEME.myMessageBg, borderBottomRightRadius: 2 },
     otherMessageContainer: { backgroundColor: THEME.otherMessageBg, borderBottomLeftRadius: 2 },
     mediaContainer: { padding: 5, },
@@ -261,9 +260,6 @@ const styles = StyleSheet.create({
     sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: THEME.primary, justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
     iconButton: { padding: 8 },
     mediaMessage: { width: 220, height: 220, borderRadius: 10 },
-    audioPlayerContainer: { flexDirection: 'row', alignItems: 'center', padding: 5, width: 200 },
-    playButton: { padding: 5 },
-    durationText: { color: THEME.muted, marginLeft: 10 },
 });
 
 export default GroupChatScreen;
