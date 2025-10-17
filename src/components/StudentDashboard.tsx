@@ -104,7 +104,7 @@ const StudentDashboard = ({ navigation }) => {
     { id: 'qa4', title: 'Exams', imageSource: 'https://cdn-icons-png.flaticon.com/128/12886/12886027.png', navigateToTab: 'StudentExamsScreen' },
     { id: 'qa1', title: 'PTM', imageSource: 'https://cdn-icons-png.flaticon.com/128/3214/3214781.png', navigateToTab: 'StudentPTMScreen' },
     { id: 'qa7', title: 'Online class', imageSource: 'https://cdn-icons-png.flaticon.com/128/8388/8388104.png', navigateToTab: 'OnlineClassScreen' },
-    { id: 'qa8', title: 'Food Menu', imageSource: 'https://cdn-icons-png.flaticon.com/128/561/561611.png', navigateToTab: 'FoodScreen' },
+    { id: 'qa8', title: 'Lunch Menu', imageSource: 'https://cdn-icons-png.flaticon.com/128/561/561611.png', navigateToTab: 'FoodScreen' },
     { id: 'qa9', title: 'Health Info', imageSource: 'https://cdn-icons-png.flaticon.com/128/2382/2382533.png', navigateToTab: 'StudentHealthScreen' },
     { id: 'qa10', title: 'Group chat', imageSource: 'https://cdn-icons-png.flaticon.com/128/6576/6576146.png', navigateToTab: 'GroupChatScreen' },
     { id: 'qa11', title: 'Events', imageSource: 'https://cdn-icons-png.flaticon.com/128/9592/9592283.png', navigateToTab: 'StudentEventsScreen' },
@@ -183,7 +183,7 @@ const StudentDashboard = ({ navigation }) => {
       case 'StudentExamsScreen': return ( <><ContentScreenHeader title="Exams" onBack={handleBack} /><StudentExamsScreen /></> );
       case 'StudentPTMScreen': return ( <><ContentScreenHeader title="Parents-Teacher Meetings" onBack={handleBack} /><StudentPTMScreen /></> );
       case 'OnlineClassScreen': return ( <><ContentScreenHeader title="Online Class" onBack={handleBack} /><OnlineClassScreen /></> );
-      case 'FoodScreen': return ( <><ContentScreenHeader title="Food Menu" onBack={handleBack} /><FoodScreen /></> );
+      case 'FoodScreen': return ( <><ContentScreenHeader title="Lunch Menu" onBack={handleBack} /><FoodScreen /></> );
       case 'StudentHealthScreen': return ( <><ContentScreenHeader title="Health Info" onBack={handleBack} /><StudentHealthScreen /></> );
       case 'GroupChatScreen': return ( <><ContentScreenHeader title="Group Chat" onBack={handleBack} /><GroupChatScreen /></> );
       case 'StudentEventsScreen': return ( <><ContentScreenHeader title="Events" onBack={handleBack} /><StudentEventsScreen /></> );

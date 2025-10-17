@@ -11,7 +11,6 @@ import { useAuth } from '../../context/AuthContext';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import apiClient from '../../api/client';
-// MODIFIED: Replaced DocumentPicker with ImagePicker
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import Video from 'react-native-video';
 
@@ -55,7 +54,6 @@ const OnlineClassScreen: React.FC = () => {
     const [formData, setFormData] = useState<FormData>(initialFormState);
     const [date, setDate] = useState(new Date());
     const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
-    // MODIFIED: Changed state type to Asset from react-native-image-picker
     const [selectedVideo, setSelectedVideo] = useState<Asset | null>(null);
     const [videoPlayerVisible, setVideoPlayerVisible] = useState(false);
     const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null);
@@ -70,7 +68,6 @@ const OnlineClassScreen: React.FC = () => {
                 apiClient.get('/student-classes'),
             ]);
             setAllClasses(classesRes.data);
-            // MODIFIED: Removed 'All' from the class groups list
             setClassGroups(classGroupsRes.data);
         } catch (error: any) {
             Alert.alert("Error", error.response?.data?.message || 'An unknown error occurred.');
@@ -90,7 +87,6 @@ const OnlineClassScreen: React.FC = () => {
             setSubjects([]); 
             setTeachers([]);
 
-            // MODIFIED: Simplified logic since 'All' is removed from the creation dropdown
             try {
                 const [subjectsRes, teachersRes] = await Promise.all([
                     apiClient.get(`/subjects-for-class/${formData.class_group}`),
@@ -167,7 +163,6 @@ const OnlineClassScreen: React.FC = () => {
         setModalVisible(true);
     };
 
-    // MODIFIED: Replaced DocumentPicker with react-native-image-picker
     const handleSelectVideo = async () => {
         const result = await launchImageLibrary({
             mediaType: 'video',
@@ -229,6 +224,10 @@ const OnlineClassScreen: React.FC = () => {
         data.append('class_datetime', date.toISOString());
         data.append('description', formData.description);
         data.append('class_type', modalClassType);
+        // ★★★ MODIFICATION START ★★★
+        // Append topic for both live and recorded classes. It's now outside the conditional block.
+        data.append('topic', formData.topic);
+        // ★★★ MODIFICATION END ★★★
 
         if (modalClassType === 'live') {
             if (!formData.meet_link) {
@@ -237,15 +236,16 @@ const OnlineClassScreen: React.FC = () => {
             }
             data.append('meet_link', formData.meet_link);
         } else {
-            if (!selectedVideo || !formData.topic) {
+            // ★★★ MODIFICATION START ★★★
+            // Removed topic validation from here as it's optional
+            if (!selectedVideo) {
                 setIsSaving(false);
-                return Alert.alert("Validation Error", "A Topic and a Video File are required for recorded classes.");
+                return Alert.alert("Validation Error", "A Video File is required for recorded classes.");
             }
-            data.append('topic', formData.topic);
+            // ★★★ MODIFICATION END ★★★
             data.append('videoFile', {
                 uri: selectedVideo.uri,
                 type: selectedVideo.type,
-                // MODIFIED: Use fileName from react-native-image-picker
                 name: selectedVideo.fileName,
             } as any);
         }
@@ -369,6 +369,12 @@ const OnlineClassScreen: React.FC = () => {
                             <TouchableOpacity disabled={isEditing} onPress={() => setPickerMode('date')} style={styles.input}><Text style={{ color: '#333' }}>{formatDateTime(date.toISOString())}</Text></TouchableOpacity>
                             {pickerMode && <DateTimePicker value={date} mode={pickerMode} is24Hour={true} display="default" onChange={onPickerChange}/>}
                             
+                            {/* ★★★ MODIFICATION START ★★★ */}
+                            {/* Topic input is now outside the conditional rendering to show for both types */}
+                            <Text style={styles.label}>Topic:</Text>
+                            <TextInput style={styles.input} placeholder="e.g., Solving Linear Equations" value={formData.topic} onChangeText={(text) => setFormData(prev => ({ ...prev, topic: text }))}/>
+                            {/* ★★★ MODIFICATION END ★★★ */}
+
                             {modalClassType === 'live' ? (
                                 <>
                                     <Text style={styles.label}>Meeting Link:</Text>
@@ -376,13 +382,10 @@ const OnlineClassScreen: React.FC = () => {
                                 </>
                             ) : (
                                 <>
-                                    <Text style={styles.label}>Topic:</Text>
-                                    <TextInput style={styles.input} placeholder="e.g., Solving Linear Equations" value={formData.topic} onChangeText={(text) => setFormData(prev => ({ ...prev, topic: text }))}/>
-                                    
+                                    {/* Topic input has been moved out */}
                                     <Text style={styles.label}>Video File:</Text>
                                     <TouchableOpacity style={styles.filePickerButton} onPress={handleSelectVideo} disabled={isEditing}>
                                         <FontAwesome name="upload" size={16} color="#007bff" />
-                                        {/* MODIFIED: Use fileName to display the selected video name */}
                                         <Text style={styles.filePickerText} numberOfLines={1}>{selectedVideo ? selectedVideo.fileName : (isEditing ? 'Cannot change existing video' : 'Select Video File')}</Text>
                                     </TouchableOpacity>
                                 </>
@@ -425,7 +428,6 @@ const OnlineClassScreen: React.FC = () => {
 };
 
 const ClassCard = ({ classItem, onEdit, onDelete, onJoinOrWatch, userRole }) => {
-    // MODIFIED: Logic to show Join button for admin/teacher and only future classes for students
     const isFutureClass = new Date(classItem.class_datetime) >= new Date();
     const canJoin = (userRole === 'admin' || userRole === 'teacher') || (userRole === 'student' && isFutureClass);
 
@@ -455,7 +457,6 @@ const ClassCard = ({ classItem, onEdit, onDelete, onJoinOrWatch, userRole }) => 
                 {classItem.description && <InfoRow icon="info-circle" text={`Notes: ${classItem.description}`} />}
             </View>
             
-            {/* MODIFIED: Updated condition to show Join button */}
             {classItem.class_type === 'live' && classItem.meet_link && canJoin && (
                 <TouchableOpacity style={styles.joinButton} onPress={() => onJoinOrWatch(classItem)}>
                     <FontAwesome name="video-camera" size={18} color="white" />
