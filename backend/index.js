@@ -5951,8 +5951,6 @@ app.post('/api/groups/:groupId/seen', verifyToken, async (req, res) => {
     const { groupId } = req.params;
     const userId = req.user.id;
     try {
-        // The group_last_seen table is not in the provided schema, so this might fail.
-        // Assuming it exists based on the original code.
         const query = `
             INSERT INTO group_last_seen (group_id, user_id, last_seen_timestamp)
             VALUES (?, ?, NOW())
@@ -5961,8 +5959,7 @@ app.post('/api/groups/:groupId/seen', verifyToken, async (req, res) => {
         await db.query(query, [groupId, userId]);
         res.sendStatus(200);
     } catch (error) {
-        // If the table doesn't exist, this will prevent a crash.
-        console.error("Error marking group as seen (table `group_last_seen` might be missing):", error);
+        console.error("Error marking group as seen:", error);
         res.status(500).json({ message: "Could not mark group as seen." });
     }
 });
@@ -6000,12 +5997,7 @@ app.delete('/api/groups/:groupId', verifyToken, isGroupCreator, async (req, res)
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        // Since `group_last_seen` might not exist, we wrap its deletion in a try-catch.
-        try { await connection.query('DELETE FROM group_last_seen WHERE group_id = ?', [groupId]); }
-        catch (e) { console.log("Skipping deletion from non-existent table group_last_seen"); }
-
-        await connection.query('DELETE FROM group_chat_messages WHERE group_id = ?', [groupId]);
-        await connection.query('DELETE FROM group_members WHERE group_id = ?', [groupId]);
+        // The following tables are deleted in order due to foreign key constraints (CASCADE)
         await connection.query('DELETE FROM `groups` WHERE id = ?', [groupId]);
         await connection.commit();
         res.json({ message: 'Group deleted successfully.' });
