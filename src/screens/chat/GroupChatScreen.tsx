@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image, Keyboard } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image, Keyboard, Modal, Pressable } from 'react-native'; // <-- Added Modal & Pressable
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { SERVER_URL } from '../../../apiConfig';
@@ -11,7 +11,22 @@ import { getProfileImageSource } from '../../utils/imageHelpers';
 import Video from 'react-native-video';
 import EmojiPicker from 'rn-emoji-keyboard';
 
-const THEME = { primary: '#007bff', text: '#212529', muted: '#86909c', border: '#dee2e6', myMessageBg: '#dcf8c6', otherMessageBg: '#ffffff', white: '#ffffff' };
+const THEME = { primary: '#007bff', text: '#212529', muted: '#86909c', border: '#dee2e6', myMessageBg: '#dcf8c6', otherMessageBg: '#ffffff', white: '#ffffff', destructive: '#dc3545' };
+
+const formatDateSeparator = (dateString: string) => {
+    const messageDate = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    messageDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    yesterday.setHours(0, 0, 0, 0);
+
+    if (messageDate.getTime() === today.getTime()) return 'Today';
+    if (messageDate.getTime() === yesterday.getTime()) return 'Yesterday';
+    return messageDate.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' });
+};
 
 const GroupChatScreen = () => {
     const { user } = useAuth();
@@ -26,8 +41,14 @@ const GroupChatScreen = () => {
     const [replyingTo, setReplyingTo] = useState<any>(null);
     const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
 
+    // --- NEW STATE FOR CUSTOM MODAL ---
+    const [isOptionsModalVisible, setOptionsModalVisible] = useState(false);
+    const [selectedMessage, setSelectedMessage] = useState<any>(null);
+    // --- END ---
+
     const socketRef = useRef<Socket | null>(null);
     const flatListRef = useRef<FlatList | null>(null);
+    const initialLoadDone = useRef(false);
 
     const markAsSeen = useCallback(async () => {
         try {
@@ -90,9 +111,30 @@ const GroupChatScreen = () => {
         };
     }, [group.id]);
 
+    useEffect(() => {
+        if (!loading && messages.length > 0 && !initialLoadDone.current) {
+            flatListRef.current?.scrollToEnd({ animated: false });
+            initialLoadDone.current = true;
+        }
+    }, [loading, messages]);
+
+    const messagesWithDates = useMemo(() => {
+        if (messages.length === 0) return [];
+        const processed = [];
+        let lastDate = '';
+        messages.forEach(message => {
+            const messageDate = new Date(message.timestamp).toLocaleDateString();
+            if (messageDate !== lastDate) {
+                processed.push({ type: 'date', id: `date-${messageDate}`, date: formatDateSeparator(message.timestamp) });
+                lastDate = messageDate;
+            }
+            processed.push({ ...message, type: 'message' });
+        });
+        return processed;
+    }, [messages]);
+
     const sendMessage = (type: 'text' | 'image' | 'video', text: string | null, url: string | null) => {
         if (!user || !socketRef.current) return;
-        
         socketRef.current.emit('sendMessage', {
             userId: user.id,
             groupId: group.id,
@@ -101,7 +143,6 @@ const GroupChatScreen = () => {
             fileUrl: url,
             replyToMessageId: replyingTo ? replyingTo.id : null,
         });
-
         if (type === 'text') setNewMessage('');
         setReplyingTo(null);
     };
@@ -138,17 +179,11 @@ const GroupChatScreen = () => {
         Keyboard.dismiss();
     };
     
+    // --- UPDATED to use Modal ---
     const onLongPressMessage = (message: any) => {
         if (!user) return;
-        const options: any[] = [{ text: 'Cancel', style: 'cancel' }];
-        options.push({ text: 'Reply', onPress: () => setReplyingTo(message) });
-        if (message.user_id === user.id) {
-            if (message.message_type === 'text') {
-                options.push({ text: 'Edit', onPress: () => { setEditingMessage(message); setNewMessage(message.message_text); }});
-            }
-            options.push({ text: 'Delete for Everyone', style: 'destructive', onPress: () => handleDeleteMessage(message.id) });
-        }
-        Alert.alert('Message Options', '', options);
+        setSelectedMessage(message);
+        setOptionsModalVisible(true);
     };
 
     const handleDeleteMessage = (messageId: number) => {
@@ -159,6 +194,14 @@ const GroupChatScreen = () => {
     const cancelEdit = () => { setEditingMessage(null); setNewMessage(''); Keyboard.dismiss(); };
 
     const renderMessageItem = ({ item }: { item: any }) => {
+        if (item.type === 'date') {
+            return (
+                <View style={styles.dateSeparator}>
+                    <Text style={styles.dateSeparatorText}>{item.date}</Text>
+                </View>
+            );
+        }
+
         const isMyMessage = item.user_id === user?.id;
         const messageTime = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -197,8 +240,49 @@ const GroupChatScreen = () => {
         );
     };
 
+    // --- RENDER CUSTOM OPTIONS MODAL ---
+    const renderOptionsModal = () => {
+        if (!selectedMessage) return null;
+        const isMyMessage = selectedMessage.user_id === user?.id;
+        return (
+            <Modal
+                animationType="fade"
+                transparent={true}
+                visible={isOptionsModalVisible}
+                onRequestClose={() => setOptionsModalVisible(false)}
+            >
+                <Pressable style={styles.modalOverlay} onPress={() => setOptionsModalVisible(false)}>
+                    <Pressable style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Message Options</Text>
+                        
+                        <TouchableOpacity style={styles.modalOption} onPress={() => { setReplyingTo(selectedMessage); setOptionsModalVisible(false); }}>
+                            <Text style={styles.modalOptionText}>Reply</Text>
+                        </TouchableOpacity>
+
+                        {isMyMessage && selectedMessage.message_type === 'text' && (
+                            <TouchableOpacity style={styles.modalOption} onPress={() => { setEditingMessage(selectedMessage); setNewMessage(selectedMessage.message_text); setOptionsModalVisible(false); }}>
+                                <Text style={styles.modalOptionText}>Edit</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        {isMyMessage && (
+                            <TouchableOpacity style={styles.modalOption} onPress={() => { handleDeleteMessage(selectedMessage.id); setOptionsModalVisible(false); }}>
+                                <Text style={[styles.modalOptionText, styles.destructiveText]}>Delete</Text>
+                            </TouchableOpacity>
+                        )}
+                        
+                        <TouchableOpacity style={styles.modalOption} onPress={() => setOptionsModalVisible(false)}>
+                            <Text style={styles.modalOptionText}>Cancel</Text>
+                        </TouchableOpacity>
+                    </Pressable>
+                </Pressable>
+            </Modal>
+        );
+    };
+
     return (
         <SafeAreaView style={{flex: 1, backgroundColor: THEME.white}}>
+            {renderOptionsModal()}
             <View style={styles.header}>
                 <Icon name="arrow-left" size={24} color={THEME.primary} onPress={() => navigation.goBack()} style={{padding: 5}}/>
                 <TouchableOpacity style={styles.headerContent} onPress={() => navigation.navigate('GroupSettings', { group })}>
@@ -211,11 +295,10 @@ const GroupChatScreen = () => {
                 {loading ? <ActivityIndicator style={{flex: 1}} size="large" /> :
                 <FlatList
                     ref={flatListRef}
-                    data={messages}
+                    data={messagesWithDates}
                     renderItem={renderMessageItem}
                     keyExtractor={(item) => item.id.toString()}
                     contentContainerStyle={{ paddingVertical: 10, paddingBottom: 20 }}
-                    onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
                     onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
                 />}
                 <View>
@@ -243,11 +326,14 @@ const GroupChatScreen = () => {
     );
 };
 
+// --- ADDED NEW STYLES FOR THE MODAL ---
 const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: THEME.border, backgroundColor: THEME.white, justifyContent: 'space-between' },
     headerContent: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', paddingVertical: 5 },
     headerDp: { width: 40, height: 40, borderRadius: 20, marginHorizontal: 10, backgroundColor: '#eee' },
     headerTitle: { fontSize: 18, fontWeight: 'bold' },
+    dateSeparator: { alignSelf: 'center', backgroundColor: '#e1f3fb', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginVertical: 10, elevation: 1 },
+    dateSeparatorText: { color: '#5a7a8a', fontSize: 12, fontWeight: '600' },
     messageRow: { flexDirection: 'row', marginVertical: 5, paddingHorizontal: 10, alignItems: 'flex-end' },
     myMessageRow: { justifyContent: 'flex-end' },
     otherMessageRow: { justifyContent: 'flex-start' },
@@ -277,6 +363,42 @@ const styles = StyleSheet.create({
     otherReplyContainer: { backgroundColor: '#e9e9e9' },
     replySenderName: { fontWeight: 'bold', fontSize: 13, color: THEME.primary },
     replyText: { fontSize: 13, color: THEME.muted },
+
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalContent: {
+        width: '80%',
+        backgroundColor: 'white',
+        borderRadius: 10,
+        paddingVertical: 10,
+        elevation: 5,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 15,
+        color: THEME.text
+    },
+    modalOption: {
+        paddingVertical: 15,
+        paddingHorizontal: 20,
+        borderTopWidth: 1,
+        borderTopColor: THEME.border,
+    },
+    modalOptionText: {
+        fontSize: 16,
+        color: THEME.primary
+    },
+    destructiveText: {
+        color: THEME.destructive
+    }
 });
 
 export default GroupChatScreen;
