@@ -6451,25 +6451,33 @@ const alumniStorage = multer.diskStorage({
 });
 const alumniUpload = multer({ storage: alumniStorage });
 
-// GET all alumni records (NOW WITH SEARCH AND SORT)
+// GET all alumni records (NOW WITH SEARCH, SORT, and YEAR FILTER)
 app.get('/api/alumni', async (req, res) => {
     try {
-        const { search, sortBy = 'alumni_name', sortOrder = 'ASC' } = req.query;
+        const { search, sortBy = 'alumni_name', sortOrder = 'ASC', year } = req.query;
 
         // Basic validation for sort parameters to prevent SQL injection
-        const allowedSortColumns = ['alumni_name', 'admission_no', 'school_outgoing_date', 'school_joined_date'];
+        const allowedSortColumns = ['alumni_name', 'admission_no', 'present_status'];
         const safeSortBy = allowedSortColumns.includes(sortBy) ? sortBy : 'alumni_name';
         const safeSortOrder = (sortOrder.toUpperCase() === 'DESC') ? 'DESC' : 'ASC';
 
-        let whereClause = "";
+        let whereClauses = [];
         const queryParams = [];
+
+        if (year && !isNaN(parseInt(year))) {
+             // Filter by the year of the school outgoing date
+            whereClauses.push("YEAR(school_outgoing_date) = ?");
+            queryParams.push(parseInt(year));
+        }
 
         if (search) {
             // Search by name, admission number, or present status
-            whereClause = "WHERE alumni_name LIKE ? OR admission_no LIKE ? OR present_status LIKE ?";
+            whereClauses.push("(alumni_name LIKE ? OR admission_no LIKE ? OR present_status LIKE ?)");
             const searchTerm = `%${search}%`;
             queryParams.push(searchTerm, searchTerm, searchTerm);
         }
+
+        let whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : "";
 
         const query = `
             SELECT * FROM alumni_records 

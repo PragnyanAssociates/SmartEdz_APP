@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator,
   Modal, ScrollView, TextInput, Platform, Image, LayoutAnimation, UIManager, Dimensions
@@ -44,11 +44,11 @@ interface SortOption {
     value: string; // Corresponds to DB column name
 }
 
+// New Sort Options
 const SORT_OPTIONS: SortOption[] = [
     { label: 'Name (A-Z)', value: 'alumni_name' },
     { label: 'Admission No', value: 'admission_no' },
-    { label: 'Joined Date', value: 'school_joined_date' },
-    { label: 'Outgoing Date', value: 'school_outgoing_date' },
+    { label: 'Present Status', value: 'present_status' },
 ];
 
 // --- HELPER FUNCTIONS ---
@@ -62,12 +62,23 @@ const formatDate = (dateString?: string): string => {
 };
 
 const toYYYYMMDD = (date: Date): string => date.toISOString().split('T')[0];
+const getCurrentYear = () => new Date().getFullYear();
+
+// Generates a list of years from 1990 up to the current year + 1
+const generateYearOptions = () => {
+    const currentYear = getCurrentYear() + 1;
+    const startYear = 1990;
+    const years = [];
+    for (let year = currentYear; year >= startYear; year--) {
+        years.push(year.toString());
+    }
+    return years;
+};
+const YEAR_OPTIONS = generateYearOptions();
 
 // --- Image Enlarger Modal ---
 const ImageEnlargerModal: React.FC<{ visible: boolean, uri: string, onClose: () => void }> = ({ visible, uri, onClose }) => {
-    // Only render if URI is valid
     if (!uri || !visible) return null;
-
     return (
         <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
             <View style={enlargeStyles.modalBackground}>
@@ -87,10 +98,9 @@ const ImageEnlargerModal: React.FC<{ visible: boolean, uri: string, onClose: () 
 
 // --- MAIN SCREEN COMPONENT ---
 const AlumniScreen: React.FC = () => {
-    const { token } = useAuth();
     const [alumniData, setAlumniData] = useState<AlumniRecord[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
-    const [modalVisible, setModalVisible] = useState<boolean>(false); // Add/Edit Modal
+    const [modalVisible, setModalVisible] = useState<boolean>(false); 
     const [isEditing, setIsEditing] = useState<boolean>(false);
     const [currentItem, setCurrentItem] = useState<AlumniRecord | null>(null);
     const initialFormState: Partial<AlumniRecord> = {};
@@ -99,13 +109,19 @@ const AlumniScreen: React.FC = () => {
     const [date, setDate] = useState(new Date());
     const [pickerTarget, setPickerTarget] = useState<keyof AlumniRecord | null>(null);
     const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
-
-    // --- Search/Filter State ---
+    
+    // --- Filter State ---
     const [searchText, setSearchText] = useState<string>('');
     const [sortBy, setSortBy] = useState<string>('alumni_name');
     const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('ASC');
+    const [filterYear, setFilterYear] = useState<string>(getCurrentYear().toString()); // Default to current year
     const [filterModalVisible, setFilterModalVisible] = useState<boolean>(false);
     const [isSearching, setIsSearching] = useState<boolean>(false);
+    
+    // --- Temp State for Filter Modal ---
+    const [tempSortBy, setTempSortBy] = useState<string>(sortBy);
+    const [tempSortOrder, setTempSortOrder] = useState<'ASC' | 'DESC'>(sortOrder);
+    const [tempFilterYear, setTempFilterYear] = useState<string>(filterYear);
     
     // --- Image Enlarge State ---
     const [enlargeModalVisible, setEnlargeModalVisible] = useState<boolean>(false);
@@ -120,6 +136,7 @@ const AlumniScreen: React.FC = () => {
                 search: searchText,
                 sortBy: sortBy,
                 sortOrder: sortOrder,
+                year: filterYear // Pass selected year to backend
             };
 
             const response = await apiClient.get('/alumni', { params });
@@ -129,15 +146,26 @@ const AlumniScreen: React.FC = () => {
         } finally {
             if (isSearch) setIsSearching(false); else setLoading(false);
         }
-    }, [searchText, sortBy, sortOrder]);
+    }, [searchText, sortBy, sortOrder, filterYear]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
     
-    const handleCardPress = (id: number) => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setExpandedCardId(prevId => (prevId === id ? null : id));
+    const handleOpenFilterModal = () => {
+        // Initialize temp state with current state before opening
+        setTempSortBy(sortBy);
+        setTempSortOrder(sortOrder);
+        setTempFilterYear(filterYear);
+        setFilterModalVisible(true);
+    };
+
+    const applyFilter = () => {
+        setSortBy(tempSortBy);
+        setSortOrder(tempSortOrder);
+        setFilterYear(tempFilterYear);
+        setFilterModalVisible(false);
+        // fetchData runs automatically due to dependency change
     };
 
     const handleOpenModal = (item: AlumniRecord | null = null) => {
@@ -152,14 +180,6 @@ const AlumniScreen: React.FC = () => {
             setFormData(initialFormState);
         }
         setModalVisible(true);
-    };
-
-    const handleChoosePhoto = () => {
-        launchImageLibrary({ mediaType: 'photo', quality: 0.5 }, (response: ImagePickerResponse) => {
-            if (response.didCancel) { console.log('User cancelled image picker');
-            } else if (response.errorCode) { Alert.alert('ImagePicker Error', response.errorMessage || 'An error occurred');
-            } else if (response.assets && response.assets.length > 0) { setSelectedImage(response.assets[0]); }
-        });
     };
 
     const handleSave = async () => {
@@ -228,16 +248,6 @@ const AlumniScreen: React.FC = () => {
         }
     };
 
-    const handleSearchChange = (text: string) => {
-        setSearchText(text);
-    };
-
-    const applyFilter = (newSortBy: string, newSortOrder: 'ASC' | 'DESC') => {
-        setSortBy(newSortBy);
-        setSortOrder(newSortOrder);
-        setFilterModalVisible(false);
-    };
-
     const handleImageEnlarge = (url: string) => {
         setEnlargeImageUri(`${SERVER_URL}${url}`);
         setEnlargeModalVisible(true);
@@ -265,13 +275,14 @@ const AlumniScreen: React.FC = () => {
                             style={styles.searchInput}
                             placeholder="Search by Name, ID, or Status..."
                             value={searchText}
-                            onChangeText={handleSearchChange}
+                            onChangeText={setSearchText}
                             placeholderTextColor="#9E9E9E"
                             autoCapitalize="none"
+                            onSubmitEditing={() => fetchData(true)} // Trigger search on submit
                         />
                         {isSearching && <ActivityIndicator size="small" color="#00796B" style={styles.loadingIndicator} />}
                     </View>
-                    <TouchableOpacity style={styles.filterButton} onPress={() => setFilterModalVisible(true)}>
+                    <TouchableOpacity style={styles.filterButton} onPress={handleOpenFilterModal}>
                         <MaterialIcons name="filter-list" size={24} color="#FFFFFF" />
                     </TouchableOpacity>
                 </View>
@@ -287,11 +298,11 @@ const AlumniScreen: React.FC = () => {
                         onEdit={handleOpenModal} 
                         onDelete={handleDelete}
                         isExpanded={expandedCardId === item.id}
-                        onPress={() => handleCardPress(item.id)}
-                        onDpPress={handleImageEnlarge} // Passed down for enlargement
+                        onPress={() => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut) && setExpandedCardId(prevId => (prevId === item.id ? null : item.id))}
+                        onDpPress={handleImageEnlarge} 
                     />
                 )}
-                ListEmptyComponent={<View style={styles.emptyContainer}><MaterialIcons name="school" size={80} color="#CFD8DC" /><Text style={styles.emptyText}>No Alumni Found</Text><Text style={styles.emptySubText}>Try adjusting your search filters.</Text></View>}
+                ListEmptyComponent={<View style={styles.emptyContainer}><MaterialIcons name="school" size={80} color="#CFD8DC" /><Text style={styles.emptyText}>No Alumni Found</Text><Text style={styles.emptySubText}>Try adjusting your year, search or filters.</Text></View>}
                 contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
             />
 
@@ -302,14 +313,12 @@ const AlumniScreen: React.FC = () => {
                 <ScrollView style={styles.modalContainer} contentContainerStyle={{paddingBottom: 50}}>
                     <Text style={styles.modalTitle}>{isEditing ? 'Edit Alumni Record' : 'Add New Alumni'}</Text>
                     <View style={styles.imagePickerContainer}>
-                        {/* FIX: Use conditional rendering for Image vs Icon fallback */}
                         {selectedImage?.uri || formData.profile_pic_url ? (
                             <Image 
                                 source={selectedImage?.uri ? { uri: selectedImage.uri } : { uri: `${SERVER_URL}${formData.profile_pic_url}` }}
                                 style={styles.profileImage} 
                             />
                         ) : (
-                            // Safe fallback using an icon instead of a required file
                             <View style={[styles.profileImage, styles.avatarFallback]}>
                                 <FontAwesome name="user-circle" size={80} color="#757575" />
                             </View>
@@ -344,45 +353,63 @@ const AlumniScreen: React.FC = () => {
                 </ScrollView>
             </Modal>
 
-            {/* --- Filter & Sort Modal --- */}
+            {/* --- Filter & Sort Modal (Updated) --- */}
             <Modal visible={filterModalVisible} animationType="slide" transparent={true} onRequestClose={() => setFilterModalVisible(false)}>
                 <View style={filterStyles.modalOverlay}>
                     <View style={filterStyles.modalContent}>
                         <Text style={filterStyles.modalTitle}>Sort & Filter</Text>
 
-                        <Text style={filterStyles.label}>Sort By:</Text>
+                        {/* 1. Year Filter */}
+                        <Text style={filterStyles.label}>Select Outgoing Year:</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={filterStyles.yearSelectorContainer}>
+                            {YEAR_OPTIONS.map((year) => (
+                                <TouchableOpacity
+                                    key={year}
+                                    style={[filterStyles.yearButton, tempFilterYear === year && filterStyles.yearButtonActive]}
+                                    onPress={() => setTempFilterYear(year)}
+                                >
+                                    <Text style={[filterStyles.yearText, tempFilterYear === year && filterStyles.yearTextActive]}>
+                                        {year}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+
+                        {/* 2. Sort By Filter */}
+                        <Text style={[filterStyles.label, {marginTop: 20}]}>Sort By:</Text>
                         {SORT_OPTIONS.map((option) => (
                             <TouchableOpacity 
                                 key={option.value} 
                                 style={filterStyles.optionRow} 
-                                onPress={() => setSortBy(option.value)}
+                                onPress={() => setTempSortBy(option.value)}
                             >
                                 <MaterialIcons 
-                                    name={sortBy === option.value ? 'radio-button-checked' : 'radio-button-unchecked'} 
+                                    name={tempSortBy === option.value ? 'radio-button-checked' : 'radio-button-unchecked'} 
                                     size={20} 
-                                    color={sortBy === option.value ? '#00796B' : '#999'} 
+                                    color={tempSortBy === option.value ? '#00796B' : '#999'} 
                                 />
                                 <Text style={filterStyles.optionText}>{option.label}</Text>
                             </TouchableOpacity>
                         ))}
                         
+                        {/* 3. Order Filter */}
                         <Text style={[filterStyles.label, {marginTop: 20}]}>Order:</Text>
                         <View style={filterStyles.orderToggle}>
                             <TouchableOpacity 
-                                style={[filterStyles.orderButton, sortOrder === 'ASC' && filterStyles.orderButtonActive]} 
-                                onPress={() => setSortOrder('ASC')}
+                                style={[filterStyles.orderButton, tempSortOrder === 'ASC' && filterStyles.orderButtonActive]} 
+                                onPress={() => setTempSortOrder('ASC')}
                             >
-                                <Text style={[filterStyles.orderText, sortOrder === 'ASC' && filterStyles.orderTextActive]}>Ascending</Text>
+                                <Text style={[filterStyles.orderText, tempSortOrder === 'ASC' && filterStyles.orderTextActive]}>Ascending</Text>
                             </TouchableOpacity>
                             <TouchableOpacity 
-                                style={[filterStyles.orderButton, sortOrder === 'DESC' && filterStyles.orderButtonActive]} 
-                                onPress={() => setSortOrder('DESC')}
+                                style={[filterStyles.orderButton, tempSortOrder === 'DESC' && filterStyles.orderButtonActive]} 
+                                onPress={() => setTempSortOrder('DESC')}
                             >
-                                <Text style={[filterStyles.orderText, sortOrder === 'DESC' && filterStyles.orderTextActive]}>Descending</Text>
+                                <Text style={[filterStyles.orderText, tempSortOrder === 'DESC' && filterStyles.orderTextActive]}>Descending</Text>
                             </TouchableOpacity>
                         </View>
 
-                        <TouchableOpacity style={filterStyles.applyButton} onPress={() => applyFilter(sortBy, sortOrder)}>
+                        <TouchableOpacity style={filterStyles.applyButton} onPress={applyFilter}>
                             <Text style={filterStyles.applyButtonText}>Apply Filters</Text>
                         </TouchableOpacity>
                     </View>
@@ -402,7 +429,6 @@ const AlumniScreen: React.FC = () => {
 
 const AlumniCardItem: React.FC<{ item: AlumniRecord, onEdit: (item: AlumniRecord) => void, onDelete: (id: number) => void, isExpanded: boolean, onPress: () => void, onDpPress: (url: string) => void }> = ({ item, onEdit, onDelete, isExpanded, onPress, onDpPress }) => {
     
-    // Determine the image URI
     const imageUri = item.profile_pic_url ? `${SERVER_URL}${item.profile_pic_url}` : undefined;
     
     return (
@@ -411,9 +437,8 @@ const AlumniCardItem: React.FC<{ item: AlumniRecord, onEdit: (item: AlumniRecord
                 <TouchableOpacity 
                     onPress={() => imageUri && onDpPress(item.profile_pic_url!)} 
                     disabled={!imageUri}
-                    style={styles.avatarWrapper} // Wrapper style for touchable area
+                    style={styles.avatarWrapper}
                 >
-                    {/* FIX: Use conditional rendering for Image vs Icon fallback */}
                     {imageUri ? (
                         <Image 
                             source={{ uri: imageUri }} 
@@ -554,7 +579,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     }, 
     avatarFallback: {
-        // Style specific to the fallback icon container
         backgroundColor: '#CFD8DC',
     },
     cardHeaderText: { flex: 1, justifyContent: 'center', marginTop: 4 }, 
@@ -595,7 +619,6 @@ const styles = StyleSheet.create({
         width: 120, height: 120, borderRadius: 60, 
         backgroundColor: '#E0E0E0', marginBottom: 10, 
         borderWidth: 3, borderColor: '#0288D1',
-        // Make sure profile image container can hold the icon fallback
         justifyContent: 'center',
         alignItems: 'center',
     }, 
@@ -616,7 +639,7 @@ const filterStyles = StyleSheet.create({
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         padding: 25,
-        minHeight: height * 0.5,
+        maxHeight: height * 0.7, // Set maximum height
     },
     modalTitle: {
         fontSize: 22,
@@ -634,6 +657,31 @@ const filterStyles = StyleSheet.create({
         marginTop: 15,
         marginBottom: 10,
     },
+    // New Year Selector Styles
+    yearSelectorContainer: {
+        maxHeight: 50,
+        marginBottom: 10,
+    },
+    yearButton: {
+        paddingHorizontal: 15,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: '#ECEFF1',
+        marginRight: 10,
+        minWidth: 70,
+        alignItems: 'center',
+    },
+    yearButtonActive: {
+        backgroundColor: '#00796B',
+    },
+    yearText: {
+        color: '#424242',
+        fontWeight: '600',
+    },
+    yearTextActive: {
+        color: '#FFFFFF',
+    },
+    
     optionRow: {
         flexDirection: 'row',
         alignItems: 'center',
