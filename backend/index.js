@@ -5793,17 +5793,13 @@ const chatStorage = multer.diskStorage({
     destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => { cb(null, `chat-media-${Date.now()}${path.extname(file.originalname)}`); }
 });
-
 const chatUpload = multer({ 
     storage: chatStorage,
     fileFilter: (req, file, cb) => {
-        // Allow images, videos, and common audio formats
         const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|mkv|mp3|m4a|wav|aac/;
         const mimetype = allowedTypes.test(file.mimetype);
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        if (mimetype && extname) {
-            return cb(null, true);
-        }
+        if (mimetype && extname) { return cb(null, true); }
         cb(new Error('File type not supported: ' + file.mimetype));
     }
 });
@@ -5835,8 +5831,7 @@ app.post('/api/groups', verifyToken, isTeacherOrAdmin, async (req, res) => {
                  return res.status(403).json({ message: 'Teachers can only create groups for classes.' });
             }
         }
-        let whereClauses = [];
-        let queryParams = [];
+        let whereClauses = []; let queryParams = [];
         finalCategories.forEach(category => {
             if (category === 'All' && creator.role === 'admin') { whereClauses.push("1=1"); }
             else if (category === 'Admins') { whereClauses.push("role = ?"); queryParams.push('admin'); }
@@ -5847,7 +5842,6 @@ app.post('/api/groups', verifyToken, isTeacherOrAdmin, async (req, res) => {
         const getUsersQuery = `SELECT id FROM users WHERE ${finalWhereClause}`;
         const [usersToAd] = await db.query(getUsersQuery, queryParams);
         let memberIds = usersToAd.map(u => u.id);
-
         const connection = await db.getConnection();
         await connection.beginTransaction();
         try {
@@ -5905,10 +5899,7 @@ app.put('/api/groups/:groupId', verifyToken, isGroupCreator, async (req, res) =>
     try {
         await db.query('UPDATE `groups` SET name = ?, background_color = ? WHERE id = ?', [name, backgroundColor, groupId]);
         res.json({ message: 'Group updated successfully.' });
-    } catch (error) {
-        console.error("Error updating group:", error);
-        res.status(500).json({ message: 'Failed to update group.' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Failed to update group.' }); }
 });
 
 app.post('/api/groups/:groupId/dp', verifyToken, isGroupCreator, chatUpload.single('group_dp'), async (req, res) => {
@@ -5918,10 +5909,7 @@ app.post('/api/groups/:groupId/dp', verifyToken, isGroupCreator, chatUpload.sing
     try {
         await db.query('UPDATE `groups` SET group_dp_url = ? WHERE id = ?', [fileUrl, groupId]);
         res.status(200).json({ message: 'Group DP updated successfully.', group_dp_url: fileUrl });
-    } catch (error) {
-        console.error("Error updating group DP:", error);
-        res.status(500).json({ message: 'Failed to update group DP.' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Failed to update group DP.' }); }
 });
 
 app.delete('/api/groups/:groupId', verifyToken, isGroupCreator, async (req, res) => {
@@ -5929,17 +5917,29 @@ app.delete('/api/groups/:groupId', verifyToken, isGroupCreator, async (req, res)
     try {
         await db.query('DELETE FROM `groups` WHERE id = ?', [groupId]);
         res.json({ message: 'Group deleted successfully.' });
-    } catch (error) {
-        console.error("Error deleting group:", error);
-        res.status(500).json({ message: 'Failed to delete group.' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Failed to delete group.' }); }
 });
 
-// ★★★ 3. API Routes for Chat Messages ★★★
+// ★★★ 3. API Routes for Chat Messages (REVISED FOR REPLIES) ★★★
 app.get('/api/groups/:groupId/history', verifyToken, async (req, res) => {
     try {
         const { groupId } = req.params;
-        const query = `SELECT m.id, m.message_text, m.timestamp, m.user_id, m.group_id, m.message_type, m.file_url, m.is_edited, u.full_name, u.role, u.class_group, p.profile_image_url, p.roll_no FROM group_chat_messages m JOIN users u ON m.user_id = u.id LEFT JOIN user_profiles p ON m.user_id = p.user_id WHERE m.group_id = ? ORDER BY m.timestamp ASC LIMIT 100;`;
+        // This query now joins the messages table to itself to get reply context
+        const query = `
+            SELECT 
+                m.id, m.message_text, m.timestamp, m.user_id, m.group_id,
+                m.message_type, m.file_url, m.is_edited,
+                u.full_name, u.role, u.class_group,
+                p.profile_image_url, p.roll_no,
+                reply_m.message_text as reply_text,
+                reply_m.message_type as reply_type,
+                reply_u.full_name as reply_sender_name
+            FROM group_chat_messages m
+            JOIN users u ON m.user_id = u.id
+            LEFT JOIN user_profiles p ON m.user_id = p.user_id
+            LEFT JOIN group_chat_messages reply_m ON m.reply_to_message_id = reply_m.id
+            LEFT JOIN users reply_u ON reply_m.user_id = reply_u.id
+            WHERE m.group_id = ? ORDER BY m.timestamp ASC LIMIT 100;`;
         const [messages] = await db.query(query, [groupId]);
         res.json(messages);
     } catch (error) {
@@ -5950,37 +5950,45 @@ app.get('/api/groups/:groupId/history', verifyToken, async (req, res) => {
 
 app.post('/api/group-chat/upload-media', verifyToken, chatUpload.single('media'), (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
-    const fileUrl = `/uploads/${req.file.filename}`;
-    res.status(201).json({ fileUrl: fileUrl });
+    res.status(201).json({ fileUrl: `/uploads/${req.file.filename}` });
 });
 
-// ★★★ 4. Real-Time Socket.IO Logic ★★★
+// ★★★ 4. Real-Time Socket.IO Logic (REVISED FOR REPLIES) ★★★
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 io.on('connection', (socket) => {
-    console.log(`🔌 A user connected: ${socket.id}`);
-    socket.on('joinGroup', (data) => {
-        if (data.groupId) socket.join(`group-${data.groupId}`);
-    });
+    socket.on('joinGroup', (data) => { if (data.groupId) socket.join(`group-${data.groupId}`); });
+
     socket.on('sendMessage', async (data) => {
-        const { userId, groupId, messageType, messageText, fileUrl } = data;
+        const { userId, groupId, messageType, messageText, fileUrl, replyToMessageId } = data; // Added replyToMessageId
         if (!userId || !groupId || !messageType || (messageType === 'text' && !messageText?.trim()) || (messageType !== 'text' && !fileUrl)) return;
+        
         const roomName = `group-${groupId}`;
         const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
-            const [result] = await connection.query('INSERT INTO group_chat_messages (user_id, group_id, message_type, message_text, file_url) VALUES (?, ?, ?, ?, ?)', [userId, groupId, messageType, messageText || null, fileUrl || null]);
+            const [result] = await connection.query(
+                'INSERT INTO group_chat_messages (user_id, group_id, message_type, message_text, file_url, reply_to_message_id) VALUES (?, ?, ?, ?, ?, ?)',
+                [userId, groupId, messageType, messageText || null, fileUrl || null, replyToMessageId || null] // Save reply ID
+            );
             const newMessageId = result.insertId;
-            const [[broadcastMessage]] = await connection.query(`SELECT m.id, m.message_text, m.timestamp, m.user_id, m.group_id, m.message_type, m.file_url, m.is_edited, u.full_name, u.role, u.class_group, p.profile_image_url, p.roll_no FROM group_chat_messages m JOIN users u ON m.user_id = u.id LEFT JOIN user_profiles p ON m.user_id = p.user_id WHERE m.id = ?`, [newMessageId]);
+            const [[broadcastMessage]] = await connection.query(`
+                SELECT m.id, m.message_text, m.timestamp, m.user_id, m.group_id, m.message_type, m.file_url, m.is_edited, u.full_name, u.role, u.class_group, p.profile_image_url, p.roll_no,
+                reply_m.message_text as reply_text, reply_m.message_type as reply_type, reply_u.full_name as reply_sender_name
+                FROM group_chat_messages m JOIN users u ON m.user_id = u.id LEFT JOIN user_profiles p ON m.user_id = p.user_id
+                LEFT JOIN group_chat_messages reply_m ON m.reply_to_message_id = reply_m.id
+                LEFT JOIN users reply_u ON reply_m.user_id = reply_u.id
+                WHERE m.id = ?`, [newMessageId]);
             await connection.commit();
             socket.broadcast.to(roomName).emit('newMessage', broadcastMessage);
         } catch (error) {
-            await connection.rollback(); console.error('❌ CRITICAL ERROR: Failed to save and broadcast message.', error);
+            await connection.rollback(); console.error('❌ CRITICAL ERROR: Failed to save message.', error);
         } finally {
             connection.release();
         }
     });
+
     socket.on('deleteMessage', async (data) => {
         const { messageId, userId, groupId } = data;
         if (!messageId || !userId || !groupId) return;
@@ -5991,12 +5999,10 @@ io.on('connection', (socket) => {
             if (!message || message.user_id != userId) return;
             await connection.query('DELETE FROM group_chat_messages WHERE id = ?', [messageId]);
             io.to(roomName).emit('messageDeleted', messageId);
-        } catch (error) {
-            console.error(`❌ CRITICAL ERROR: Failed to delete message ${messageId}.`, error);
-        } finally {
-            connection.release();
-        }
+        } catch (error) { console.error(`❌ CRITICAL ERROR: Failed to delete message ${messageId}.`, error); } 
+        finally { connection.release(); }
     });
+
     socket.on('editMessage', async (data) => {
         const { messageId, newText, userId, groupId } = data;
         if (!messageId || !newText || !userId || !groupId) return;
@@ -6006,17 +6012,19 @@ io.on('connection', (socket) => {
             const [[message]] = await connection.query('SELECT user_id FROM group_chat_messages WHERE id = ?', [messageId]);
             if (!message || message.user_id != userId) return;
             await connection.query('UPDATE group_chat_messages SET message_text = ?, is_edited = TRUE WHERE id = ?', [newText, messageId]);
-            const [[updatedMessage]] = await connection.query(`SELECT m.id, m.message_text, m.timestamp, m.user_id, m.group_id, m.message_type, m.file_url, m.is_edited, u.full_name, u.role, u.class_group, p.profile_image_url, p.roll_no FROM group_chat_messages m JOIN users u ON m.user_id = u.id LEFT JOIN user_profiles p ON m.user_id = p.user_id WHERE m.id = ?`, [messageId]);
+            const [[updatedMessage]] = await connection.query(`
+                SELECT m.id, m.message_text, m.timestamp, m.user_id, m.group_id, m.message_type, m.file_url, m.is_edited, u.full_name, u.role, u.class_group, p.profile_image_url, p.roll_no,
+                reply_m.message_text as reply_text, reply_m.message_type as reply_type, reply_u.full_name as reply_sender_name
+                FROM group_chat_messages m JOIN users u ON m.user_id = u.id LEFT JOIN user_profiles p ON m.user_id = p.user_id
+                LEFT JOIN group_chat_messages reply_m ON m.reply_to_message_id = reply_m.id
+                LEFT JOIN users reply_u ON reply_m.user_id = reply_u.id
+                WHERE m.id = ?`, [messageId]);
             io.to(roomName).emit('messageEdited', updatedMessage);
-        } catch (error) {
-            console.error(`❌ CRITICAL ERROR: Failed to edit message ${messageId}.`, error);
-        } finally {
-            connection.release();
-        }
+        } catch (error) { console.error(`❌ CRITICAL ERROR: Failed to edit message ${messageId}.`, error); } 
+        finally { connection.release(); }
     });
-    socket.on('disconnect', () => {
-        console.log(`🔌 User disconnected: ${socket.id}`);
-    });
+
+    socket.on('disconnect', () => { console.log(`🔌 User disconnected: ${socket.id}`); });
 });
 
 
