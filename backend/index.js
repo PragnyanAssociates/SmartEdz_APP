@@ -2142,7 +2142,7 @@ app.get('/api/ptm/classes', verifyToken, async (req, res) => {
 });
 
 
-// POST a new meeting
+// POST a new meeting (CORRECTED NOTIFICATION LOGIC)
 app.post('/api/ptm', verifyToken, async (req, res) => {
     const { meeting_datetime, teacher_id, class_group, subject_focus, notes, meeting_link } = req.body; 
     const created_by = req.user.id; // Get creator's ID securely from the token
@@ -2164,21 +2164,44 @@ app.post('/api/ptm', verifyToken, async (req, res) => {
         const query = `INSERT INTO ptm_meetings (meeting_datetime, teacher_id, teacher_name, class_group, subject_focus, notes, meeting_link) VALUES (?, ?, ?, ?, ?, ?, ?)`;
         await connection.query(query, [meeting_datetime, teacher_id, teacher.full_name, class_group, subject_focus, notes || null, meeting_link || null]);
 
-        // --- MODIFIED NOTIFICATION LOGIC ---
+        // --- CORRECTED NOTIFICATION RECIPIENT LOGIC ---
         
-        let studentsQuery = "SELECT id FROM users WHERE role = 'student'";
-        const queryParams = [];
-        
-        if (class_group !== 'All') {
-            studentsQuery += " AND class_group = ?";
-            queryParams.push(class_group);
-        }
-        // If class_group is 'All', the query selects all students.
+        const specificTeacherId = parseInt(teacher_id, 10);
+        let recipientIds = [];
+        let recipientQuery = '';
 
-        const [students] = await connection.query(studentsQuery, queryParams);
+        if (class_group === 'All') {
+            // Target: All Students, All Teachers, All Admins
+            recipientQuery = "SELECT id FROM users WHERE role IN ('student', 'teacher', 'admin')";
+        } else if (class_group === 'Teachers') {
+            // Target: All Teachers
+            recipientQuery = "SELECT id FROM users WHERE role = 'teacher'";
+        } else if (class_group === 'Admins') {
+            // Target: All Admins (This is uncommon for PTMs, but supported by the UI)
+            recipientQuery = "SELECT id FROM users WHERE role = 'admin'";
+        } else {
+            // Default case: Specific Class (e.g., 'Class 1', 'LKG')
+            // Get all students in that class
+            recipientQuery = "SELECT id FROM users WHERE role = 'student' AND class_group = ?";
+            
+            // Execute the specific class query and initialize recipients
+            const [students] = await connection.query(recipientQuery, [class_group]);
+            recipientIds = students.map(s => s.id);
+        }
+
+        // If a general group query was run, fetch the IDs now
+        if (recipientQuery && class_group !== 'Admins' && class_group !== 'Teachers' && class_group !== 'All') {
+            // recipientIds are already populated for specific classes
+        } else if (recipientQuery) {
+             const [users] = await connection.query(recipientQuery);
+             recipientIds = users.map(u => u.id);
+        }
         
-        const studentIds = students.map(s => s.id);
-        const allRecipientIds = [...new Set([parseInt(teacher_id, 10), ...studentIds])]; 
+        // Always ensure the specific teacher associated with the meeting is notified (and the creator if they aren't the teacher)
+        recipientIds.push(specificTeacherId);
+        
+        // Use a Set to get unique IDs (deduplicate)
+        const allRecipientIds = [...new Set(recipientIds)]; 
 
         if (allRecipientIds.length > 0) {
             const senderName = req.user.full_name || "School Administration";
@@ -2190,7 +2213,7 @@ app.post('/api/ptm', verifyToken, async (req, res) => {
 
             await createBulkNotifications(
                 connection,
-                allRecipientIds,
+                allRecipientIds, // Now includes Teachers, Admins, or All users correctly
                 senderName,
                 notificationTitle,
                 notificationMessage,

@@ -11,9 +11,9 @@ import { SERVER_URL } from '../../../apiConfig';
 import apiClient from '../../api/client'; 
 import { launchImageLibrary, ImagePickerResponse, Asset } from 'react-native-image-picker';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+//   UIManager.setLayoutAnimationEnabledExperimental(true);
+// }
 
 const { width, height } = Dimensions.get('window');
 
