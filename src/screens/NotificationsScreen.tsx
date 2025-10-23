@@ -147,11 +147,16 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
                 navigation.navigate('AcademicCalendar');
                 break;
             case 'timetable':
+                // Timetable updates link to the main Timetable screen
                 navigation.navigate('TimetableScreen');
                 break;
+                
+            case 'my-attendance':
             case 'attendance':
+                // Student/Teacher/Admin attendance notifications link to the Attendance screen
                 navigation.navigate('Attendance');
                 break;
+
             case 'chat':
             case 'groupchat':
                  navigation.navigate('GroupChatScreen');
