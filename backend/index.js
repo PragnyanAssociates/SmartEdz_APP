@@ -7133,7 +7133,7 @@ app.get('/api/teacher-attendance/report/:teacherId', verifyToken, async (req, re
 
 
 // ==========================================================
-// --- PROGRESS CARD (REPORTS) API ROUTES (V2 - CLASS ROSTER VIEW) ---
+// --- PROGRESS CARD (REPORTS) API ROUTES (V3 - WITH ROLL NO) ---
 // (Paste this entire block into your main server.js file)
 // ==========================================================
 
@@ -7163,15 +7163,22 @@ app.get('/api/reports/classes', [verifyToken, isTeacherOrAdmin], async (req, res
     }
 });
 
-// ★ NEW/MODIFIED ENDPOINT ★
-// GET: All data for an entire class (students, marks, attendance) in one call.
+// ★★★ CRITICAL CHANGE IS HERE ★★★
+// GET: All data for an entire class, NOW INCLUDING ROLL NUMBER.
 app.get('/api/reports/class-data/:classGroup', [verifyToken, isTeacherOrAdmin], async (req, res) => {
     const { classGroup } = req.params;
     const academicYear = getCurrentAcademicYear();
     try {
-        // 1. Get all students in the class
+        // 1. Get all students in the class, JOINING with user_profiles to get roll_no
         const [students] = await db.query(
-            "SELECT id, full_name, username FROM users WHERE role = 'student' AND class_group = ? ORDER BY CAST(username AS UNSIGNED), full_name",
+            `SELECT 
+                u.id, 
+                u.full_name, 
+                up.roll_no 
+            FROM users u
+            LEFT JOIN user_profiles up ON u.id = up.user_id
+            WHERE u.role = 'student' AND u.class_group = ? 
+            ORDER BY CAST(up.roll_no AS UNSIGNED), u.full_name`,
             [classGroup]
         );
 
@@ -7181,13 +7188,13 @@ app.get('/api/reports/class-data/:classGroup', [verifyToken, isTeacherOrAdmin], 
 
         const studentIds = students.map(s => s.id);
 
-        // 2. Get all marks for those students
+        // 2. Get all marks for those students (No change in this query)
         const [marks] = await db.query(
             "SELECT student_id, subject, exam_type, marks_obtained FROM report_student_marks WHERE student_id IN (?) AND academic_year = ?",
             [studentIds, academicYear]
         );
         
-        // 3. Get all attendance for those students
+        // 3. Get all attendance for those students (No change in this query)
         const [attendance] = await db.query(
             "SELECT student_id, month, working_days, present_days FROM report_student_attendance WHERE student_id IN (?) AND academic_year = ?",
             [studentIds, academicYear]
@@ -7201,35 +7208,25 @@ app.get('/api/reports/class-data/:classGroup', [verifyToken, isTeacherOrAdmin], 
     }
 });
 
-// ★ NEW/MODIFIED ENDPOINT ★
+
+// (The rest of the backend routes remain the same as the previous version)
+
 // POST: Bulk save/update marks for multiple students.
 app.post('/api/reports/marks/bulk', [verifyToken, isTeacherOrAdmin], async (req, res) => {
-    const { marksPayload } = req.body; // Expects an array of mark objects
+    const { marksPayload } = req.body;
     const academicYear = getCurrentAcademicYear();
-
-    if (!Array.isArray(marksPayload)) {
-        return res.status(400).json({ message: "Invalid data format." });
-    }
-
-    if (marksPayload.length === 0) {
-        return res.status(200).json({ message: "No marks data to save." });
-    }
-
+    if (!Array.isArray(marksPayload)) return res.status(400).json({ message: "Invalid data format." });
+    if (marksPayload.length === 0) return res.status(200).json({ message: "No marks data to save." });
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-
         const query = `
             INSERT INTO report_student_marks (student_id, academic_year, class_group, subject, exam_type, marks_obtained)
-            VALUES ?
-            ON DUPLICATE KEY UPDATE marks_obtained = VALUES(marks_obtained)
-        `;
-
+            VALUES ? ON DUPLICATE KEY UPDATE marks_obtained = VALUES(marks_obtained)`;
         const values = marksPayload.map(m => [
             m.student_id, academicYear, m.class_group, m.subject,
             m.exam_type, m.marks_obtained === '' || m.marks_obtained === null ? null : m.marks_obtained
         ]);
-
         await connection.query(query, [values]);
         await connection.commit();
         res.status(200).json({ message: "Marks saved successfully!" });
@@ -7242,34 +7239,23 @@ app.post('/api/reports/marks/bulk', [verifyToken, isTeacherOrAdmin], async (req,
     }
 });
 
-// ★ NEW/MODIFIED ENDPOINT ★
 // POST: Bulk save/update attendance for multiple students.
 app.post('/api/reports/attendance/bulk', [verifyToken, isTeacherOrAdmin], async (req, res) => {
     const { attendancePayload } = req.body;
     const academicYear = getCurrentAcademicYear();
-
-    if (!Array.isArray(attendancePayload)) {
-        return res.status(400).json({ message: "Invalid data format." });
-    }
-    
-    if (attendancePayload.length === 0) {
-        return res.status(200).json({ message: "No attendance data to save." });
-    }
-
+    if (!Array.isArray(attendancePayload)) return res.status(400).json({ message: "Invalid data format." });
+    if (attendancePayload.length === 0) return res.status(200).json({ message: "No attendance data to save." });
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
         const query = `
             INSERT INTO report_student_attendance (student_id, academic_year, month, working_days, present_days)
-            VALUES ?
-            ON DUPLICATE KEY UPDATE working_days = VALUES(working_days), present_days = VALUES(present_days)
-        `;
+            VALUES ? ON DUPLICATE KEY UPDATE working_days = VALUES(working_days), present_days = VALUES(present_days)`;
         const values = attendancePayload.map(a => [
             a.student_id, academicYear, a.month,
             a.working_days === '' || a.working_days === null ? null : a.working_days,
             a.present_days === '' || a.present_days === null ? null : a.present_days
         ]);
-
         await connection.query(query, [values]);
         await connection.commit();
         res.status(200).json({ message: "Attendance saved successfully!" });
@@ -7282,10 +7268,7 @@ app.post('/api/reports/attendance/bulk', [verifyToken, isTeacherOrAdmin], async 
     }
 });
 
-
 // --- STUDENT ROUTE (No change) ---
-
-// GET: All data for the logged-in student's personal report card
 app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
     const studentId = req.user.id;
     const academicYear = getCurrentAcademicYear();
@@ -7295,7 +7278,6 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
             [studentId]
         );
         if (!studentInfo) return res.status(404).json({ message: "Student not found" });
-
         const [marks] = await db.query(
             "SELECT subject, exam_type, marks_obtained FROM report_student_marks WHERE student_id = ? AND academic_year = ?",
             [studentId, academicYear]
@@ -7304,7 +7286,6 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
             "SELECT month, working_days, present_days FROM report_student_attendance WHERE student_id = ? AND academic_year = ?",
             [studentId, academicYear]
         );
-
         res.json({ studentInfo, marks, attendance, academicYear });
     } catch (error) {
         console.error("Error fetching report card data:", error);
