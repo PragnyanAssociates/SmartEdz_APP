@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image, Keyboard, Modal, Pressable } from 'react-native'; // <-- Added Modal & Pressable
+import { View, Text, StyleSheet, SafeAreaView, FlatList, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image, Keyboard, Modal, Pressable, PermissionsAndroid } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { SERVER_URL } from '../../../apiConfig';
@@ -10,6 +10,8 @@ import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import { getProfileImageSource } from '../../utils/imageHelpers';
 import Video from 'react-native-video';
 import EmojiPicker from 'rn-emoji-keyboard';
+import { v4 as uuidv4 } from 'uuid'; // For generating unique client-side IDs
+import RNFS from 'react-native-fs'; // For downloading files
 
 const THEME = { primary: '#007bff', text: '#212529', muted: '#86909c', border: '#dee2e6', myMessageBg: '#dcf8c6', otherMessageBg: '#ffffff', white: '#ffffff', destructive: '#dc3545' };
 
@@ -18,11 +20,9 @@ const formatDateSeparator = (dateString: string) => {
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-
     messageDate.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
     yesterday.setHours(0, 0, 0, 0);
-
     if (messageDate.getTime() === today.getTime()) return 'Today';
     if (messageDate.getTime() === yesterday.getTime()) return 'Yesterday';
     return messageDate.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' });
@@ -40,11 +40,8 @@ const GroupChatScreen = () => {
     const [editingMessage, setEditingMessage] = useState<any>(null);
     const [replyingTo, setReplyingTo] = useState<any>(null);
     const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
-
-    // --- NEW STATE FOR CUSTOM MODAL ---
     const [isOptionsModalVisible, setOptionsModalVisible] = useState(false);
     const [selectedMessage, setSelectedMessage] = useState<any>(null);
-    // --- END ---
 
     const socketRef = useRef<Socket | null>(null);
     const flatListRef = useRef<FlatList | null>(null);
@@ -64,9 +61,7 @@ const GroupChatScreen = () => {
             try {
                 const response = await apiClient.get(`/groups/${group.id}/details`);
                 const updatedGroup = response.data;
-                if (updatedGroup) {
-                    setGroup(updatedGroup);
-                }
+                if (updatedGroup) setGroup(updatedGroup);
             } catch (error) {
                 console.log("Could not refetch group details.");
             }
@@ -94,7 +89,14 @@ const GroupChatScreen = () => {
         });
         socketRef.current.on('newMessage', (msg) => {
             if (msg.group_id === group.id) {
-                setMessages(prev => [...prev, msg]);
+                setMessages(prev => {
+                    const tempMessageExists = prev.some(m => m.clientMessageId === msg.clientMessageId);
+                    if (tempMessageExists) {
+                        return prev.map(m => m.clientMessageId === msg.clientMessageId ? msg : m);
+                    } else {
+                        return [...prev, msg];
+                    }
+                });
             }
         });
         socketRef.current.on('messageDeleted', (id) => {
@@ -105,11 +107,8 @@ const GroupChatScreen = () => {
                 setMessages(prev => prev.map(m => m.id === msg.id ? msg : m));
             }
         });
-
-        return () => {
-            socketRef.current?.disconnect();
-        };
-    }, [group.id]);
+        return () => { socketRef.current?.disconnect(); };
+    }, [group.id, user?.id]);
 
     useEffect(() => {
         if (!loading && messages.length > 0 && !initialLoadDone.current) {
@@ -133,7 +132,7 @@ const GroupChatScreen = () => {
         return processed;
     }, [messages]);
 
-    const sendMessage = (type: 'text' | 'image' | 'video', text: string | null, url: string | null) => {
+    const sendMessage = (type: 'text' | 'image' | 'video', text: string | null, url: string | null, clientMessageId?: string) => {
         if (!user || !socketRef.current) return;
         socketRef.current.emit('sendMessage', {
             userId: user.id,
@@ -142,28 +141,63 @@ const GroupChatScreen = () => {
             messageText: text,
             fileUrl: url,
             replyToMessageId: replyingTo ? replyingTo.id : null,
+            clientMessageId: clientMessageId, // Pass the client ID for matching
         });
         if (type === 'text') setNewMessage('');
         setReplyingTo(null);
     };
 
-    const uploadFileAndSendMessage = async (file: Asset, type: 'image' | 'video') => {
+    const uploadFile = async (file: Asset, type: 'image' | 'video') => {
+        if (!user) return;
+        const clientMessageId = uuidv4();
+        const tempMessage = {
+            id: clientMessageId,
+            clientMessageId: clientMessageId,
+            user_id: user.id,
+            full_name: user.fullName,
+            profile_image_url: user.profileImageUrl,
+            group_id: group.id,
+            message_type: type,
+            file_url: null,
+            localUri: file.uri,
+            message_text: null,
+            timestamp: new Date().toISOString(),
+            status: 'uploading',
+            progress: 0,
+        };
+        setMessages(prev => [...prev, tempMessage]);
+        flatListRef.current?.scrollToEnd({ animated: true });
+
         const formData = new FormData();
         formData.append('media', { uri: file.uri, type: file.type, name: file.fileName });
+
         try {
-            const res = await apiClient.post('/groups/media', formData, { headers: { 'Content-Type': 'multipart/form-data' }});
-            sendMessage(type, null, res.data.fileUrl);
+            const res = await apiClient.post('/groups/media', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (progressEvent) => {
+                    if (progressEvent.total) {
+                        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                        setMessages(prev => prev.map(msg =>
+                            msg.clientMessageId === clientMessageId ? { ...msg, progress: percentCompleted } : msg
+                        ));
+                    }
+                }
+            });
+            sendMessage(type, null, res.data.fileUrl, clientMessageId);
         } catch (error) {
             Alert.alert("Upload Failed", "Could not send the file.");
+            setMessages(prev => prev.map(msg =>
+                msg.clientMessageId === clientMessageId ? { ...msg, status: 'failed' } : msg
+            ));
         }
     };
-    
+
     const handlePickMedia = () => {
         launchImageLibrary({ mediaType: 'mixed' }, (response) => {
             if (response.didCancel || !response.assets) return;
             const file = response.assets[0];
             const type = file.type?.startsWith('video') ? 'video' : 'image';
-            uploadFileAndSendMessage(file, type);
+            uploadFile(file, type);
         });
     };
     
@@ -179,9 +213,8 @@ const GroupChatScreen = () => {
         Keyboard.dismiss();
     };
     
-    // --- UPDATED to use Modal ---
     const onLongPressMessage = (message: any) => {
-        if (!user) return;
+        if (!user || message.status === 'uploading') return; // Don't show options for uploading messages
         setSelectedMessage(message);
         setOptionsModalVisible(true);
     };
@@ -190,25 +223,77 @@ const GroupChatScreen = () => {
         socketRef.current?.emit('deleteMessage', { messageId, userId: user?.id, groupId: group.id });
     };
 
+    const handleDownload = async (fileUrl: string) => {
+        if (!fileUrl) return Alert.alert("Error", "No file to download.");
+        const fullUrl = SERVER_URL + fileUrl;
+        const fileName = fileUrl.split('/').pop() || `download-${Date.now()}`;
+        const localPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+
+        try {
+            if (Platform.OS === 'android') {
+                const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
+                if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+                    return Alert.alert("Permission Denied", "Storage permission is required to download files.");
+                }
+            }
+            setOptionsModalVisible(false);
+            Alert.alert("Downloading...", "Your file is being downloaded to the Downloads folder.");
+            RNFS.downloadFile({ fromUrl: fullUrl, toFile: localPath }).promise.then(() => {
+                Alert.alert("Download Complete", `File saved as ${fileName}`);
+                if (Platform.OS === 'android') RNFS.scanFile(localPath);
+            }).catch(() => Alert.alert("Download Failed", "An error occurred."));
+        } catch (err) {
+            Alert.alert("Error", "An unexpected error occurred.");
+        }
+    };
+    
     const cancelReply = () => setReplyingTo(null);
     const cancelEdit = () => { setEditingMessage(null); setNewMessage(''); Keyboard.dismiss(); };
 
     const renderMessageItem = ({ item }: { item: any }) => {
         if (item.type === 'date') {
-            return (
-                <View style={styles.dateSeparator}>
-                    <Text style={styles.dateSeparatorText}>{item.date}</Text>
-                </View>
-            );
+            return <View style={styles.dateSeparator}><Text style={styles.dateSeparatorText}>{item.date}</Text></View>;
         }
-
         const isMyMessage = item.user_id === user?.id;
         const messageTime = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         const renderContent = () => {
+            const sourceUri = item.localUri || (SERVER_URL + item.file_url);
             switch (item.message_type) {
-                case 'image': return <Image source={{ uri: SERVER_URL + item.file_url }} style={styles.mediaMessage} />;
-                case 'video': return <Video source={{ uri: SERVER_URL + item.file_url }} style={styles.mediaMessage} controls={false} paused resizeMode="cover" />;
+                case 'image': return (
+                    <View>
+                        <Image source={{ uri: sourceUri }} style={styles.mediaMessage} />
+                        {item.status === 'uploading' && (
+                            <View style={styles.mediaOverlay}>
+                                <ActivityIndicator size="large" color={THEME.white} />
+                                <Text style={styles.uploadProgressText}>{item.progress || 0}%</Text>
+                            </View>
+                        )}
+                        {item.status === 'failed' && (
+                             <View style={styles.mediaOverlay}>
+                                <Icon name="alert-circle-outline" size={40} color={THEME.white} />
+                                <Text style={styles.uploadProgressText}>Failed</Text>
+                            </View>
+                        )}
+                    </View>
+                );
+                case 'video': return (
+                    <View>
+                        <Video source={{ uri: sourceUri }} style={styles.mediaMessage} controls={false} paused resizeMode="cover" />
+                        {item.status === 'uploading' && (
+                            <View style={styles.mediaOverlay}>
+                                <ActivityIndicator size="large" color={THEME.white} />
+                                <Text style={styles.uploadProgressText}>{item.progress || 0}%</Text>
+                            </View>
+                        )}
+                         {item.status === 'failed' && (
+                             <View style={styles.mediaOverlay}>
+                                <Icon name="alert-circle-outline" size={40} color={THEME.white} />
+                                <Text style={styles.uploadProgressText}>Failed</Text>
+                            </View>
+                        )}
+                    </View>
+                );
                 default: return <Text style={styles.messageText}>{item.message_text}</Text>;
             }
         };
@@ -231,7 +316,7 @@ const GroupChatScreen = () => {
                             </View>
                         )}
                         {renderContent()}
-                        <Text style={[styles.messageTime, (item.message_type === 'image' || item.message_type === 'video') ? styles.mediaTime : {}]}>
+                        <Text style={[styles.messageTime, (item.message_type === 'image' || item.message_type === 'video') && !item.status ? styles.mediaTime : {}]}>
                             {item.is_edited ? 'Edited • ' : ''}{messageTime}
                         </Text>
                     </View>
@@ -240,37 +325,32 @@ const GroupChatScreen = () => {
         );
     };
 
-    // --- RENDER CUSTOM OPTIONS MODAL ---
     const renderOptionsModal = () => {
         if (!selectedMessage) return null;
         const isMyMessage = selectedMessage.user_id === user?.id;
         return (
-            <Modal
-                animationType="fade"
-                transparent={true}
-                visible={isOptionsModalVisible}
-                onRequestClose={() => setOptionsModalVisible(false)}
-            >
+            <Modal animationType="fade" transparent={true} visible={isOptionsModalVisible} onRequestClose={() => setOptionsModalVisible(false)}>
                 <Pressable style={styles.modalOverlay} onPress={() => setOptionsModalVisible(false)}>
                     <Pressable style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Message Options</Text>
-                        
                         <TouchableOpacity style={styles.modalOption} onPress={() => { setReplyingTo(selectedMessage); setOptionsModalVisible(false); }}>
                             <Text style={styles.modalOptionText}>Reply</Text>
                         </TouchableOpacity>
-
+                        {(selectedMessage.message_type === 'image' || selectedMessage.message_type === 'video') && (
+                            <TouchableOpacity style={styles.modalOption} onPress={() => handleDownload(selectedMessage.file_url)}>
+                                <Text style={styles.modalOptionText}>Download</Text>
+                            </TouchableOpacity>
+                        )}
                         {isMyMessage && selectedMessage.message_type === 'text' && (
                             <TouchableOpacity style={styles.modalOption} onPress={() => { setEditingMessage(selectedMessage); setNewMessage(selectedMessage.message_text); setOptionsModalVisible(false); }}>
                                 <Text style={styles.modalOptionText}>Edit</Text>
                             </TouchableOpacity>
                         )}
-
                         {isMyMessage && (
                             <TouchableOpacity style={styles.modalOption} onPress={() => { handleDeleteMessage(selectedMessage.id); setOptionsModalVisible(false); }}>
                                 <Text style={[styles.modalOptionText, styles.destructiveText]}>Delete</Text>
                             </TouchableOpacity>
                         )}
-                        
                         <TouchableOpacity style={styles.modalOption} onPress={() => setOptionsModalVisible(false)}>
                             <Text style={styles.modalOptionText}>Cancel</Text>
                         </TouchableOpacity>
@@ -326,7 +406,6 @@ const GroupChatScreen = () => {
     );
 };
 
-// --- ADDED NEW STYLES FOR THE MODAL ---
 const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: THEME.border, backgroundColor: THEME.white, justifyContent: 'space-between' },
     headerContent: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', paddingVertical: 5 },
@@ -363,42 +442,25 @@ const styles = StyleSheet.create({
     otherReplyContainer: { backgroundColor: '#e9e9e9' },
     replySenderName: { fontWeight: 'bold', fontSize: 13, color: THEME.primary },
     replyText: { fontSize: 13, color: THEME.muted },
-
-    // Modal Styles
-    modalOverlay: {
-        flex: 1,
+    mediaOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.6)',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
-    modalContent: {
-        width: '80%',
-        backgroundColor: 'white',
         borderRadius: 10,
-        paddingVertical: 10,
-        elevation: 5,
     },
-    modalTitle: {
-        fontSize: 18,
+    uploadProgressText: {
+        color: THEME.white,
+        marginTop: 8,
         fontWeight: 'bold',
-        paddingHorizontal: 20,
-        paddingTop: 10,
-        paddingBottom: 15,
-        color: THEME.text
-    },
-    modalOption: {
-        paddingVertical: 15,
-        paddingHorizontal: 20,
-        borderTopWidth: 1,
-        borderTopColor: THEME.border,
-    },
-    modalOptionText: {
         fontSize: 16,
-        color: THEME.primary
     },
-    destructiveText: {
-        color: THEME.destructive
-    }
+    modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
+    modalContent: { width: '80%', backgroundColor: 'white', borderRadius: 10, paddingVertical: 10, elevation: 5 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 15, color: THEME.text },
+    modalOption: { paddingVertical: 15, paddingHorizontal: 20, borderTopWidth: 1, borderTopColor: THEME.border },
+    modalOptionText: { fontSize: 16, color: THEME.primary },
+    destructiveText: { color: THEME.destructive }
 });
 
 export default GroupChatScreen;

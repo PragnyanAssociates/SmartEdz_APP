@@ -6082,7 +6082,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('sendMessage', async (data) => {
-        const { userId, groupId, messageType, messageText, fileUrl, replyToMessageId } = data;
+        // MODIFICATION: Added clientMessageId to data destructuring
+        const { userId, groupId, messageType, messageText, fileUrl, replyToMessageId, clientMessageId } = data;
         if (!userId || !groupId || !messageType || (messageType === 'text' && !messageText?.trim()) || (messageType !== 'text' && !fileUrl)) return;
 
         const roomName = `group-${groupId}`;
@@ -6104,7 +6105,13 @@ io.on('connection', (socket) => {
                 WHERE m.id = ?`, [newMessageId]);
             await connection.commit();
 
-            io.to(roomName).emit('newMessage', broadcastMessage);
+            // MODIFICATION: Add clientMessageId to the broadcast payload so the sender can match it
+            const finalMessage = {
+                ...broadcastMessage,
+                clientMessageId: clientMessageId || null
+            };
+
+            io.to(roomName).emit('newMessage', finalMessage);
             io.emit('updateGroupList', { groupId: groupId });
 
         } catch (error) {
