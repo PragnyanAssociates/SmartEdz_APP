@@ -5829,13 +5829,15 @@ const chatStorage = multer.diskStorage({
 const chatUpload = multer({
     storage: chatStorage,
     fileFilter: (req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|mkv|mp3|m4a|wav|aac/;
-        const mimetype = allowedTypes.test(file.mimetype);
+        // MODIFIED: Expanded regex to include common document types.
+        const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|mkv|mp3|m4a|wav|aac|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        if (mimetype && extname) {
+        
+        // MODIFIED: Relying on extname is more robust for various document mimetypes.
+        if (extname) {
             return cb(null, true);
         }
-        cb(new Error('File type not supported: ' + file.mimetype));
+        cb(new Error('File type not supported: ' + file.originalname));
     }
 });
 
@@ -6047,6 +6049,7 @@ app.get('/api/groups/:groupId/history', verifyToken, async (req, res) => {
         const query = `
             SELECT
                 m.id, m.message_text, m.timestamp, m.user_id, m.group_id, m.message_type, m.file_url, m.is_edited,
+                m.file_name, -- <-- NEW: Select the file_name
                 m.reply_to_message_id,
                 u.full_name, u.role, u.class_group, p.profile_image_url, p.roll_no,
                 reply_m.message_text as reply_text, reply_m.message_type as reply_type, reply_u.full_name as reply_sender_name
@@ -6082,8 +6085,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('sendMessage', async (data) => {
-        // MODIFICATION: Added clientMessageId to data destructuring
-        const { userId, groupId, messageType, messageText, fileUrl, replyToMessageId, clientMessageId } = data;
+        // MODIFIED: Added fileName
+        const { userId, groupId, messageType, messageText, fileUrl, replyToMessageId, clientMessageId, fileName } = data;
         if (!userId || !groupId || !messageType || (messageType === 'text' && !messageText?.trim()) || (messageType !== 'text' && !fileUrl)) return;
 
         const roomName = `group-${groupId}`;
@@ -6091,12 +6094,14 @@ io.on('connection', (socket) => {
         try {
             await connection.beginTransaction();
             const [result] = await connection.query(
-                'INSERT INTO group_chat_messages (user_id, group_id, message_type, message_text, file_url, reply_to_message_id) VALUES (?, ?, ?, ?, ?, ?)',
-                [userId, groupId, messageType, messageText || null, fileUrl || null, replyToMessageId || null]
+                // MODIFIED: Insert fileName into the new column
+                'INSERT INTO group_chat_messages (user_id, group_id, message_type, message_text, file_url, file_name, reply_to_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [userId, groupId, messageType, messageText || null, fileUrl || null, fileName || null, replyToMessageId || null]
             );
             const newMessageId = result.insertId;
             const [[broadcastMessage]] = await connection.query(`
                 SELECT m.id, m.message_text, m.timestamp, m.user_id, m.group_id, m.message_type, m.file_url, m.is_edited,
+                m.file_name, -- <-- NEW: Select the file_name
                 m.reply_to_message_id, u.full_name, u.role, u.class_group, p.profile_image_url, p.roll_no,
                 reply_m.message_text as reply_text, reply_m.message_type as reply_type, reply_u.full_name as reply_sender_name
                 FROM group_chat_messages m JOIN users u ON m.user_id = u.id LEFT JOIN user_profiles p ON m.user_id = p.user_id
@@ -6104,8 +6109,7 @@ io.on('connection', (socket) => {
                 LEFT JOIN users reply_u ON reply_m.user_id = reply_u.id
                 WHERE m.id = ?`, [newMessageId]);
             await connection.commit();
-
-            // MODIFICATION: Add clientMessageId to the broadcast payload so the sender can match it
+            
             const finalMessage = {
                 ...broadcastMessage,
                 clientMessageId: clientMessageId || null
