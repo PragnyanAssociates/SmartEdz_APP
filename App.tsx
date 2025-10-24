@@ -26,8 +26,8 @@ import AboutUs from './src/components/AboutUs';
 // import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 
-import StudentReportCardView from './src/screens/report/StudentReportCardView';
-import AdminTeacherMarkEntry from './src/screens/report/AdminTeacherMarkEntry';
+// import MarksEntryScreen from './src/screens/report/MarksEntryScreen';
+import ReportNavigator from './src/screens/report/ReportNavigator';
 
 // Authenticated Dashboards
 import AdminDashboard from './src/components/AdminDashboard';
@@ -243,8 +243,12 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="TeacherAttendanceMarkingScreen" component={TeacherAttendanceMarkingScreen} />
       <Stack.Screen name="TeacherAttendanceReportScreen" component={TeacherAttendanceReportScreen} />  
 
-      <Stack.Screen name="StudentReportCardView" component={StudentReportCardView} />
-      <Stack.Screen name="AdminTeacherMarkEntry" component={AdminTeacherMarkEntry} />
+      {/* <Stack.Screen name="MarksEntryScreen" component={MarksEntryScreen} /> */}
+      <Stack.Screen name="ReportScreen" component={ReportNavigator} options={{ headerShown: true, 
+          title: 'Progress Reports',
+          headerStyle: { backgroundColor: '#e0f2f7' },
+          headerTintColor: '#008080',
+          headerTitleStyle: { fontWeight: 'bold' } }} />
       {/* <Stack.Screen name="ChatAIScreen" component={ChatAIScreen} />
       <Stack.Screen name="DonorSuggestionsScreen" component={DonorSuggestionsScreen} />
       <Stack.Screen name="AdminSuggestionsScreen" component={AdminSuggestionsScreen} />

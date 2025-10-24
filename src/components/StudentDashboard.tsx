@@ -39,7 +39,7 @@ import StudentHealthScreen from '../screens/health/StudentHealthScreen';
 import StudentEventsScreen from '../screens/events/StudentEventsScreen';
 import StudentExamScreen from '../screens/exams_Schedule/StudentExamScreen';
 import StudentLabsScreen from '../screens/labs/StudentLabsScreen';
-import StudentReportCardView from '../screens/report/StudentReportCardView';
+// import StudentReportCardScreen from '../screens/report/StudentReportCardScreen';
 import StudentMaterialsScreen from '../screens/study-materials/StudentMaterialsScreen';
 import StudentSyllabusScreen from '../screens/syllabus/StudentSyllabusScreen';
 import StudentResourcesScreen from '../screens/syllabus_Textbook/StudentResourcesScreen';
@@ -110,7 +110,7 @@ const StudentDashboard = ({ navigation }) => {
     { id: 'qa11', title: 'Events', imageSource: 'https://cdn-icons-png.flaticon.com/128/9592/9592283.png', navigateToTab: 'StudentEventsScreen' },
     { id: 'qa15', title: 'Exam Schedules', imageSource: 'https://cdn-icons-png.flaticon.com/128/15447/15447954.png', navigateToTab: 'StudentExamScreen' },
     { id: 'qa13', title: 'Digital Labs', imageSource: 'https://cdn-icons-png.flaticon.com/128/17104/17104528.png', navigateToTab: 'StudentLabsScreen' },
-    { id: 'qa18', title: 'Progress Reports', imageSource: 'https://cdn-icons-png.flaticon.com/128/1378/1378646.png', navigateToTab: 'StudentReportCardView' },
+    { id: 'qa18', title: 'Progress Reports', imageSource: 'https://cdn-icons-png.flaticon.com/128/1378/1378646.png', navigateTo: 'ReportScreen' },
     { id: 'qa15', title: 'Study Materials', imageSource: 'https://cdn-icons-png.flaticon.com/128/3273/3273259.png', navigateToTab: 'StudentMaterialsScreen' },
     { id: 'qa20', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'StudentSyllabusScreen' },
     { id: 'qa22', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'StudentResourcesScreen' },
@@ -189,7 +189,7 @@ const StudentDashboard = ({ navigation }) => {
       case 'StudentEventsScreen': return ( <><ContentScreenHeader title="Events" onBack={handleBack} /><StudentEventsScreen /></> );
       case 'StudentExamScreen': return ( <><ContentScreenHeader title="Exam Schedules" onBack={handleBack} /><StudentExamScreen /></> );
       case 'StudentLabsScreen': return ( <><ContentScreenHeader title="Digital Labs" onBack={handleBack} /><StudentLabsScreen /></> );
-      case 'StudentReportCardView': return ( <><ContentScreenHeader title="Progress Reports" onBack={handleBack} /><StudentReportCardView /></> );
+      // case 'StudentReportCardScreen': return ( <><ContentScreenHeader title="Progress Reports" onBack={handleBack} /><StudentReportCardScreen /></> );
       case 'StudentMaterialsScreen': return ( <><ContentScreenHeader title="Study Materials" onBack={handleBack} /><StudentMaterialsScreen /></> );
       case 'StudentSyllabusNavigator': return ( <><ContentScreenHeader title="Syllabus Tracking" onBack={handleBack} /><StudentSyllabusScreen /></> );
       case 'StudentResourcesScreen': return ( <><ContentScreenHeader title="Textbooks" onBack={handleBack} /><StudentResourcesScreen /></> );

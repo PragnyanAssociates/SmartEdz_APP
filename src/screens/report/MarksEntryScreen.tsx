@@ -1,14 +1,13 @@
 /**
  * File: src/screens/report/MarksEntryScreen.js
- * Purpose: The main data entry form for teachers/admins. Allows selecting a student
- * from a class and inputting their marks and attendance for the dynamic academic year.
+ * V2 Redesign: Implements a tabbed interface for Marks and Attendance,
+ * displaying a full roster of students in a table format.
  */
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
-import apiClient from '../../api/client'; // Adjust path if needed
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, TextInput, Button, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity, FlatList } from 'react-native';
+import apiClient from '../../api/client';
 import { Picker } from '@react-native-picker/picker';
 
-// Central configuration for subjects, exams, and attendance months.
 const config = {
     subjects: {
         'LKG': ['All Subjects'], 'UKG': ['All Subjects'],
@@ -24,207 +23,265 @@ const config = {
 };
 
 const MarksEntryScreen = ({ route }) => {
-    const { classGroup } = route.params;
+    const classGroup = route?.params?.classGroup;
+
+    const [activeTab, setActiveTab] = useState('marks'); // 'marks' or 'attendance'
     const [students, setStudents] = useState([]);
-    const [selectedStudent, setSelectedStudent] = useState(null);
-    const [marks, setMarks] = useState({});
-    const [attendance, setAttendance] = useState({});
+    const [marks, setMarks] = useState({}); // { [studentId]: { [subject]: { [exam]: value } } }
+    const [attendance, setAttendance] = useState({}); // { [studentId]: { [month]: { working_days, present_days } } }
     const [academicYear, setAcademicYear] = useState('');
+    const [selectedExam, setSelectedExam] = useState(config.exams[0]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    const subjectsForClass = config.subjects[classGroup] || [];
+    const subjectsForClass = useMemo(() => config.subjects[classGroup] || [], [classGroup]);
 
     useEffect(() => {
-        const fetchStudents = async () => {
-            setLoading(true);
-            try {
-                const res = await apiClient.get(`/reports/students/${classGroup}`);
-                setStudents(res.data);
-                if (res.data.length > 0) {
-                    setSelectedStudent(res.data[0].id);
-                }
-            } catch (error) {
-                console.error('Failed to fetch students:', error);
-                Alert.alert('Error', 'Could not load students for this class.');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchStudents();
-    }, [classGroup]);
-
-    useEffect(() => {
-        if (!selectedStudent) {
-            setAcademicYear(''); // Clear year if no student is selected
+        if (!classGroup) {
+            setLoading(false);
             return;
-        };
-        
-        const fetchStudentData = async () => {
+        }
+        const fetchClassData = async () => {
             setLoading(true);
             try {
-                const res = await apiClient.get(`/reports/student-data/${selectedStudent}`);
-                setAcademicYear(res.data.academicYear);
+                const res = await apiClient.get(`/reports/class-data/${classGroup}`);
+                const { students, marks: fetchedMarks, attendance: fetchedAttendance, academicYear } = res.data;
+                
+                setStudents(students);
+                setAcademicYear(academicYear);
 
-                const marksData = {};
-                res.data.marks.forEach(m => {
-                    if (!marksData[m.subject]) marksData[m.subject] = {};
-                    marksData[m.subject][m.exam_type] = m.marks_obtained?.toString() || '';
-                });
+                // Pre-process fetched marks into the state structure
+                const marksData = fetchedMarks.reduce((acc, m) => {
+                    if (!acc[m.student_id]) acc[m.student_id] = {};
+                    if (!acc[m.student_id][m.subject]) acc[m.student_id][m.subject] = {};
+                    acc[m.student_id][m.subject][m.exam_type] = m.marks_obtained?.toString() || '';
+                    return acc;
+                }, {});
                 setMarks(marksData);
 
-                const attendanceData = {};
-                res.data.attendance.forEach(a => {
-                    attendanceData[a.month] = { working_days: a.working_days?.toString() || '', present_days: a.present_days?.toString() || '' };
-                });
+                // Pre-process fetched attendance into the state structure
+                const attendanceData = fetchedAttendance.reduce((acc, a) => {
+                    if (!acc[a.student_id]) acc[a.student_id] = {};
+                    acc[a.student_id][a.month] = {
+                        working_days: a.working_days?.toString() || '',
+                        present_days: a.present_days?.toString() || '',
+                    };
+                    return acc;
+                }, {});
                 setAttendance(attendanceData);
 
             } catch (error) {
-                console.error('Failed to fetch student data:', error);
-                Alert.alert('Error', 'Could not load data for the selected student.');
+                console.error('Failed to fetch class data:', error);
+                Alert.alert('Error', 'Could not load data for this class.');
             } finally {
                 setLoading(false);
             }
         };
-        fetchStudentData();
-    }, [selectedStudent]);
+        fetchClassData();
+    }, [classGroup]);
 
-    const handleMarkChange = useCallback((subject, exam, value) => {
+    const handleMarkChange = useCallback((studentId, subject, value) => {
         setMarks(prev => ({
             ...prev,
-            [subject]: { ...(prev[subject] || {}), [exam]: value }
+            [studentId]: {
+                ...(prev[studentId] || {}),
+                [subject]: {
+                    ...((prev[studentId] && prev[studentId][subject]) || {}),
+                    [selectedExam]: value,
+                },
+            },
+        }));
+    }, [selectedExam]);
+
+    const handleAttendanceChange = useCallback((studentId, month, field, value) => {
+        setAttendance(prev => ({
+            ...prev,
+            [studentId]: {
+                ...(prev[studentId] || {}),
+                [month]: {
+                    ...((prev[studentId] && prev[studentId][month]) || {}),
+                    [field]: value,
+                },
+            },
         }));
     }, []);
 
-    const handleAttendanceChange = useCallback((month, field, value) => {
-        setAttendance(prev => ({
-            ...prev,
-            [month]: { ...(prev[month] || {}), [field]: value }
-        }));
-    }, []);
-    
     const onSave = async () => {
         setSaving(true);
         try {
+            // Flatten marks state for the API
             const marksPayload = [];
-            Object.keys(marks).forEach(subject => {
-                Object.keys(marks[subject]).forEach(exam_type => {
-                    marksPayload.push({ subject, exam_type, marks_obtained: marks[subject][exam_type] });
+            Object.keys(marks).forEach(studentId => {
+                Object.keys(marks[studentId]).forEach(subject => {
+                    Object.keys(marks[studentId][subject]).forEach(examType => {
+                        marksPayload.push({
+                            student_id: studentId,
+                            class_group: classGroup,
+                            subject: subject,
+                            exam_type: examType,
+                            marks_obtained: marks[studentId][subject][examType],
+                        });
+                    });
                 });
             });
 
+            // Flatten attendance state for the API
             const attendancePayload = [];
-            Object.keys(attendance).forEach(month => {
-                attendancePayload.push({ month, ...attendance[month] });
+            Object.keys(attendance).forEach(studentId => {
+                Object.keys(attendance[studentId]).forEach(month => {
+                    attendancePayload.push({
+                        student_id: studentId,
+                        month: month,
+                        ...attendance[studentId][month],
+                    });
+                });
             });
 
-            await apiClient.post('/reports/marks', { studentId: selectedStudent, classGroup, marks: marksPayload });
-            await apiClient.post('/reports/attendance', { studentId: selectedStudent, attendance: attendancePayload });
+            // Send bulk updates
+            await apiClient.post('/reports/marks/bulk', { marksPayload });
+            await apiClient.post('/reports/attendance/bulk', { attendancePayload });
 
-            Alert.alert('Success', 'Data saved successfully!');
+            Alert.alert('Success', 'All data saved successfully!');
         } catch (error) {
             console.error("Save error:", error.response?.data || error);
-            Alert.alert('Error', 'Failed to save data. Please check your network and try again.');
+            Alert.alert('Error', 'Failed to save data.');
         } finally {
             setSaving(false);
         }
     };
-
-    if (loading && !selectedStudent) {
-        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#0000ff" /></View>;
-    }
     
-    return (
-        <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 50 }}>
-            <Text style={styles.label}>Select Student:</Text>
+    // RENDER FUNCTIONS FOR EACH TAB
+    const renderMarksTab = () => (
+        <View>
+            <Text style={styles.label}>Select Exam:</Text>
             <View style={styles.pickerContainer}>
-                <Picker
-                    selectedValue={selectedStudent}
-                    onValueChange={(itemValue) => setSelectedStudent(itemValue)}
-                    enabled={students.length > 0}
-                >
-                    {students.map(s => <Picker.Item key={s.id} label={`${s.full_name} (Roll: ${s.username})`} value={s.id} />)}
+                <Picker selectedValue={selectedExam} onValueChange={(itemValue) => setSelectedExam(itemValue)}>
+                    {config.exams.map(exam => <Picker.Item key={exam} label={exam} value={exam} />)}
                 </Picker>
             </View>
-
-            {loading && <ActivityIndicator size="large" color="#0000ff" style={{ marginTop: 20 }}/>}
-            
-            {!loading && selectedStudent && (
-                <>
-                    <Text style={styles.yearHeader}>
-                        Academic Year: {academicYear}
-                    </Text>
-
-                    <Text style={styles.sectionTitle}>Enter Marks</Text>
-                    {subjectsForClass.map(subject => (
-                        <View key={subject} style={styles.subjectContainer}>
-                            <Text style={styles.subjectTitle}>{subject}</Text>
-                            {config.exams.map(exam => (
-                                <View key={exam} style={styles.inputRow}>
-                                    <Text style={styles.inputLabel}>{exam}:</Text>
+            <ScrollView horizontal>
+                <View>
+                    <View style={styles.tableRowHeader}>
+                        <Text style={[styles.tableCell, styles.studentNameCell, styles.headerText]}>Student Name</Text>
+                        {subjectsForClass.map(subject => <Text key={subject} style={[styles.tableCell, styles.headerText]}>{subject}</Text>)}
+                    </View>
+                    <FlatList
+                        data={students}
+                        keyExtractor={item => item.id.toString()}
+                        renderItem={({ item: student }) => (
+                            <View style={styles.tableRow}>
+                                <Text style={[styles.tableCell, styles.studentNameCell]}>{student.full_name}</Text>
+                                {subjectsForClass.map(subject => (
                                     <TextInput
-                                        style={styles.input}
+                                        key={subject}
+                                        style={[styles.tableCell, styles.input]}
                                         keyboardType="number-pad"
-                                        value={marks[subject]?.[exam] || ''}
-                                        onChangeText={text => handleMarkChange(subject, exam, text)}
-                                        placeholder="-"
                                         maxLength={3}
+                                        placeholder="-"
+                                        value={marks[student.id]?.[subject]?.[selectedExam] || ''}
+                                        onChangeText={text => handleMarkChange(student.id, subject, text)}
+                                    />
+                                ))}
+                            </View>
+                        )}
+                    />
+                </View>
+            </ScrollView>
+        </View>
+    );
+
+    const renderAttendanceTab = () => (
+        <ScrollView horizontal>
+            <View>
+                <View style={styles.tableRowHeader}>
+                    <Text style={[styles.tableCell, styles.studentNameCell, styles.headerText]}>Student Name</Text>
+                    {config.attendanceMonths.map(month => (
+                        <Text key={month} style={[styles.tableCell, styles.headerText, { width: 140 }]}>{month}</Text>
+                    ))}
+                </View>
+                <FlatList
+                    data={students}
+                    keyExtractor={item => item.id.toString()}
+                    renderItem={({ item: student }) => (
+                        <View style={styles.tableRow}>
+                            <Text style={[styles.tableCell, styles.studentNameCell]}>{student.full_name}</Text>
+                            {config.attendanceMonths.map(month => (
+                                <View key={month} style={[styles.tableCell, styles.attendanceInputCell]}>
+                                    <TextInput
+                                        style={styles.attendanceInput}
+                                        placeholder="W"
+                                        keyboardType="number-pad"
+                                        maxLength={2}
+                                        value={attendance[student.id]?.[month]?.working_days || ''}
+                                        onChangeText={text => handleAttendanceChange(student.id, month, 'working_days', text)}
+                                    />
+                                    <TextInput
+                                        style={styles.attendanceInput}
+                                        placeholder="P"
+                                        keyboardType="number-pad"
+                                        maxLength={2}
+                                        value={attendance[student.id]?.[month]?.present_days || ''}
+                                        onChangeText={text => handleAttendanceChange(student.id, month, 'present_days', text)}
                                     />
                                 </View>
                             ))}
                         </View>
-                    ))}
-                    
-                    <Text style={styles.sectionTitle}>Enter Attendance</Text>
-                     {config.attendanceMonths.map(month => (
-                        <View key={month} style={[styles.inputRow, styles.attendanceRow]}>
-                             <Text style={styles.inputLabel}>{month}:</Text>
-                             <TextInput
-                                style={styles.input}
-                                keyboardType="number-pad"
-                                value={attendance[month]?.working_days || ''}
-                                onChangeText={text => handleAttendanceChange(month, 'working_days', text)}
-                                placeholder="Working"
-                                maxLength={2}
-                            />
-                             <TextInput
-                                style={styles.input}
-                                keyboardType="number-pad"
-                                value={attendance[month]?.present_days || ''}
-                                onChangeText={text => handleAttendanceChange(month, 'present_days', text)}
-                                placeholder="Present"
-                                maxLength={2}
-                            />
-                        </View>
-                    ))}
-
-                    <View style={styles.buttonContainer}>
-                        <Button title={saving ? "Saving..." : "Save All Data"} onPress={onSave} disabled={saving || !selectedStudent} />
-                    </View>
-                </>
-            )}
-
-            {!loading && students.length === 0 && (
-                <Text style={styles.emptyText}>No students found in this class to enter marks for.</Text>
-            )}
+                    )}
+                />
+            </View>
         </ScrollView>
+    );
+
+    if (loading) {
+        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#0000ff" /></View>;
+    }
+
+    return (
+        <View style={styles.container}>
+            <View style={styles.tabContainer}>
+                <TouchableOpacity onPress={() => setActiveTab('marks')} style={[styles.tab, activeTab === 'marks' && styles.activeTab]}>
+                    <Text style={[styles.tabText, activeTab === 'marks' && styles.activeTabText]}>Marks Entry</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setActiveTab('attendance')} style={[styles.tab, activeTab === 'attendance' && styles.activeTab]}>
+                    <Text style={[styles.tabText, activeTab === 'attendance' && styles.activeTabText]}>Attendance Entry</Text>
+                </TouchableOpacity>
+            </View>
+            
+            {academicYear && <Text style={styles.yearHeader}>Academic Year: {academicYear}</Text>}
+
+            {students.length === 0 ? (
+                <Text style={styles.emptyText}>No students found in {classGroup}.</Text>
+            ) : (
+                activeTab === 'marks' ? renderMarksTab() : renderAttendanceTab()
+            )}
+            
+            <View style={styles.buttonContainer}>
+                <Button title={saving ? "Saving..." : "Save All Changes"} onPress={onSave} disabled={saving || students.length === 0} />
+            </View>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 10, backgroundColor: '#f0f2f5' },
+    container: { flex: 1, backgroundColor: '#f0f2f5' },
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, backgroundColor: '#fff' },
-    label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5, color: '#333' },
-    yearHeader: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', color: '#1E8449', marginVertical: 15, padding: 8, backgroundColor: '#D5F5E3', borderRadius: 5, borderWidth: 1, borderColor: '#ABEBC6' },
-    sectionTitle: { fontSize: 22, fontWeight: 'bold', marginTop: 20, marginBottom: 10, borderBottomWidth: 1, borderColor: '#ccc', paddingBottom: 5, color: '#2c3e50' },
-    subjectContainer: { marginBottom: 15, padding: 15, backgroundColor: '#fff', borderRadius: 8, elevation: 1 },
-    subjectTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#34495e' },
-    inputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'space-between' },
-    attendanceRow: { paddingVertical: 5, paddingHorizontal: 10 },
-    inputLabel: { flex: 2, fontSize: 16, color: '#555' },
-    input: { flex: 1, borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 5, textAlign: 'center', marginLeft: 10, backgroundColor: '#fafafa' },
-    buttonContainer: { marginTop: 30 },
+    tabContainer: { flexDirection: 'row', margin: 10 },
+    tab: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc' },
+    activeTab: { backgroundColor: '#2c3e50', borderColor: '#2c3e50' },
+    tabText: { color: '#333', fontWeight: 'bold' },
+    activeTabText: { color: '#fff' },
+    yearHeader: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', color: '#1E8449', marginVertical: 10, padding: 8, backgroundColor: '#D5F5E3', borderRadius: 5, marginHorizontal: 10 },
+    label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5, color: '#333', paddingHorizontal: 10, marginTop: 10 },
+    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, backgroundColor: '#fff', marginHorizontal: 10, marginBottom: 15 },
+    tableRowHeader: { flexDirection: 'row', backgroundColor: '#e0e9f5' },
+    tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#ccc' },
+    tableCell: { borderWidth: 0.5, borderColor: '#ccc', padding: 10, width: 120, textAlign: 'center' },
+    headerText: { fontWeight: 'bold', color: '#004085' },
+    studentNameCell: { width: 180, textAlign: 'left', backgroundColor: '#f8f9fa' },
+    input: { padding: 0, margin: 0, height: '100%' },
+    attendanceInputCell: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', width: 140 },
+    attendanceInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 4, width: 50, padding: 5, textAlign: 'center' },
+    buttonContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 10, backgroundColor: '#f0f2f5', borderTopWidth: 1, borderColor: '#ccc' },
     emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16, color: '#666' }
 });
 
