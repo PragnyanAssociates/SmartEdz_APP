@@ -7133,8 +7133,7 @@ app.get('/api/teacher-attendance/report/:teacherId', verifyToken, async (req, re
 
 
 // ==========================================================
-// --- PROGRESS CARD (REPORTS) API ROUTES (V3 - WITH ROLL NO) ---
-// (Paste this entire block into your main server.js file)
+// --- PROGRESS CARD (REPORTS) API ROUTES (COMPLETE VERSION) ---
 // ==========================================================
 
 /**
@@ -7148,10 +7147,93 @@ const getCurrentAcademicYear = () => {
     return currentMonth >= 5 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
 };
 
+// Subject configuration based on class
+const CLASS_SUBJECTS = {
+    'LKG': ['All Subjects'],
+    'UKG': ['All Subjects'],
+    '1st Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '2nd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '3rd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '4th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '5th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '6th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '7th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '8th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '9th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '10th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
+};
+
+// --- ADMIN ONLY ROUTES ---
+
+// GET: Get all teachers for assignment dropdown (Admin only)
+app.get('/api/reports/teachers', [verifyToken, isAdmin], async (req, res) => {
+    try {
+        const query = "SELECT id, full_name, username FROM users WHERE role = 'teacher' ORDER BY full_name";
+        const [teachers] = await db.query(query);
+        res.json(teachers);
+    } catch (error) {
+        console.error("Error fetching teachers:", error);
+        res.status(500).json({ message: "Failed to fetch teachers" });
+    }
+});
+
+// GET: Get teacher assignments for a class (Admin only)
+app.get('/api/reports/teacher-assignments/:classGroup', [verifyToken, isAdmin], async (req, res) => {
+    const { classGroup } = req.params;
+    const academicYear = getCurrentAcademicYear();
+    try {
+        const [assignments] = await db.query(
+            `SELECT ta.id, ta.teacher_id, ta.subject, u.full_name as teacher_name 
+             FROM report_teacher_assignments ta
+             JOIN users u ON ta.teacher_id = u.id
+             WHERE ta.class_group = ? AND ta.academic_year = ?`,
+            [classGroup, academicYear]
+        );
+        res.json(assignments);
+    } catch (error) {
+        console.error("Error fetching teacher assignments:", error);
+        res.status(500).json({ message: "Failed to fetch teacher assignments" });
+    }
+});
+
+// POST: Assign teacher to subject (Admin only)
+app.post('/api/reports/assign-teacher', [verifyToken, isAdmin], async (req, res) => {
+    const { teacherId, classGroup, subject } = req.body;
+    const academicYear = getCurrentAcademicYear();
+    
+    if (!teacherId || !classGroup || !subject) {
+        return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    try {
+        await db.query(
+            `INSERT INTO report_teacher_assignments (teacher_id, class_group, subject, academic_year)
+             VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE teacher_id = VALUES(teacher_id)`,
+            [teacherId, classGroup, subject, academicYear]
+        );
+        res.status(200).json({ message: "Teacher assigned successfully" });
+    } catch (error) {
+        console.error("Error assigning teacher:", error);
+        res.status(500).json({ message: "Failed to assign teacher" });
+    }
+});
+
+// DELETE: Remove teacher assignment (Admin only)
+app.delete('/api/reports/teacher-assignments/:assignmentId', [verifyToken, isAdmin], async (req, res) => {
+    const { assignmentId } = req.params;
+    try {
+        await db.query("DELETE FROM report_teacher_assignments WHERE id = ?", [assignmentId]);
+        res.status(200).json({ message: "Assignment removed successfully" });
+    } catch (error) {
+        console.error("Error removing assignment:", error);
+        res.status(500).json({ message: "Failed to remove assignment" });
+    }
+});
 
 // --- TEACHER / ADMIN ROUTES ---
 
-// GET: A list of all unique student classes (No change)
+// GET: A list of all unique student classes
 app.get('/api/reports/classes', [verifyToken, isTeacherOrAdmin], async (req, res) => {
     try {
         const query = "SELECT DISTINCT class_group FROM users WHERE role = 'student' AND class_group IS NOT NULL AND class_group != '' ORDER BY class_group";
@@ -7163,44 +7245,84 @@ app.get('/api/reports/classes', [verifyToken, isTeacherOrAdmin], async (req, res
     }
 });
 
-// ★★★ CRITICAL CHANGE IS HERE ★★★
-// GET: All data for an entire class, NOW INCLUDING ROLL NUMBER.
+// GET: All data for an entire class with teacher permissions
 app.get('/api/reports/class-data/:classGroup', [verifyToken, isTeacherOrAdmin], async (req, res) => {
     const { classGroup } = req.params;
     const academicYear = getCurrentAcademicYear();
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
     try {
-        // 1. Get all students in the class, JOINING with user_profiles to get roll_no
+        // 1. Get all students in the class with roll number
         const [students] = await db.query(
             `SELECT 
                 u.id, 
                 u.full_name, 
-                up.roll_no 
+                COALESCE(up.roll_no, u.username) as roll_no,
+                up.profile_image_url
             FROM users u
             LEFT JOIN user_profiles up ON u.id = up.user_id
             WHERE u.role = 'student' AND u.class_group = ? 
-            ORDER BY CAST(up.roll_no AS UNSIGNED), u.full_name`,
+            ORDER BY CAST(COALESCE(up.roll_no, '999') AS UNSIGNED), u.full_name`,
             [classGroup]
         );
 
         if (students.length === 0) {
-            return res.json({ students: [], marks: [], attendance: [], academicYear });
+            return res.json({ students: [], marks: [], attendance: [], assignments: [], teacherPermissions: {}, academicYear });
         }
 
         const studentIds = students.map(s => s.id);
 
-        // 2. Get all marks for those students (No change in this query)
+        // 2. Get teacher assignments for this class
+        const [assignments] = await db.query(
+            `SELECT ta.subject, ta.teacher_id, u.full_name as teacher_name
+             FROM report_teacher_assignments ta
+             JOIN users u ON ta.teacher_id = u.id
+             WHERE ta.class_group = ? AND ta.academic_year = ?`,
+            [classGroup, academicYear]
+        );
+
+        // 3. Determine teacher permissions
+        const teacherPermissions = {};
+        const subjects = CLASS_SUBJECTS[classGroup] || [];
+        
+        if (userRole === 'admin') {
+            // Admin can edit all subjects
+            subjects.forEach(subject => {
+                teacherPermissions[subject] = { canEdit: true, isAdmin: true };
+            });
+        } else {
+            // Teacher can only edit assigned subjects
+            subjects.forEach(subject => {
+                const assignment = assignments.find(a => a.subject === subject && a.teacher_id === userId);
+                teacherPermissions[subject] = { 
+                    canEdit: !!assignment, 
+                    isAdmin: false,
+                    teacherName: assignment ? assignment.teacher_name : null
+                };
+            });
+        }
+
+        // 4. Get all marks for those students
         const [marks] = await db.query(
             "SELECT student_id, subject, exam_type, marks_obtained FROM report_student_marks WHERE student_id IN (?) AND academic_year = ?",
             [studentIds, academicYear]
         );
         
-        // 3. Get all attendance for those students (No change in this query)
+        // 5. Get all attendance for those students
         const [attendance] = await db.query(
             "SELECT student_id, month, working_days, present_days FROM report_student_attendance WHERE student_id IN (?) AND academic_year = ?",
             [studentIds, academicYear]
         );
 
-        res.json({ students, marks, attendance, academicYear });
+        res.json({ 
+            students, 
+            marks, 
+            attendance, 
+            assignments,
+            teacherPermissions,
+            academicYear 
+        });
 
     } catch (error) {
         console.error("Error fetching class data:", error);
@@ -7208,25 +7330,61 @@ app.get('/api/reports/class-data/:classGroup', [verifyToken, isTeacherOrAdmin], 
     }
 });
 
-
-// (The rest of the backend routes remain the same as the previous version)
-
-// POST: Bulk save/update marks for multiple students.
+// POST: Bulk save/update marks for multiple students
 app.post('/api/reports/marks/bulk', [verifyToken, isTeacherOrAdmin], async (req, res) => {
     const { marksPayload } = req.body;
     const academicYear = getCurrentAcademicYear();
-    if (!Array.isArray(marksPayload)) return res.status(400).json({ message: "Invalid data format." });
-    if (marksPayload.length === 0) return res.status(200).json({ message: "No marks data to save." });
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    if (!Array.isArray(marksPayload)) {
+        return res.status(400).json({ message: "Invalid data format." });
+    }
+    if (marksPayload.length === 0) {
+        return res.status(200).json({ message: "No marks data to save." });
+    }
+
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
+
+        // If teacher (not admin), verify they can edit these subjects
+        if (userRole !== 'admin') {
+            const subjectsToEdit = [...new Set(marksPayload.map(m => m.subject))];
+            const classGroups = [...new Set(marksPayload.map(m => m.class_group))];
+            
+            for (const classGroup of classGroups) {
+                for (const subject of subjectsToEdit) {
+                    const [[assignment]] = await connection.query(
+                        `SELECT id FROM report_teacher_assignments 
+                         WHERE teacher_id = ? AND class_group = ? AND subject = ? AND academic_year = ?`,
+                        [userId, classGroup, subject, academicYear]
+                    );
+                    
+                    if (!assignment) {
+                        await connection.rollback();
+                        return res.status(403).json({ 
+                            message: `You don't have permission to edit ${subject} for ${classGroup}` 
+                        });
+                    }
+                }
+            }
+        }
+
         const query = `
             INSERT INTO report_student_marks (student_id, academic_year, class_group, subject, exam_type, marks_obtained)
-            VALUES ? ON DUPLICATE KEY UPDATE marks_obtained = VALUES(marks_obtained)`;
+            VALUES ? 
+            ON DUPLICATE KEY UPDATE marks_obtained = VALUES(marks_obtained)`;
+        
         const values = marksPayload.map(m => [
-            m.student_id, academicYear, m.class_group, m.subject,
-            m.exam_type, m.marks_obtained === '' || m.marks_obtained === null ? null : m.marks_obtained
+            m.student_id, 
+            academicYear, 
+            m.class_group, 
+            m.subject,
+            m.exam_type, 
+            m.marks_obtained === '' || m.marks_obtained === null ? null : m.marks_obtained
         ]);
+        
         await connection.query(query, [values]);
         await connection.commit();
         res.status(200).json({ message: "Marks saved successfully!" });
@@ -7239,23 +7397,36 @@ app.post('/api/reports/marks/bulk', [verifyToken, isTeacherOrAdmin], async (req,
     }
 });
 
-// POST: Bulk save/update attendance for multiple students.
+// POST: Bulk save/update attendance for multiple students
 app.post('/api/reports/attendance/bulk', [verifyToken, isTeacherOrAdmin], async (req, res) => {
     const { attendancePayload } = req.body;
     const academicYear = getCurrentAcademicYear();
-    if (!Array.isArray(attendancePayload)) return res.status(400).json({ message: "Invalid data format." });
-    if (attendancePayload.length === 0) return res.status(200).json({ message: "No attendance data to save." });
+    
+    if (!Array.isArray(attendancePayload)) {
+        return res.status(400).json({ message: "Invalid data format." });
+    }
+    if (attendancePayload.length === 0) {
+        return res.status(200).json({ message: "No attendance data to save." });
+    }
+
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
         const query = `
             INSERT INTO report_student_attendance (student_id, academic_year, month, working_days, present_days)
-            VALUES ? ON DUPLICATE KEY UPDATE working_days = VALUES(working_days), present_days = VALUES(present_days)`;
+            VALUES ? 
+            ON DUPLICATE KEY UPDATE 
+                working_days = VALUES(working_days), 
+                present_days = VALUES(present_days)`;
+        
         const values = attendancePayload.map(a => [
-            a.student_id, academicYear, a.month,
+            a.student_id, 
+            academicYear, 
+            a.month,
             a.working_days === '' || a.working_days === null ? null : a.working_days,
             a.present_days === '' || a.present_days === null ? null : a.present_days
         ]);
+        
         await connection.query(query, [values]);
         await connection.commit();
         res.status(200).json({ message: "Attendance saved successfully!" });
@@ -7268,30 +7439,59 @@ app.post('/api/reports/attendance/bulk', [verifyToken, isTeacherOrAdmin], async 
     }
 });
 
-// --- STUDENT ROUTE (No change) ---
+// --- STUDENT ROUTE ---
+
+// GET: Student's own report card
 app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
     const studentId = req.user.id;
     const academicYear = getCurrentAcademicYear();
+    
     try {
+        // Get student info with profile details
         const [[studentInfo]] = await db.query(
-            "SELECT u.id, u.full_name, u.class_group, p.roll_no, p.profile_image_url FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?",
+            `SELECT 
+                u.id, 
+                u.full_name, 
+                u.class_group, 
+                COALESCE(p.roll_no, u.username) as roll_no, 
+                p.profile_image_url,
+                p.father_name,
+                p.mother_name,
+                p.date_of_birth
+            FROM users u 
+            LEFT JOIN user_profiles p ON u.id = p.user_id 
+            WHERE u.id = ?`,
             [studentId]
         );
-        if (!studentInfo) return res.status(404).json({ message: "Student not found" });
+        
+        if (!studentInfo) {
+            return res.status(404).json({ message: "Student not found" });
+        }
+
+        // Get all marks
         const [marks] = await db.query(
             "SELECT subject, exam_type, marks_obtained FROM report_student_marks WHERE student_id = ? AND academic_year = ?",
             [studentId, academicYear]
         );
+        
+        // Get all attendance
         const [attendance] = await db.query(
             "SELECT month, working_days, present_days FROM report_student_attendance WHERE student_id = ? AND academic_year = ?",
             [studentId, academicYear]
         );
-        res.json({ studentInfo, marks, attendance, academicYear });
+
+        res.json({ 
+            studentInfo, 
+            marks, 
+            attendance, 
+            academicYear 
+        });
     } catch (error) {
         console.error("Error fetching report card data:", error);
         res.status(500).json({ message: "Failed to fetch report card" });
     }
 });
+
 
 
 

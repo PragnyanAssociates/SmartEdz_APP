@@ -1,170 +1,412 @@
 /**
  * File: src/screens/report/StudentReportCardScreen.js
- * Purpose: Displays the final, formatted progress report for the logged-in student.
- * Fetches all necessary data from '/api/reports/my-report-card'.
+ * Purpose: Student's personal report card view with all marks and attendance
  */
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, Image, ActivityIndicator } from 'react-native';
-import apiClient from '../../api/client'; // Adjust path if needed
+import {
+    View, Text, ScrollView, StyleSheet, ActivityIndicator,
+    Image, Dimensions
+} from 'react-native';
+import apiClient from '../../api/client';
 
-const config = {
-    subjects: {
-        'LKG': ['All Subjects'], 'UKG': ['All Subjects'],
-        '1st Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], '2nd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-        '3rd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], '4th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-        '5th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-        '6th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], '7th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-        '8th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], '9th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-        '10th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    },
-    exams: { 'FA-1': 'F.A. I', 'FA-2': 'F.A. II', 'SA-1': 'SA-1'}, // Shortened for better mobile view
-    attendanceMonths: ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May']
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+const CLASS_SUBJECTS = {
+    'LKG': ['All Subjects'],
+    'UKG': ['All Subjects'],
+    '1st Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '2nd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '3rd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '4th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '5th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '6th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '7th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '8th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '9th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '10th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
+const EXAM_TYPES = [
+    'Assignment-1', 'Assignment-2', 'Assignment-3', 'Assignment-4',
+    'Unitest-1', 'Unitest-2', 'Unitest-3', 'Unitest-4',
+    'SA1', 'SA2', 'Overall'
+];
+
+const MONTHS = [
+    'June', 'July', 'August', 'September', 'October',
+    'November', 'December', 'January', 'February',
+    'March', 'April', 'May'
+];
+
 const StudentReportCardScreen = () => {
-    const [reportData, setReportData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [studentInfo, setStudentInfo] = useState(null);
+    const [marksData, setMarksData] = useState({});
+    const [attendanceData, setAttendanceData] = useState({});
+    const [academicYear, setAcademicYear] = useState('');
 
     useEffect(() => {
-        const fetchReport = async () => {
-            try {
-                const { data } = await apiClient.get('/reports/my-report-card');
-                setReportData(processReportData(data));
-            } catch (error) {
-                console.error("Failed to fetch report card:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchReport();
+        fetchReportCard();
     }, []);
 
-    const processReportData = (data) => {
-        const marksBySubject = {};
-        data.marks.forEach(mark => {
-            if (!marksBySubject[mark.subject]) {
-                marksBySubject[mark.subject] = {};
-            }
-            marksBySubject[mark.subject][mark.exam_type] = mark.marks_obtained;
-        });
+    const fetchReportCard = async () => {
+        try {
+            const response = await apiClient.get('/reports/my-report-card');
+            const { studentInfo, marks, attendance, academicYear } = response.data;
 
-        const attendanceByMonth = {};
-        const monthMap = {'June':'Jun', 'July':'Jul', 'August':'Aug', 'September':'Sep', 'October':'Oct', 'November':'Nov', 'December':'Dec', 'January':'Jan', 'February':'Feb', 'March':'Mar', 'April':'Apr', 'May':'May'};
-        data.attendance.forEach(a => {
-            const shortMonth = monthMap[a.month];
-            if (shortMonth) {
-                attendanceByMonth[shortMonth] = { working_days: a.working_days, present_days: a.present_days };
-            }
-        });
+            setStudentInfo(studentInfo);
+            setAcademicYear(academicYear);
 
-        return { ...data, marksBySubject, attendanceByMonth };
+            const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
+
+            // Initialize marks data
+            const marksMap = {};
+            subjects.forEach(subject => {
+                marksMap[subject] = {};
+                EXAM_TYPES.forEach(examType => {
+                    marksMap[subject][examType] = '-';
+                });
+            });
+
+            // Fill existing marks
+            marks.forEach(mark => {
+                if (marksMap[mark.subject]) {
+                    marksMap[mark.subject][mark.exam_type] = 
+                        mark.marks_obtained !== null ? mark.marks_obtained.toString() : '-';
+                }
+            });
+
+            setMarksData(marksMap);
+
+            // Initialize attendance data
+            const attendanceMap = {};
+            MONTHS.forEach(month => {
+                attendanceMap[month] = { workingDays: '-', presentDays: '-' };
+            });
+
+            // Fill existing attendance
+            attendance.forEach(att => {
+                attendanceMap[att.month] = {
+                    workingDays: att.working_days !== null ? att.working_days.toString() : '-',
+                    presentDays: att.present_days !== null ? att.present_days.toString() : '-'
+                };
+            });
+
+            setAttendanceData(attendanceMap);
+        } catch (error) {
+            console.error('Error fetching report card:', error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     if (loading) {
-        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#0000ff" /></View>;
+        return (
+            <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#2c3e50" />
+            </View>
+        );
     }
 
-    if (!reportData) {
-        return <View style={styles.loaderContainer}><Text>No report card data available for this year.</Text></View>;
+    if (!studentInfo) {
+        return (
+            <View style={styles.loaderContainer}>
+                <Text style={styles.errorText}>No report card data available</Text>
+            </View>
+        );
     }
 
-    const { studentInfo, marksBySubject, attendanceByMonth, academicYear } = reportData;
-    const subjectsForClass = config.subjects[studentInfo.class_group] || [];
-    
-    const calculateTotal = (subjectMarks) => {
-        if (!subjectMarks) return 0;
-        return Object.values(subjectMarks).reduce((acc, val) => acc + (parseInt(val, 10) || 0), 0);
-    }
-    
-    let grandTotal = subjectsForClass.reduce((total, subject) => total + calculateTotal(marksBySubject[subject]), 0);
+    const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
 
     return (
         <ScrollView style={styles.container}>
-            <View style={styles.card}>
-                <View style={styles.header}>
-                    {/* Use a placeholder or your actual asset */}
-                    <Image source={{ uri: 'https://via.placeholder.com/80' }} style={styles.logo} /> 
-                    <View style={styles.schoolInfo}>
-                        <Text style={styles.schoolName}>VIVEKANANDA PUBLIC SCHOOL</Text>
-                        <Text style={styles.schoolAddress}>Hyderabad - 500072</Text>
-                    </View>
-                </View>
-                <Text style={styles.title}>PROGRESS CARD ({academicYear})</Text>
-                
-                <View style={styles.studentDetailsContainer}>
-                    <View style={styles.studentInfo}>
-                        <Text style={styles.detailText}><Text style={styles.detailLabel}>Name:</Text> {studentInfo.full_name}</Text>
-                        <Text style={styles.detailText}><Text style={styles.detailLabel}>Class:</Text> {studentInfo.class_group}</Text>
-                        <Text style={styles.detailText}><Text style={styles.detailLabel}>Roll No:</Text> {studentInfo.roll_no || studentInfo.username}</Text>
-                    </View>
-                    {studentInfo.profile_image_url && 
-                        <Image source={{ uri: `http://YOUR_SERVER_IP:PORT${studentInfo.profile_image_url}` }} style={styles.profilePic} />
-                    }
-                </View>
+            {/* Header Section */}
+            <View style={styles.header}>
+                <Text style={styles.schoolName}>Student Progress Report</Text>
+                <Text style={styles.academicYear}>Academic Year: {academicYear}</Text>
+            </View>
 
-                <Text style={styles.sectionTitle}>Academic Performance</Text>
-                <View style={styles.table}>
-                    <View style={styles.tableRowHeader}>
-                        <Text style={[styles.tableCell, styles.subjectCell, styles.headerText]}>Subjects</Text>
-                        {Object.values(config.exams).map(exam => <Text key={exam} style={[styles.tableCell, styles.headerText]}>{exam}</Text>)}
-                        <Text style={[styles.tableCell, styles.headerText]}>Total</Text>
-                    </View>
-                    {subjectsForClass.map(subject => (
-                        <View key={subject} style={styles.tableRow}>
-                            <Text style={[styles.tableCell, styles.subjectCell]}>{subject}</Text>
-                            {Object.keys(config.exams).map(examKey => <Text key={examKey} style={styles.tableCell}>{marksBySubject[subject]?.[examKey] ?? '-'}</Text>)}
-                            <Text style={[styles.tableCell, styles.totalCell]}>{calculateTotal(marksBySubject[subject])}</Text>
-                        </View>
-                    ))}
-                     <View style={styles.tableRowHeader}>
-                        <Text style={[styles.tableCell, styles.subjectCell, styles.headerText]}>Grand Total</Text>
-                        <Text style={[styles.tableCell, {flex: Object.keys(config.exams).length + 1}, styles.totalCell, styles.headerText]}>{grandTotal}</Text>
-                    </View>
+            {/* Student Info Card */}
+            <View style={styles.infoCard}>
+                {studentInfo.profile_image_url && (
+                    <Image
+                        source={{ uri: studentInfo.profile_image_url }}
+                        style={styles.profileImage}
+                    />
+                )}
+                <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Name:</Text>
+                    <Text style={styles.infoValue}>{studentInfo.full_name}</Text>
                 </View>
-                
-                <Text style={styles.sectionTitle}>Attendance Particulars</Text>
-                 <View style={styles.table}>
-                     <View style={styles.tableRowHeader}>
-                        <Text style={[styles.tableCell, styles.headerText, {flex: 2}]}>Month</Text>
-                        {config.attendanceMonths.map(h => <Text key={h} style={[styles.tableCell, styles.headerText]}>{h}</Text>)}
-                     </View>
-                      <View style={styles.tableRow}>
-                        <Text style={[styles.tableCell, styles.headerText, {flex: 2, textAlign: 'left'}]}>Working Days</Text>
-                        {config.attendanceMonths.map(m => <Text key={m} style={styles.tableCell}>{attendanceByMonth[m]?.working_days ?? '-'}</Text>)}
-                     </View>
-                     <View style={styles.tableRow}>
-                        <Text style={[styles.tableCell, styles.headerText, {flex: 2, textAlign: 'left'}]}>Present Days</Text>
-                        {config.attendanceMonths.map(m => <Text key={m} style={styles.tableCell}>{attendanceByMonth[m]?.present_days ?? '-'}</Text>)}
-                     </View>
-                 </View>
+                <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Roll No:</Text>
+                    <Text style={styles.infoValue}>{studentInfo.roll_no}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Class:</Text>
+                    <Text style={styles.infoValue}>{studentInfo.class_group}</Text>
+                </View>
+                {studentInfo.father_name && (
+                    <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Father's Name:</Text>
+                        <Text style={styles.infoValue}>{studentInfo.father_name}</Text>
+                    </View>
+                )}
+                {studentInfo.mother_name && (
+                    <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Mother's Name:</Text>
+                        <Text style={styles.infoValue}>{studentInfo.mother_name}</Text>
+                    </View>
+                )}
+                {studentInfo.date_of_birth && (
+                    <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Date of Birth:</Text>
+                        <Text style={styles.infoValue}>
+                            {new Date(studentInfo.date_of_birth).toLocaleDateString()}
+                        </Text>
+                    </View>
+                )}
+            </View>
+
+            {/* Marks Section */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Academic Performance</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                    <View>
+                        {/* Header Row */}
+                        <View style={styles.tableRow}>
+                            <Text style={[styles.tableHeader, styles.subjectHeaderColumn]}>Subject</Text>
+                            {EXAM_TYPES.map(exam => (
+                                <Text key={exam} style={[styles.tableHeader, styles.examColumn]}>
+                                    {exam}
+                                </Text>
+                            ))}
+                        </View>
+
+                        {/* Subject Rows */}
+                        {subjects.map(subject => (
+                            <View key={subject} style={styles.tableRow}>
+                                <Text style={[styles.tableCell, styles.subjectHeaderColumn, styles.subjectName]}>
+                                    {subject}
+                                </Text>
+                                {EXAM_TYPES.map(exam => {
+                                    const mark = marksData[subject][exam];
+                                    const isOverall = exam === 'Overall';
+                                    return (
+                                        <Text
+                                            key={exam}
+                                            style={[
+                                                styles.tableCell,
+                                                styles.examColumn,
+                                                isOverall && styles.overallCell
+                                            ]}
+                                        >
+                                            {mark}
+                                        </Text>
+                                    );
+                                })}
+                            </View>
+                        ))}
+                    </View>
+                </ScrollView>
+            </View>
+
+            {/* Attendance Section */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Monthly Attendance</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                    <View>
+                        {/* Header Row */}
+                        <View style={styles.tableRow}>
+                            <Text style={[styles.tableHeader, styles.monthColumn]}>Month</Text>
+                            <Text style={[styles.tableHeader, styles.attendanceValueColumn]}>Working Days</Text>
+                            <Text style={[styles.tableHeader, styles.attendanceValueColumn]}>Present Days</Text>
+                            <Text style={[styles.tableHeader, styles.attendanceValueColumn]}>Percentage</Text>
+                        </View>
+
+                        {/* Month Rows */}
+                        {MONTHS.map(month => {
+                            const att = attendanceData[month];
+                            const working = parseFloat(att.workingDays);
+                            const present = parseFloat(att.presentDays);
+                            const percentage = (!isNaN(working) && !isNaN(present) && working > 0)
+                                ? ((present / working) * 100).toFixed(1) + '%'
+                                : '-';
+
+                            return (
+                                <View key={month} style={styles.tableRow}>
+                                    <Text style={[styles.tableCell, styles.monthColumn]}>{month}</Text>
+                                    <Text style={[styles.tableCell, styles.attendanceValueColumn]}>
+                                        {att.workingDays}
+                                    </Text>
+                                    <Text style={[styles.tableCell, styles.attendanceValueColumn]}>
+                                        {att.presentDays}
+                                    </Text>
+                                    <Text style={[styles.tableCell, styles.attendanceValueColumn, styles.percentageCell]}>
+                                        {percentage}
+                                    </Text>
+                                </View>
+                            );
+                        })}
+                    </View>
+                </ScrollView>
+            </View>
+
+            {/* Footer */}
+            <View style={styles.footer}>
+                <Text style={styles.footerText}>End of Report Card</Text>
             </View>
         </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
-    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    container: { flex: 1, backgroundColor: '#e9ecef', padding: 10 },
-    card: { backgroundColor: '#ffffff', borderRadius: 10, borderWidth: 4, borderColor: '#0056b3', padding: 15, shadowColor: "#000", shadowOffset: { width: 0, height: 2, }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5, },
-    header: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, borderBottomWidth: 2, borderColor: '#0056b3', paddingBottom: 10 },
-    logo: { width: 60, height: 60, marginRight: 15, borderRadius: 30 },
-    schoolInfo: { flex: 1 },
-    schoolName: { fontSize: 18, fontWeight: 'bold', color: '#004085' },
-    schoolAddress: { fontSize: 12, color: '#555' },
-    title: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, textDecorationLine: 'underline', color: '#004085' },
-    studentDetailsContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, padding: 10, backgroundColor: '#f8f9fa', borderRadius: 8 },
-    studentInfo: { flex: 1 },
-    detailLabel: { fontWeight: 'bold' },
-    detailText: { fontSize: 14, marginBottom: 4 },
-    profilePic: { width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderColor: '#dee2e6' },
-    sectionTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 20, marginBottom: 10, color: '#333' },
-    table: { borderWidth: 1, borderColor: '#dee2e6' },
-    tableRowHeader: { flexDirection: 'row', backgroundColor: '#e0e9f5' },
-    tableRow: { flexDirection: 'row', borderTopWidth: 1, borderColor: '#dee2e6' },
-    tableCell: { flex: 1, paddingVertical: 8, paddingHorizontal: 4, textAlign: 'center', borderWidth: 0.5, borderColor: '#dee2e6', fontSize: 12 },
-    subjectCell: { flex: 2.5, textAlign: 'left', paddingLeft: 8 },
-    headerText: { fontWeight: 'bold', color: '#004085' },
-    totalCell: { fontWeight: 'bold', backgroundColor: '#f8f9fa' },
+    container: {
+        flex: 1,
+        backgroundColor: '#f0f2f5'
+    },
+    loaderContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    errorText: {
+        fontSize: 16,
+        color: '#e74c3c'
+    },
+    header: {
+        backgroundColor: '#2c3e50',
+        padding: 20,
+        alignItems: 'center'
+    },
+    schoolName: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        color: '#fff',
+        marginBottom: 5
+    },
+    academicYear: {
+        fontSize: 16,
+        color: '#ecf0f1'
+    },
+    infoCard: {
+        backgroundColor: '#fff',
+        margin: 15,
+        padding: 20,
+        borderRadius: 10,
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4
+    },
+    profileImage: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        alignSelf: 'center',
+        marginBottom: 15,
+        borderWidth: 3,
+        borderColor: '#2c3e50'
+    },
+    infoRow: {
+        flexDirection: 'row',
+        marginBottom: 10
+    },
+    infoLabel: {
+        fontSize: 15,
+        fontWeight: 'bold',
+        color: '#34495e',
+        width: 140
+    },
+    infoValue: {
+        fontSize: 15,
+        color: '#2c3e50',
+        flex: 1
+    },
+    section: {
+        backgroundColor: '#fff',
+        margin: 15,
+        marginTop: 0,
+        padding: 15,
+        borderRadius: 10,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#2c3e50',
+        marginBottom: 15,
+        borderBottomWidth: 2,
+        borderBottomColor: '#3498db',
+        paddingBottom: 5
+    },
+    tableRow: {
+        flexDirection: 'row',
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd'
+    },
+    tableHeader: {
+        padding: 12,
+        fontWeight: 'bold',
+        backgroundColor: '#34495e',
+        color: '#fff',
+        textAlign: 'center',
+        fontSize: 12,
+        borderRightWidth: 1,
+        borderRightColor: '#fff'
+    },
+    tableCell: {
+        padding: 12,
+        backgroundColor: '#fff',
+        textAlign: 'center',
+        fontSize: 13,
+        borderRightWidth: 1,
+        borderRightColor: '#ddd',
+        color: '#2c3e50'
+    },
+    subjectHeaderColumn: {
+        width: 120,
+        textAlign: 'left',
+        paddingLeft: 10
+    },
+    subjectName: {
+        fontWeight: 'bold',
+        backgroundColor: '#ecf0f1'
+    },
+    examColumn: {
+        width: 90
+    },
+    overallCell: {
+        backgroundColor: '#fff3cd',
+        fontWeight: 'bold',
+        color: '#856404'
+    },
+    monthColumn: {
+        width: 120,
+        textAlign: 'left',
+        paddingLeft: 10
+    },
+    attendanceValueColumn: {
+        width: 100
+    },
+    percentageCell: {
+        fontWeight: 'bold',
+        color: '#27ae60'
+    },
+    footer: {
+        padding: 30,
+        alignItems: 'center'
+    },
+    footerText: {
+        fontSize: 14,
+        color: '#7f8c8d',
+        fontStyle: 'italic'
+    }
 });
 
 export default StudentReportCardScreen;

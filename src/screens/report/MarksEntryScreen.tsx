@@ -1,278 +1,654 @@
 /**
  * File: src/screens/report/MarksEntryScreen.js
- * V4 Final: Fixes syntax error and fully implements the Attendance tab layout.
+ * Purpose: Main screen for entering/editing student marks and attendance with Overall calculation
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity, FlatList } from 'react-native';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
+import {
+    View, Text, ScrollView, StyleSheet, TouchableOpacity,
+    ActivityIndicator, Alert, TextInput, Dimensions
+} from 'react-native';
+import { AuthContext } from '../../context/AuthContext';
 import apiClient from '../../api/client';
-import { Picker } from '@react-native-picker/picker';
 
-const config = {
-    subjects: {
-        'LKG': ['All Subjects'], 'UKG': ['All Subjects'],
-        '1st Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], '2nd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-        '3rd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], '4th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-        '5th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-        '6th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], '7th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-        '8th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], '9th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-        '10th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    },
-    exams: ['FA-1', 'FA-2', 'FA-3', 'FA-4', 'UT-1', 'UT-2', 'UT-3', 'UT-4', 'SA-1', 'SA-2'],
-    attendanceMonths: ['June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March', 'April', 'May']
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+const CLASS_SUBJECTS = {
+    'LKG': ['All Subjects'],
+    'UKG': ['All Subjects'],
+    '1st Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '2nd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '3rd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '4th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '5th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    '6th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '7th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '8th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '9th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    '10th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
-const MarksEntryScreen = ({ route }) => {
-    const classGroup = route?.params?.classGroup;
+const EXAM_TYPES = [
+    'Assignment-1', 'Assignment-2', 'Assignment-3', 'Assignment-4',
+    'Unitest-1', 'Unitest-2', 'Unitest-3', 'Unitest-4',
+    'SA1', 'SA2', 'Overall'
+];
 
-    const [activeTab, setActiveTab] = useState('marks');
-    const [students, setStudents] = useState([]);
-    const [marks, setMarks] = useState({});
-    const [attendance, setAttendance] = useState({});
-    const [academicYear, setAcademicYear] = useState('');
-    const [selectedExam, setSelectedExam] = useState(config.exams[0]);
+const MONTHS = [
+    'June', 'July', 'August', 'September', 'October',
+    'November', 'December', 'January', 'February', 
+    'March', 'April', 'May'
+];
+
+const MarksEntryScreen = ({ route, navigation }) => {
+    const { classGroup } = route.params;
+    const { user } = useContext(AuthContext);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    const subjectsForClass = useMemo(() => config.subjects[classGroup] || [], [classGroup]);
+    const [students, setStudents] = useState([]);
+    const [marksData, setMarksData] = useState({});
+    const [attendanceData, setAttendanceData] = useState({});
+    const [teacherPermissions, setTeacherPermissions] = useState({});
+    const [academicYear, setAcademicYear] = useState('');
+
+    const [activeTab, setActiveTab] = useState('marks');
+    const [selectedExam, setSelectedExam] = useState('Assignment-1');
+
+    const subjects = CLASS_SUBJECTS[classGroup] || [];
+    const isAdmin = user?.role === 'admin';
 
     useEffect(() => {
-        if (!classGroup) { setLoading(false); return; }
-        const fetchClassData = async () => {
-            setLoading(true);
-            try {
-                const res = await apiClient.get(`/reports/class-data/${classGroup}`);
-                const { students, marks: fetchedMarks, attendance: fetchedAttendance, academicYear } = res.data;
-                
-                setStudents(students);
-                setAcademicYear(academicYear);
-
-                const marksData = fetchedMarks.reduce((acc, m) => {
-                    if (!acc[m.student_id]) acc[m.student_id] = {};
-                    if (!acc[m.student_id][m.subject]) acc[m.student_id][m.subject] = {};
-                    acc[m.student_id][m.subject][m.exam_type] = m.marks_obtained?.toString() || '';
-                    return acc;
-                }, {});
-                setMarks(marksData);
-
-                const attendanceData = fetchedAttendance.reduce((acc, a) => {
-                    if (!acc[a.student_id]) acc[a.student_id] = {};
-                    acc[a.student_id][a.month] = {
-                        working_days: a.working_days?.toString() || '',
-                        present_days: a.present_days?.toString() || '',
-                    };
-                    return acc;
-                }, {});
-                setAttendance(attendanceData);
-
-            } catch (error) {
-                Alert.alert('Error', 'Could not load data for this class.');
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchClassData();
     }, [classGroup]);
-    
-    const handleMarkChange = useCallback((studentId, subject, value) => {
-        setMarks(prev => ({ ...prev, [studentId]: { ...(prev[studentId] || {}), [subject]: { ...((prev[studentId] && prev[studentId][subject]) || {}), [selectedExam]: value, }, }, }));
-    }, [selectedExam]);
 
-    const handleAttendanceChange = useCallback((studentId, month, field, value) => {
-        setAttendance(prev => ({ ...prev, [studentId]: { ...(prev[studentId] || {}), [month]: { ...((prev[studentId] && prev[studentId][month]) || {}), [field]: value, }, }, }));
-    }, []);
-
-    const onSave = async () => {
-        setSaving(true);
+    const fetchClassData = async () => {
+        setLoading(true);
         try {
-            const marksPayload = [];
-            Object.keys(marks).forEach(studentId => {
-                Object.keys(marks[studentId]).forEach(subject => {
-                    Object.keys(marks[studentId][subject]).forEach(examType => {
-                        marksPayload.push({ student_id: studentId, class_group: classGroup, subject: subject, exam_type: examType, marks_obtained: marks[studentId][subject][examType], });
+            const response = await apiClient.get(`/reports/class-data/${classGroup}`);
+            const { students, marks, attendance, teacherPermissions, academicYear } = response.data;
+
+            setStudents(students);
+            setAcademicYear(academicYear);
+            setTeacherPermissions(teacherPermissions || {});
+
+            // Initialize marks data
+            const marksMap = {};
+            students.forEach(student => {
+                marksMap[student.id] = {};
+                subjects.forEach(subject => {
+                    marksMap[student.id][subject] = {};
+                    EXAM_TYPES.forEach(examType => {
+                        marksMap[student.id][subject][examType] = '';
                     });
                 });
             });
 
-            const attendancePayload = [];
-            Object.keys(attendance).forEach(studentId => {
-                Object.keys(attendance[studentId]).forEach(month => {
-                    attendancePayload.push({ student_id: studentId, month: month, ...attendance[studentId][month], });
+            // Fill existing marks
+            marks.forEach(mark => {
+                if (marksMap[mark.student_id] && marksMap[mark.student_id][mark.subject]) {
+                    marksMap[mark.student_id][mark.subject][mark.exam_type] = 
+                        mark.marks_obtained !== null ? mark.marks_obtained.toString() : '';
+                }
+            });
+
+            setMarksData(marksMap);
+
+            // Initialize attendance data
+            const attendanceMap = {};
+            students.forEach(student => {
+                attendanceMap[student.id] = {};
+                MONTHS.forEach(month => {
+                    attendanceMap[student.id][month] = { workingDays: '', presentDays: '' };
                 });
             });
 
-            await apiClient.post('/reports/marks/bulk', { marksPayload });
-            await apiClient.post('/reports/attendance/bulk', { attendancePayload });
+            // Fill existing attendance
+            attendance.forEach(att => {
+                if (attendanceMap[att.student_id]) {
+                    attendanceMap[att.student_id][att.month] = {
+                        workingDays: att.working_days !== null ? att.working_days.toString() : '',
+                        presentDays: att.present_days !== null ? att.present_days.toString() : ''
+                    };
+                }
+            });
 
-            Alert.alert('Success', 'All data saved successfully!');
+            setAttendanceData(attendanceMap);
         } catch (error) {
-            Alert.alert('Error', 'Failed to save data.');
+            console.error('Error fetching class data:', error);
+            Alert.alert('Error', 'Failed to load class data');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Calculate Overall marks based on all other exams
+    const calculateOverall = (studentId, subject) => {
+        const marks = marksData[studentId][subject];
+        let totalMarks = 0;
+        let totalExams = 0;
+
+        // All exams except Overall
+        const examTypesToSum = EXAM_TYPES.filter(e => e !== 'Overall');
+
+        examTypesToSum.forEach(examType => {
+            const mark = marks[examType];
+            if (mark !== '' && mark !== null) {
+                const numMark = parseFloat(mark);
+                if (!isNaN(numMark)) {
+                    totalMarks += numMark;
+                    totalExams += 1;
+                }
+            }
+        });
+
+        // If no exams have marks yet, return empty
+        if (totalExams === 0) return '';
+
+        // Calculate average and round to 2 decimal places
+        const average = totalMarks / totalExams;
+        return Math.round(average * 100) / 100;
+    };
+
+    const updateMarks = (studentId, subject, examType, value) => {
+        setMarksData(prev => ({
+            ...prev,
+            [studentId]: {
+                ...prev[studentId],
+                [subject]: {
+                    ...prev[studentId][subject],
+                    [examType]: value
+                }
+            }
+        }));
+    };
+
+    const updateAttendance = (studentId, month, field, value) => {
+        setAttendanceData(prev => ({
+            ...prev,
+            [studentId]: {
+                ...prev[studentId],
+                [month]: {
+                    ...prev[studentId][month],
+                    [field]: value
+                }
+            }
+        }));
+    };
+
+    const handleSaveMarks = async () => {
+        setSaving(true);
+        try {
+            const marksPayload = [];
+            students.forEach(student => {
+                subjects.forEach(subject => {
+                    EXAM_TYPES.forEach(examType => {
+                        let marksValue = marksData[student.id][subject][examType];
+
+                        // Auto-calculate Overall if it's empty
+                        if (examType === 'Overall' && (marksValue === '' || marksValue === null)) {
+                            marksValue = calculateOverall(student.id, subject);
+                        }
+
+                        if (marksValue !== '') {
+                            marksPayload.push({
+                                student_id: student.id,
+                                class_group: classGroup,
+                                subject: subject,
+                                exam_type: examType,
+                                marks_obtained: marksValue
+                            });
+                        }
+                    });
+                });
+            });
+
+            if (marksPayload.length > 0) {
+                await apiClient.post('/reports/marks/bulk', { marksPayload });
+            }
+
+            Alert.alert('Success', 'Marks saved successfully!');
+            fetchClassData(); // Refresh data
+        } catch (error) {
+            console.error('Error saving marks:', error);
+            Alert.alert('Error', error.response?.data?.message || 'Failed to save marks');
         } finally {
             setSaving(false);
         }
     };
 
-    const calculateRowTotal = useCallback((studentId) => {
-        return subjectsForClass.reduce((sum, subject) => sum + (parseInt(marks[studentId]?.[subject]?.[selectedExam], 10) || 0), 0);
-    }, [marks, selectedExam, subjectsForClass]);
+    const handleSaveAttendance = async () => {
+        setSaving(true);
+        try {
+            const attendancePayload = [];
+            students.forEach(student => {
+                MONTHS.forEach(month => {
+                    const att = attendanceData[student.id][month];
+                    if (att.workingDays !== '' || att.presentDays !== '') {
+                        attendancePayload.push({
+                            student_id: student.id,
+                            month: month,
+                            working_days: att.workingDays,
+                            present_days: att.presentDays
+                        });
+                    }
+                });
+            });
 
-    const calculateColumnTotal = useCallback((subject) => {
-        return students.reduce((sum, student) => sum + (parseInt(marks[student.id]?.[subject]?.[selectedExam], 10) || 0), 0);
-    }, [marks, selectedExam, students]);
+            if (attendancePayload.length > 0) {
+                await apiClient.post('/reports/attendance/bulk', { attendancePayload });
+            }
 
-    const grandTotal = useMemo(() => {
-        return subjectsForClass.reduce((sum, subject) => sum + calculateColumnTotal(subject), 0);
-    }, [subjectsForClass, calculateColumnTotal]);
+            Alert.alert('Success', 'Attendance saved successfully!');
+            fetchClassData();
+        } catch (error) {
+            console.error('Error saving attendance:', error);
+            Alert.alert('Error', 'Failed to save attendance');
+        } finally {
+            setSaving(false);
+        }
+    };
 
-    const renderMarksTab = () => (
-        <View style={{ flex: 1 }}>
-            <View style={styles.controlsContainer}>
-                <Text style={styles.label}>Select Exam:</Text>
-                <View style={styles.pickerContainer}>
-                    <Picker selectedValue={selectedExam} onValueChange={(itemValue) => setSelectedExam(itemValue)}>
-                        {config.exams.map(exam => <Picker.Item key={exam} label={exam} value={exam} />)}
-                    </Picker>
-                </View>
+    if (loading) {
+        return (
+            <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#2c3e50" />
             </View>
-            <ScrollView horizontal bounces={false}>
-                <View>
-                    <View style={styles.tableRowHeader}>
-                        <Text style={[styles.headerText, styles.rollNoCell]}>Roll</Text>
-                        <Text style={[styles.headerText, styles.nameCell]}>Student Name</Text>
-                        {subjectsForClass.map(subject => <Text key={subject} style={[styles.headerText, styles.subjectCell]}>{subject.substring(0, 3)}</Text>)}
-                        <Text style={[styles.headerText, styles.totalCell]}>Total</Text>
-                    </View>
-                    <FlatList
-                        data={students}
-                        keyExtractor={item => item.id.toString()}
-                        renderItem={({ item: student }) => (
-                            <View style={styles.tableRow}>
-                                <Text style={[styles.cell, styles.rollNoCell]}>{student.roll_no || '-'}</Text>
-                                <Text style={[styles.cell, styles.nameCell]}>{student.full_name}</Text>
-                                {subjectsForClass.map(subject => (
-                                    <TextInput key={subject} style={[styles.cell, styles.subjectCell, styles.input]} keyboardType="number-pad" maxLength={3} placeholder="-" value={marks[student.id]?.[subject]?.[selectedExam] || ''} onChangeText={text => handleMarkChange(student.id, subject, text)} />
-                                ))}
-                                <Text style={[styles.cell, styles.totalCell, styles.boldText]}>{calculateRowTotal(student.id)}</Text>
-                            </View>
-                        )}
-                    />
-                    <View style={styles.tableRowHeader}>
-                        <Text style={[styles.headerText, styles.rollNoCell]}></Text>
-                        <Text style={[styles.headerText, styles.nameCell]}>Total</Text>
-                        {subjectsForClass.map(subject => (<Text key={subject} style={[styles.headerText, styles.subjectCell, styles.boldText]}>{calculateColumnTotal(subject)}</Text>))}
-                        <Text style={[styles.headerText, styles.totalCell, styles.boldText]}>{grandTotal}</Text>
-                    </View>
-                </View>
-            </ScrollView>
-        </View>
-    );
+        );
+    }
 
-    // ==========================================================
-    // ★★★ FIX APPLIED HERE ★★★
-    // The incomplete function is now fully implemented.
-    // ==========================================================
-    const renderAttendanceTab = () => (
-        <ScrollView horizontal bounces={false}>
-            <View>
-                <View style={styles.tableRowHeader}>
-                    <Text style={[styles.headerText, styles.rollNoCell]}>Roll</Text>
-                    <Text style={[styles.headerText, styles.nameCell]}>Student Name</Text>
-                    {config.attendanceMonths.map(month => (
-                        <Text key={month} style={[styles.headerText, styles.attendanceHeaderCell]}>{month}</Text>
+    // Render Marks Table
+    const renderMarksTable = () => {
+        return (
+            <View style={styles.tableContainer}>
+                <Text style={styles.sectionTitle}>Academic Year: {academicYear}</Text>
+                <Text style={styles.infoText}>Select Exam Type:</Text>
+
+                {/* Exam Type Selector */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.examTypeScroll}>
+                    {EXAM_TYPES.map(examType => (
+                        <TouchableOpacity
+                            key={examType}
+                            style={[
+                                styles.examTypeButton,
+                                selectedExam === examType && styles.examTypeButtonActive
+                            ]}
+                            onPress={() => setSelectedExam(examType)}
+                        >
+                            <Text style={[
+                                styles.examTypeText,
+                                selectedExam === examType && styles.examTypeTextActive
+                            ]}>
+                                {examType}
+                            </Text>
+                        </TouchableOpacity>
                     ))}
-                </View>
-                <FlatList
-                    data={students}
-                    keyExtractor={item => item.id.toString()}
-                    renderItem={({ item: student }) => (
+                </ScrollView>
+
+                {/* Marks Entry for Selected Exam */}
+                <ScrollView horizontal>
+                    <View>
+                        {/* Header Row */}
                         <View style={styles.tableRow}>
-                            <Text style={[styles.cell, styles.rollNoCell]}>{student.roll_no || '-'}</Text>
-                            <Text style={[styles.cell, styles.nameCell]}>{student.full_name}</Text>
-                            {config.attendanceMonths.map(month => (
-                                <View key={month} style={[styles.cell, styles.attendanceInputCell]}>
-                                    <TextInput
-                                        style={styles.attendanceInput}
-                                        placeholder="W"
-                                        keyboardType="number-pad"
-                                        maxLength={2}
-                                        value={attendance[student.id]?.[month]?.working_days || ''}
-                                        onChangeText={text => handleAttendanceChange(student.id, month, 'working_days', text)}
-                                    />
-                                    <TextInput
-                                        style={styles.attendanceInput}
-                                        placeholder="P"
-                                        keyboardType="number-pad"
-                                        maxLength={2}
-                                        value={attendance[student.id]?.[month]?.present_days || ''}
-                                        onChangeText={text => handleAttendanceChange(student.id, month, 'present_days', text)}
-                                    />
+                            <Text style={[styles.tableHeader, styles.rollNoColumn]}>Roll No</Text>
+                            <Text style={[styles.tableHeader, styles.nameColumn]}>Student Name</Text>
+                            {subjects.map(subject => {
+                                const permission = teacherPermissions[subject] || {};
+                                const canEdit = permission.canEdit;
+                                const bgColor = canEdit ? '#d4edda' : '#fff3cd';
+                                
+                                return (
+                                    <View key={subject} style={[styles.tableHeader, styles.subjectColumn, { backgroundColor: bgColor }]}>
+                                        <Text style={styles.headerText}>{subject}</Text>
+                                        {!isAdmin && (
+                                            <Text style={styles.permissionText}>
+                                                {canEdit ? '(You)' : `(${permission.teacherName || 'Unassigned'})`}
+                                            </Text>
+                                        )}
+                                    </View>
+                                );
+                            })}
+                        </View>
+
+                        {/* Student Rows */}
+                        {students.map(student => (
+                            <View key={student.id} style={styles.tableRow}>
+                                <Text style={[styles.tableCell, styles.rollNoColumn]}>{student.roll_no}</Text>
+                                <Text style={[styles.tableCell, styles.nameColumn]}>{student.full_name}</Text>
+                                {subjects.map(subject => {
+                                    const permission = teacherPermissions[subject] || {};
+                                    const canEdit = permission.canEdit;
+                                    const isOverall = selectedExam === 'Overall';
+
+                                    // Show calculated Overall value
+                                    let displayValue = marksData[student.id][subject][selectedExam];
+                                    if (isOverall && (displayValue === '' || displayValue === null)) {
+                                        displayValue = calculateOverall(student.id, subject);
+                                    }
+
+                                    return (
+                                        <TextInput
+                                            key={subject}
+                                            style={[
+                                                styles.tableCell,
+                                                styles.subjectColumn,
+                                                styles.input,
+                                                !canEdit && styles.inputDisabled,
+                                                isOverall && styles.overallInput
+                                            ]}
+                                            value={displayValue.toString()}
+                                            onChangeText={(value) => updateMarks(student.id, subject, selectedExam, value)}
+                                            keyboardType="numeric"
+                                            editable={canEdit && !isOverall}
+                                            placeholder="-"
+                                        />
+                                    );
+                                })}
+                            </View>
+                        ))}
+                    </View>
+                </ScrollView>
+
+                <TouchableOpacity
+                    style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+                    onPress={handleSaveMarks}
+                    disabled={saving}
+                >
+                    <Text style={styles.saveButtonText}>
+                        {saving ? 'Saving...' : 'Save All Marks'}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+        );
+    };
+
+    // Render Attendance Table
+    const renderAttendanceTable = () => {
+        return (
+            <View style={styles.tableContainer}>
+                <Text style={styles.sectionTitle}>Monthly Attendance - {academicYear}</Text>
+
+                <ScrollView horizontal>
+                    <View>
+                        {/* Header Row */}
+                        <View style={styles.tableRow}>
+                            <Text style={[styles.tableHeader, styles.rollNoColumn]}>Roll No</Text>
+                            <Text style={[styles.tableHeader, styles.nameColumn]}>Student Name</Text>
+                            {MONTHS.map(month => (
+                                <View key={month} style={[styles.tableHeader, styles.attendanceColumn]}>
+                                    <Text style={styles.headerText}>{month}</Text>
+                                    <Text style={styles.subHeaderText}>(W / P)</Text>
                                 </View>
                             ))}
                         </View>
-                    )}
-                />
-            </View>
-        </ScrollView>
-    );
 
-    if (loading) {
-        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#0000ff" /></View>;
-    }
+                        {/* Student Rows */}
+                        {students.map(student => (
+                            <View key={student.id} style={styles.tableRow}>
+                                <Text style={[styles.tableCell, styles.rollNoColumn]}>{student.roll_no}</Text>
+                                <Text style={[styles.tableCell, styles.nameColumn]}>{student.full_name}</Text>
+                                {MONTHS.map(month => (
+                                    <View key={month} style={[styles.tableCell, styles.attendanceColumn]}>
+                                        <TextInput
+                                            style={[styles.input, styles.attendanceInput]}
+                                            value={attendanceData[student.id][month].workingDays}
+                                            onChangeText={(value) => updateAttendance(student.id, month, 'workingDays', value)}
+                                            keyboardType="numeric"
+                                            placeholder="W"
+                                        />
+                                        <Text style={styles.slashText}>/</Text>
+                                        <TextInput
+                                            style={[styles.input, styles.attendanceInput]}
+                                            value={attendanceData[student.id][month].presentDays}
+                                            onChangeText={(value) => updateAttendance(student.id, month, 'presentDays', value)}
+                                            keyboardType="numeric"
+                                            placeholder="P"
+                                        />
+                                    </View>
+                                ))}
+                            </View>
+                        ))}
+                    </View>
+                </ScrollView>
+
+                <TouchableOpacity
+                    style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+                    onPress={handleSaveAttendance}
+                    disabled={saving}
+                >
+                    <Text style={styles.saveButtonText}>
+                        {saving ? 'Saving...' : 'Save All Attendance'}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+        );
+    };
 
     return (
         <View style={styles.container}>
-            <View style={styles.tabContainer}>
-                <TouchableOpacity onPress={() => setActiveTab('marks')} style={[styles.tab, activeTab === 'marks' && styles.activeTab]}>
-                    <Text style={[styles.tabText, activeTab === 'marks' && styles.activeTabText]}>Marks Entry</Text>
+            {/* Header with Teacher Assignment Button (Admin Only) */}
+            {isAdmin && (
+                <TouchableOpacity
+                    style={styles.assignButton}
+                    onPress={() => navigation.navigate('TeacherAssignment', { classGroup })}
+                >
+                    <Text style={styles.assignButtonText}>Assign Teachers to Subjects</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setActiveTab('attendance')} style={[styles.tab, activeTab === 'attendance' && styles.activeTab]}>
-                    <Text style={[styles.tabText, activeTab === 'attendance' && styles.activeTabText]}>Attendance Entry</Text>
-                </TouchableOpacity>
-            </View>
-            
-            {academicYear && <Text style={styles.yearHeader}>Academic Year: {academicYear}</Text>}
+            )}
 
-            <View style={{ flex: 1 }}>
-                {students.length === 0 ? (
-                    <Text style={styles.emptyText}>No students found in {classGroup}.</Text>
-                ) : (
-                    activeTab === 'marks' ? renderMarksTab() : renderAttendanceTab()
-                )}
+            {/* Tab Selector */}
+            <View style={styles.tabContainer}>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'marks' && styles.activeTab]}
+                    onPress={() => setActiveTab('marks')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'marks' && styles.activeTabText]}>
+                        Marks Entry
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'attendance' && styles.activeTab]}
+                    onPress={() => setActiveTab('attendance')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'attendance' && styles.activeTabText]}>
+                        Attendance
+                    </Text>
+                </TouchableOpacity>
             </View>
-            
-            <View style={styles.buttonContainer}>
-                <Button title={saving ? "Saving..." : "Save All Changes"} onPress={onSave} disabled={saving || students.length === 0} />
-            </View>
+
+            {/* Content */}
+            <ScrollView style={styles.contentContainer}>
+                {activeTab === 'marks' ? renderMarksTable() : renderAttendanceTable()}
+            </ScrollView>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f0f2f5' },
-    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    tabContainer: { flexDirection: 'row', marginHorizontal: 10, marginTop: 10 },
-    tab: { flex: 1, padding: 12, alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc' },
-    activeTab: { backgroundColor: '#2c3e50', borderColor: '#2c3e50' },
-    tabText: { color: '#333', fontWeight: 'bold' },
-    activeTabText: { color: '#fff' },
-    yearHeader: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', color: '#1E8449', marginVertical: 10, padding: 8, backgroundColor: '#D5F5E3', borderRadius: 5, marginHorizontal: 10 },
-    controlsContainer: { paddingHorizontal: 10, paddingTop: 10 },
-    label: { fontSize: 16, fontWeight: 'bold', marginBottom: 5, color: '#333' },
-    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, backgroundColor: '#fff', marginBottom: 15 },
-    tableRowHeader: { flexDirection: 'row', backgroundColor: '#e0e9f5', borderBottomWidth: 1, borderColor: '#999' },
-    tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#eee', alignItems: 'stretch' },
-    cell: { padding: 10, textAlignVertical: 'center', borderRightWidth: 1, borderColor: '#eee' },
-    headerText: { padding: 10, textAlign: 'center', fontWeight: 'bold', color: '#004085', borderRightWidth: 1, borderColor: '#ccc' },
-    boldText: { fontWeight: 'bold' },
-    rollNoCell: { width: 60, textAlign: 'center' },
-    nameCell: { width: 180, textAlign: 'left' },
-    subjectCell: { width: 80, textAlign: 'center' },
-    totalCell: { width: 80, backgroundColor: '#f8f9fa', textAlign: 'center'},
-    input: { padding: 10, margin: 0, height: '100%', textAlign: 'center' },
-    attendanceHeaderCell: { width: 140 },
-    attendanceInputCell: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', width: 140 },
-    attendanceInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 4, width: 55, padding: 8, textAlign: 'center' },
-    buttonContainer: { padding: 10, backgroundColor: '#f0f2f5', borderTopWidth: 1, borderColor: '#ccc' },
-    emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16, color: '#666' },
+    container: {
+        flex: 1,
+        backgroundColor: '#f0f2f5'
+    },
+    loaderContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    assignButton: {
+        backgroundColor: '#3498db',
+        padding: 15,
+        margin: 10,
+        borderRadius: 8,
+        alignItems: 'center'
+    },
+    assignButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 16
+    },
+    tabContainer: {
+        flexDirection: 'row',
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd'
+    },
+    tab: {
+        flex: 1,
+        paddingVertical: 15,
+        alignItems: 'center',
+        borderBottomWidth: 3,
+        borderBottomColor: 'transparent'
+    },
+    activeTab: {
+        borderBottomColor: '#2c3e50'
+    },
+    tabText: {
+        fontSize: 16,
+        color: '#7f8c8d',
+        fontWeight: '500'
+    },
+    activeTabText: {
+        color: '#2c3e50',
+        fontWeight: 'bold'
+    },
+    contentContainer: {
+        flex: 1
+    },
+    tableContainer: {
+        padding: 15
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#2c3e50',
+        marginBottom: 10
+    },
+    infoText: {
+        fontSize: 14,
+        color: '#7f8c8d',
+        marginBottom: 10
+    },
+    examTypeScroll: {
+        marginBottom: 15
+    },
+    examTypeButton: {
+        paddingHorizontal: 15,
+        paddingVertical: 10,
+        marginRight: 10,
+        backgroundColor: '#ecf0f1',
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#bdc3c7'
+    },
+    examTypeButtonActive: {
+        backgroundColor: '#2c3e50',
+        borderColor: '#2c3e50'
+    },
+    examTypeText: {
+        fontSize: 14,
+        color: '#7f8c8d',
+        fontWeight: '500'
+    },
+    examTypeTextActive: {
+        color: '#fff',
+        fontWeight: 'bold'
+    },
+    tableRow: {
+        flexDirection: 'row',
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd'
+    },
+    tableHeader: {
+        padding: 12,
+        fontWeight: 'bold',
+        backgroundColor: '#34495e',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderRightWidth: 1,
+        borderRightColor: '#fff'
+    },
+    headerText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 13,
+        textAlign: 'center'
+    },
+    subHeaderText: {
+        color: '#fff',
+        fontSize: 11,
+        textAlign: 'center',
+        marginTop: 2
+    },
+    permissionText: {
+        color: '#fff',
+        fontSize: 10,
+        marginTop: 2,
+        fontStyle: 'italic'
+    },
+    tableCell: {
+        padding: 10,
+        backgroundColor: '#fff',
+        justifyContent: 'center',
+        borderRightWidth: 1,
+        borderRightColor: '#ddd'
+    },
+    rollNoColumn: {
+        width: 80,
+        textAlign: 'center'
+    },
+    nameColumn: {
+        width: 150
+    },
+    subjectColumn: {
+        width: 100
+    },
+    attendanceColumn: {
+        width: 100,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    input: {
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 5,
+        padding: 8,
+        textAlign: 'center',
+        backgroundColor: '#fff'
+    },
+    inputDisabled: {
+        backgroundColor: '#f5f5f5',
+        color: '#999'
+    },
+    overallInput: {
+        backgroundColor: '#fff3cd',
+        fontWeight: 'bold',
+        color: '#856404'
+    },
+    attendanceInput: {
+        width: 35,
+        padding: 5,
+        fontSize: 12
+    },
+    slashText: {
+        marginHorizontal: 3,
+        fontSize: 14,
+        color: '#7f8c8d'
+    },
+    saveButton: {
+        backgroundColor: '#27ae60',
+        padding: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginTop: 20
+    },
+    saveButtonDisabled: {
+        backgroundColor: '#95a5a6'
+    },
+    saveButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold'
+    }
 });
 
 export default MarksEntryScreen;

@@ -1,11 +1,10 @@
 /**
  * File: src/screens/report/ClassListScreen.js
  * Purpose: Displays a list of all classes for Teachers/Admins to select from.
- * Fetches data from '/api/reports/classes' and navigates to the MarksEntryScreen.
  */
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import apiClient from '../../api/client'; // Adjust path if your apiClient is elsewhere
+import apiClient from '../../api/client';
 
 const ClassListScreen = ({ navigation }) => {
     const [classes, setClasses] = useState([]);
@@ -28,11 +27,11 @@ const ClassListScreen = ({ navigation }) => {
     }, []);
 
     if (loading) {
-        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#0000ff" /></View>;
+        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#2c3e50" /></View>;
     }
 
     if (error) {
-         return <View style={styles.loaderContainer}><Text style={styles.errorText}>{error}</Text></View>;
+        return <View style={styles.loaderContainer}><Text style={styles.errorText}>{error}</Text></View>;
     }
 
     const renderItem = ({ item }) => (
@@ -83,8 +82,8 @@ const styles = StyleSheet.create({
     },
     itemText: { 
         fontSize: 18, 
-        fontWeight: '500',
-        color: '#333'
+        fontWeight: '600',
+        color: '#2c3e50'
     },
     emptyText: { 
         textAlign: 'center', 
@@ -94,7 +93,7 @@ const styles = StyleSheet.create({
     },
     errorText: {
         fontSize: 16,
-        color: 'red',
+        color: '#e74c3c',
         textAlign: 'center'
     }
 });
