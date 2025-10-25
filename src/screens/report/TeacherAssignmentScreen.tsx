@@ -10,20 +10,22 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import apiClient from '../../api/client';
 
+
 const CLASS_SUBJECTS = {
     'LKG': ['All Subjects'],
     'UKG': ['All Subjects'],
-    '1st Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '2nd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '3rd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '4th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '5th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '6th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '7th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '8th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '9th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '10th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
+    'Class 1': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 2': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 3': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 4': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 5': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 6': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 7': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 8': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 9': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
+
 
 const TeacherAssignmentScreen = ({ route }) => {
     const { classGroup } = route.params;
@@ -33,11 +35,14 @@ const TeacherAssignmentScreen = ({ route }) => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
+
     const subjects = CLASS_SUBJECTS[classGroup] || [];
+
 
     useEffect(() => {
         fetchData();
     }, [classGroup]);
+
 
     const fetchData = async () => {
         try {
@@ -63,12 +68,14 @@ const TeacherAssignmentScreen = ({ route }) => {
         }
     };
 
+
     const handleAssign = async (subject) => {
         const teacherId = selectedTeachers[subject];
         if (!teacherId) {
             Alert.alert('Error', 'Please select a teacher');
             return;
         }
+
 
         setSaving(true);
         try {
@@ -86,6 +93,7 @@ const TeacherAssignmentScreen = ({ route }) => {
             setSaving(false);
         }
     };
+
 
     const handleRemove = async (assignmentId) => {
         Alert.alert(
@@ -110,6 +118,7 @@ const TeacherAssignmentScreen = ({ route }) => {
         );
     };
 
+
     if (loading) {
         return (
             <View style={styles.loaderContainer}>
@@ -118,10 +127,12 @@ const TeacherAssignmentScreen = ({ route }) => {
         );
     }
 
+
     return (
         <ScrollView style={styles.container}>
             <Text style={styles.title}>Assign Teachers to Subjects</Text>
             <Text style={styles.subtitle}>Class: {classGroup}</Text>
+
 
             {subjects.map(subject => {
                 const currentAssignment = assignments.find(a => a.subject === subject);
@@ -176,6 +187,7 @@ const TeacherAssignmentScreen = ({ route }) => {
         </ScrollView>
     );
 };
+
 
 const styles = StyleSheet.create({
     container: {
@@ -263,5 +275,6 @@ const styles = StyleSheet.create({
         fontSize: 16
     }
 });
+
 
 export default TeacherAssignmentScreen;

@@ -7151,16 +7151,16 @@ const getCurrentAcademicYear = () => {
 const CLASS_SUBJECTS = {
     'LKG': ['All Subjects'],
     'UKG': ['All Subjects'],
-    '1st Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '2nd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '3rd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '4th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '5th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '6th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '7th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '8th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '9th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '10th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
+    'Class 1': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 2': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 3': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 4': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 5': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 6': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 7': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 8': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 9': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
 // --- ADMIN ONLY ROUTES ---
