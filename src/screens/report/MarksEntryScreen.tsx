@@ -28,16 +28,49 @@ const CLASS_SUBJECTS = {
     'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
-// Exams that teachers can enter marks for
+// Exams that teachers can enter marks for (Display Names)
 const EDITABLE_EXAM_TYPES = [
-    'Assignment-1', 'Assignment-2', 'Assignment-3', 'Assignment-4',
-    'Unitest-1', 'Unitest-2', 'Unitest-3', 'Unitest-4',
+    'Assignment-1', 'Unitest-1', 
+    'Assignment-2', 'Unitest-2', 
+    'Assignment-3', 'Unitest-3', 
+    'Assignment-4', 'Unitest-4',
     'SA1', 'SA2'
 ];
 
 // All options available in the dropdown, including the calculated 'Overall' view
 const ALL_EXAM_OPTIONS = ['Overall', ...EDITABLE_EXAM_TYPES];
 
+// ★★★ FIX #1: CREATE A REVERSE MAPPING ★★★
+// This maps the display name back to the short key for saving to the database.
+const EXAM_KEY_MAPPING = {
+    'Assignment-1': 'AT1',
+    'Unitest-1': 'UT1',
+    'Assignment-2': 'AT2',
+    'Unitest-2': 'UT2',
+    'Assignment-3': 'AT3',
+    'Unitest-3': 'UT3',
+    'Assignment-4': 'AT4',
+    'Unitest-4': 'UT4',
+    'SA1': 'SA1',
+    'SA2': 'SA2',
+    'Overall': 'Total' // Maps 'Overall' view to 'Total' key if needed
+};
+
+// ★★★ FIX #2: CREATE A FORWARD MAPPING ★★★
+// Maps the backend key to the display name for reading data.
+const EXAM_DISPLAY_MAPPING = {
+    'AT1': 'Assignment-1',
+    'UT1': 'Unitest-1',
+    'AT2': 'Assignment-2',
+    'UT2': 'Unitest-2',
+    'AT3': 'Assignment-3',
+    'UT3': 'Unitest-3',
+    'AT4': 'Assignment-4',
+    'UT4': 'Unitest-4',
+    'SA1': 'SA1',
+    'SA2': 'SA2',
+    'Total': 'Overall'
+};
 
 const MONTHS = [
     'June', 'July', 'August', 'September', 'October', 'November',
@@ -49,16 +82,13 @@ const MarksEntryScreen = ({ route, navigation }) => {
     const { classGroup } = route.params;
     const subjects = CLASS_SUBJECTS[classGroup] || [];
 
-
     const { user } = useAuth();
     const userRole = user?.role || 'teacher';
-
 
     const [students, setStudents] = useState([]);
     const [marksData, setMarksData] = useState({});
     const [attendanceData, setAttendanceData] = useState({});
     
-    // Default selected exam is now 'Overall'
     const [selectedExam, setSelectedExam] = useState('Overall');
     const [viewMode, setViewMode] = useState('marks');
     const [sortOrder, setSortOrder] = useState('rollno');
@@ -67,15 +97,10 @@ const MarksEntryScreen = ({ route, navigation }) => {
     const [saving, setSaving] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
 
-
     useEffect(() => {
         fetchClassData();
     }, [classGroup]);
 
-
-    // Removed the "Assign Teachers" button logic as it's no longer needed for permissions
-    // but can be kept for informational purposes if an admin wants to see assignments.
-    // I will keep it for now as it doesn't harm functionality.
     useEffect(() => {
         if (userRole === 'admin') {
             navigation.setOptions({
@@ -93,12 +118,10 @@ const MarksEntryScreen = ({ route, navigation }) => {
         }
     }, [navigation, classGroup, userRole]);
 
-
     const fetchClassData = async () => {
         try {
             const response = await apiClient.get(`/reports/class-data/${classGroup}`);
             const { students, marks, attendance } = response.data;
-
 
             setStudents(students);
 
@@ -113,16 +136,17 @@ const MarksEntryScreen = ({ route, navigation }) => {
                 });
             });
 
-
             marks.forEach(mark => {
                 if (marksMap[mark.student_id] && marksMap[mark.student_id][mark.subject]) {
-                    if(EDITABLE_EXAM_TYPES.includes(mark.exam_type)) {
-                        marksMap[mark.student_id][mark.subject][mark.exam_type] = 
+                    // ★★★ FIX #3: USE THE FORWARD MAPPING TO POPULATE THE STATE ★★★
+                    // This converts the key from the DB ('AT1') to the display name ('Assignment-1') for the input fields.
+                    const displayExamType = EXAM_DISPLAY_MAPPING[mark.exam_type];
+                    if (displayExamType && EDITABLE_EXAM_TYPES.includes(displayExamType)) {
+                        marksMap[mark.student_id][mark.subject][displayExamType] = 
                             mark.marks_obtained !== null ? mark.marks_obtained.toString() : '';
                     }
                 }
             });
-
 
             setMarksData(marksMap);
 
@@ -134,7 +158,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
                 });
             });
 
-
             attendance.forEach(att => {
                 if (attendanceMap[att.student_id]) {
                     attendanceMap[att.student_id][att.month] = {
@@ -143,7 +166,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
                     };
                 }
             });
-
 
             setAttendanceData(attendanceMap);
         } catch (error) {
@@ -155,12 +177,10 @@ const MarksEntryScreen = ({ route, navigation }) => {
         }
     };
 
-
     const onRefresh = useCallback(() => {
         setRefreshing(true);
         fetchClassData();
     }, [classGroup]);
-
 
     const updateMarks = (studentId, subject, examType, value) => {
         setMarksData(prev => ({
@@ -175,7 +195,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
         }));
     };
 
-
     const updateAttendance = (studentId, month, field, value) => {
         setAttendanceData(prev => ({
             ...prev,
@@ -189,7 +208,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
         }));
     };
 
-
     const calculateOverallForSubject = (studentId, subject) => {
         const studentMarks = marksData[studentId]?.[subject] || {};
         let total = 0;
@@ -200,7 +218,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
         return total > 0 ? total : '';
     };
 
-
     const calculateStudentGrandTotal = (studentId) => {
         let total = 0;
         subjects.forEach(subject => {
@@ -209,7 +226,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
         });
         return total;
     };
-
 
     const getSortedStudents = () => {
         if (sortOrder === 'rollno') {
@@ -227,7 +243,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
         return studentsWithTotals;
     };
 
-
     const handleSave = async () => {
         if (viewMode === 'marks') {
             await saveMarks();
@@ -236,28 +251,33 @@ const MarksEntryScreen = ({ route, navigation }) => {
         }
     };
 
-
     const saveMarks = async () => {
         setSaving(true);
         const marksPayload = [];
         students.forEach(student => {
             subjects.forEach(subject => {
-                EDITABLE_EXAM_TYPES.forEach(examType => {
-                    const marksValue = marksData[student.id]?.[subject]?.[examType] || '';
-                    marksPayload.push({
-                        student_id: student.id,
-                        class_group: classGroup,
-                        subject: subject,
-                        exam_type: examType,
-                        marks_obtained: marksValue === '' ? null : marksValue
-                    });
+                EDITABLE_EXAM_TYPES.forEach(examDisplayType => { // 'Assignment-1'
+                    // ★★★ FIX #4: USE THE REVERSE MAPPING TO GET THE KEY ★★★
+                    // This converts 'Assignment-1' back to 'AT1' before sending to the backend.
+                    const examKey = EXAM_KEY_MAPPING[examDisplayType]; // 'AT1'
+                    const marksValue = marksData[student.id]?.[subject]?.[examDisplayType] || '';
+                    
+                    if (examKey) { // Ensure we have a valid key
+                        marksPayload.push({
+                            student_id: student.id,
+                            class_group: classGroup,
+                            subject: subject,
+                            exam_type: examKey, // SEND THE CORRECT KEY
+                            marks_obtained: marksValue === '' ? null : marksValue
+                        });
+                    }
                 });
                 const overallValue = calculateOverallForSubject(student.id, subject);
                 marksPayload.push({
                     student_id: student.id,
                     class_group: classGroup,
                     subject: subject,
-                    exam_type: 'Overall',
+                    exam_type: 'Total', // Use 'Total' for overall to match student screen mapping
                     marks_obtained: overallValue === '' ? null : overallValue
                 });
             });
@@ -273,7 +293,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
             setSaving(false);
         }
     };
-
 
     const saveAttendance = async () => {
         setSaving(true);
@@ -300,7 +319,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
         }
     };
 
-
     const toggleSortOrder = () => {
         if (sortOrder === 'rollno') {
             setSortOrder('descending');
@@ -311,16 +329,14 @@ const MarksEntryScreen = ({ route, navigation }) => {
         }
     };
 
-
     if (loading) {
         return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#2c3e50" /></View>;
     }
 
-
     const sortedStudents = getSortedStudents();
     const isOverallView = selectedExam === 'Overall';
 
-
+    // The rest of the return/JSX part of the component remains exactly the same
     return (
         <View style={styles.container}>
             <View style={styles.modeToggle}>
@@ -514,7 +530,7 @@ const MarksEntryScreen = ({ route, navigation }) => {
     );
 };
 
-
+// Styles remain the same
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f0f2f5' },
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },

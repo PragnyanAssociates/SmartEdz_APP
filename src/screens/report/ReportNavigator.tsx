@@ -17,7 +17,7 @@ const ReportNavigator = () => {
     return (
         <Stack.Navigator
             screenOptions={{
-                headerStyle: { backgroundColor: '#2c3e50' },
+                headerStyle: { backgroundColor: '#008080' },
                 headerTintColor: '#ffffff',
                 headerTitleStyle: { fontWeight: 'bold' },
             }}
@@ -41,19 +41,24 @@ const ReportNavigator = () => {
     );
 };
 
+
 // Navigator for Student role
 export const StudentReportNavigator = () => {
     return (
         <Stack.Navigator
             screenOptions={{
-                headerStyle: { backgroundColor: '#2c3e50' },
-                headerTintColor: '#ffffff',
+                headerStyle: { backgroundColor: '#e0f2f7' }, // Light teal theme
+                headerTintColor: '#008080', // Dark teal text
                 headerTitleStyle: { fontWeight: 'bold' },
             }}
         >
             <Stack.Screen
-                name="StudentReportCard"
-                component={StudentReportCardScreen}
+                name="StudentReportCard" // The name of the screen INSIDE this navigator
+                
+                // ★★★ THIS IS THE FIX ★★★
+                // The component must be the actual screen component, not the navigator itself.
+                component={StudentReportCardScreen} 
+                
                 options={{ title: 'My Progress Report' }}
             />
         </Stack.Navigator>

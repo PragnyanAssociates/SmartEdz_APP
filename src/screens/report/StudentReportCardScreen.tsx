@@ -4,39 +4,47 @@
  */
 import React, { useState, useEffect } from 'react';
 import {
-    View, Text, ScrollView, StyleSheet, ActivityIndicator,
-    Image, Dimensions
+    View, Text, ScrollView, StyleSheet, ActivityIndicator
 } from 'react-native';
 import apiClient from '../../api/client';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
+// **FIXED**: Using "Class 1" format to match database values
 const CLASS_SUBJECTS = {
     'LKG': ['All Subjects'],
     'UKG': ['All Subjects'],
-    '1st Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '2nd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '3rd Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '4th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '5th Class': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
-    '6th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '7th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '8th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '9th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
-    '10th Class': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
+    'Class 1': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 2': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 3': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 4': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 5': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
+    'Class 6': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 7': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 8': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 9': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
+    'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
-const EXAM_TYPES = [
-    'Assignment-1', 'Assignment-2', 'Assignment-3', 'Assignment-4',
-    'Unitest-1', 'Unitest-2', 'Unitest-3', 'Unitest-4',
-    'SA1', 'SA2', 'Overall'
-];
+// Maps backend exam_type to the display name on the report card
+const EXAM_MAPPING = {
+    'AT1': 'Assignment-1',
+    'UT1': 'Unitest-1',
+    'AT2': 'Assignment-2',
+    'UT2': 'Unitest-2',
+    'AT3': 'Assignment-3',
+    'UT3': 'Unitest-3',
+    'AT4': 'Assignment-4',
+    'UT4': 'Unitest-4',
+    'SA1': 'SA1',// Assuming SA1 exists based on pattern
+    'SA2': 'SA2', // Assuming SA2 exists based on pattern
+    'Total': 'Overall'
+};
 
-const MONTHS = [
-    'June', 'July', 'August', 'September', 'October',
-    'November', 'December', 'January', 'February',
-    'March', 'April', 'May'
-];
+// Defines the exact order of columns to be displayed in the marks table
+const DISPLAY_EXAM_ORDER = ['AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'AT4', 'UT4','SA1', 'SA2', 'Total'];
+
+// This now includes the full month names to match the backend and rendering logic.
+const MONTHS = [ 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March', 'April', 'May' ];
+
 
 const StudentReportCardScreen = () => {
     const [loading, setLoading] = useState(true);
@@ -44,6 +52,7 @@ const StudentReportCardScreen = () => {
     const [marksData, setMarksData] = useState({});
     const [attendanceData, setAttendanceData] = useState({});
     const [academicYear, setAcademicYear] = useState('');
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         fetchReportCard();
@@ -54,207 +63,157 @@ const StudentReportCardScreen = () => {
             const response = await apiClient.get('/reports/my-report-card');
             const { studentInfo, marks, attendance, academicYear } = response.data;
 
+            if (!studentInfo || !studentInfo.class_group) {
+                throw new Error("Student data is incomplete.");
+            }
+
             setStudentInfo(studentInfo);
             setAcademicYear(academicYear);
 
             const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
-
-            // Initialize marks data
+            
+            // Initialize marks map
             const marksMap = {};
             subjects.forEach(subject => {
                 marksMap[subject] = {};
-                EXAM_TYPES.forEach(examType => {
-                    marksMap[subject][examType] = '-';
+                Object.values(EXAM_MAPPING).forEach(examKey => {
+                    marksMap[subject][examKey] = '-';
                 });
             });
 
-            // Fill existing marks
+            // Populate with marks from the API
             marks.forEach(mark => {
-                if (marksMap[mark.subject]) {
-                    marksMap[mark.subject][mark.exam_type] = 
+                // ★★★ FIX #1: USE THE MAPPED EXAM NAME AS THE KEY ★★★
+                // This ensures we store the data with the key ('Assignment-1') that we later use to read it.
+                const displayExamType = EXAM_MAPPING[mark.exam_type];
+
+                if (marksMap[mark.subject] && displayExamType) {
+                    marksMap[mark.subject][displayExamType] = 
                         mark.marks_obtained !== null ? mark.marks_obtained.toString() : '-';
                 }
             });
 
             setMarksData(marksMap);
 
-            // Initialize attendance data
+            // Populate attendance data
             const attendanceMap = {};
-            MONTHS.forEach(month => {
-                attendanceMap[month] = { workingDays: '-', presentDays: '-' };
-            });
-
-            // Fill existing attendance
             attendance.forEach(att => {
-                attendanceMap[att.month] = {
-                    workingDays: att.working_days !== null ? att.working_days.toString() : '-',
-                    presentDays: att.present_days !== null ? att.present_days.toString() : '-'
-                };
+                // ★★★ FIX #2: USE THE FULL MONTH NAME FROM THE API AS THE KEY ★★★
+                // This ensures we store with the key ('June') that we later use to read it.
+                // Do NOT abbreviate the month name.
+                if (att.month) {
+                    attendanceMap[att.month] = {
+                        workingDays: att.working_days ?? '-',
+                        presentDays: att.present_days ?? '-'
+                    };
+                }
             });
-
             setAttendanceData(attendanceMap);
-        } catch (error) {
-            console.error('Error fetching report card:', error);
+
+        } catch (err) {
+            console.error('Error fetching report card:', err);
+            setError('Could not load report card data. Please try again later.');
         } finally {
             setLoading(false);
         }
     };
 
     if (loading) {
-        return (
-            <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" color="#2c3e50" />
-            </View>
-        );
+        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#000" /></View>;
     }
 
-    if (!studentInfo) {
-        return (
-            <View style={styles.loaderContainer}>
-                <Text style={styles.errorText}>No report card data available</Text>
-            </View>
-        );
+    if (error || !studentInfo) {
+        return <View style={styles.loaderContainer}><Text style={styles.errorText}>{error || 'No report card data available.'}</Text></View>;
     }
 
     const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
 
+    // Helper to format months for display (e.g., "September" -> "Sept")
+    const formatMonthForDisplay = (month) => {
+        if (month === 'September') return 'Sept';
+        return month.substring(0, 3);
+    };
+
     return (
         <ScrollView style={styles.container}>
-            {/* Header Section */}
-            <View style={styles.header}>
-                <Text style={styles.schoolName}>Student Progress Report</Text>
-                <Text style={styles.academicYear}>Academic Year: {academicYear}</Text>
-            </View>
+            <View style={styles.card}>
+                <View style={styles.schoolHeader}>
+                    <Text style={styles.schoolName}>VIVEKANANDA PUBLIC SCHOOL</Text>
+                    <Text style={styles.schoolSub}>ENGLISH MEDIUM</Text>
+                </View>
 
-            {/* Student Info Card */}
-            <View style={styles.infoCard}>
-                {studentInfo.profile_image_url && (
-                    <Image
-                        source={{ uri: studentInfo.profile_image_url }}
-                        style={styles.profileImage}
-                    />
-                )}
-                <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Name:</Text>
-                    <Text style={styles.infoValue}>{studentInfo.full_name}</Text>
+                <View style={styles.studentInfoContainer}>
+                    <View style={styles.infoRow}><Text style={styles.infoLabel}>Name:</Text><Text style={styles.infoValue}>{studentInfo.full_name}</Text></View>
+                    <View style={styles.infoRow}><Text style={styles.infoLabel}>Roll No:</Text><Text style={styles.infoValue}>{studentInfo.roll_no}</Text></View>
+                    <View style={styles.infoRow}><Text style={styles.infoLabel}>Class:</Text><Text style={styles.infoValue}>{studentInfo.class_group}</Text></View>
+                    <View style={styles.infoRow}><Text style={styles.infoLabel}>Year:</Text><Text style={styles.infoValue}>{academicYear}</Text></View>
                 </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Roll No:</Text>
-                    <Text style={styles.infoValue}>{studentInfo.roll_no}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Class:</Text>
-                    <Text style={styles.infoValue}>{studentInfo.class_group}</Text>
-                </View>
-                {studentInfo.father_name && (
-                    <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Father's Name:</Text>
-                        <Text style={styles.infoValue}>{studentInfo.father_name}</Text>
-                    </View>
-                )}
-                {studentInfo.mother_name && (
-                    <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Mother's Name:</Text>
-                        <Text style={styles.infoValue}>{studentInfo.mother_name}</Text>
-                    </View>
-                )}
-                {studentInfo.date_of_birth && (
-                    <View style={styles.infoRow}>
-                        <Text style={styles.infoLabel}>Date of Birth:</Text>
-                        <Text style={styles.infoValue}>
-                            {new Date(studentInfo.date_of_birth).toLocaleDateString()}
-                        </Text>
-                    </View>
-                )}
-            </View>
 
-            {/* Marks Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Academic Performance</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-                    <View>
-                        {/* Header Row */}
-                        <View style={styles.tableRow}>
-                            <Text style={[styles.tableHeader, styles.subjectHeaderColumn]}>Subject</Text>
-                            {EXAM_TYPES.map(exam => (
-                                <Text key={exam} style={[styles.tableHeader, styles.examColumn]}>
-                                    {exam}
+                <Text style={styles.progressCardTitle}>PROGRESS CARD</Text>
+
+                {/* Marks Table */}
+                <View style={styles.table}>
+                    {/* Header Row */}
+                    <View style={styles.tableRow}>
+                        <Text style={[styles.tableHeader, styles.subjectCol]}>Subjects</Text>
+                        {DISPLAY_EXAM_ORDER.map(exam => <Text key={exam} style={[styles.tableHeader, styles.markCol]}>{exam}</Text>)}
+                    </View>
+
+                    {/* Subject Data Rows */}
+                    {subjects.map(subject => (
+                        <View key={subject} style={styles.tableRow}>
+                            <Text style={[styles.tableCell, styles.subjectCol]}>{subject}</Text>
+                            {DISPLAY_EXAM_ORDER.map(exam => (
+                                <Text key={exam} style={[styles.tableCell, styles.markCol]}>
+                                    {marksData[subject]?.[EXAM_MAPPING[exam]] ?? '-'}
                                 </Text>
                             ))}
                         </View>
+                    ))}
 
-                        {/* Subject Rows */}
-                        {subjects.map(subject => (
-                            <View key={subject} style={styles.tableRow}>
-                                <Text style={[styles.tableCell, styles.subjectHeaderColumn, styles.subjectName]}>
-                                    {subject}
-                                </Text>
-                                {EXAM_TYPES.map(exam => {
-                                    const mark = marksData[subject][exam];
-                                    const isOverall = exam === 'Overall';
-                                    return (
-                                        <Text
-                                            key={exam}
-                                            style={[
-                                                styles.tableCell,
-                                                styles.examColumn,
-                                                isOverall && styles.overallCell
-                                            ]}
-                                        >
-                                            {mark}
-                                        </Text>
-                                    );
-                                })}
-                            </View>
-                        ))}
-                    </View>
-                </ScrollView>
-            </View>
-
-            {/* Attendance Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Monthly Attendance</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-                    <View>
-                        {/* Header Row */}
-                        <View style={styles.tableRow}>
-                            <Text style={[styles.tableHeader, styles.monthColumn]}>Month</Text>
-                            <Text style={[styles.tableHeader, styles.attendanceValueColumn]}>Working Days</Text>
-                            <Text style={[styles.tableHeader, styles.attendanceValueColumn]}>Present Days</Text>
-                            <Text style={[styles.tableHeader, styles.attendanceValueColumn]}>Percentage</Text>
-                        </View>
-
-                        {/* Month Rows */}
-                        {MONTHS.map(month => {
-                            const att = attendanceData[month];
-                            const working = parseFloat(att.workingDays);
-                            const present = parseFloat(att.presentDays);
-                            const percentage = (!isNaN(working) && !isNaN(present) && working > 0)
-                                ? ((present / working) * 100).toFixed(1) + '%'
-                                : '-';
-
+                    {/* Total Row */}
+                     <View style={[styles.tableRow, styles.totalRow]}>
+                        <Text style={[styles.tableHeader, styles.subjectCol]}>Total</Text>
+                        {DISPLAY_EXAM_ORDER.map(exam => {
+                            const columnTotal = subjects.reduce((sum, subject) => {
+                                const mark = parseFloat(marksData[subject]?.[EXAM_MAPPING[exam]]);
+                                return sum + (isNaN(mark) ? 0 : mark);
+                            }, 0);
                             return (
-                                <View key={month} style={styles.tableRow}>
-                                    <Text style={[styles.tableCell, styles.monthColumn]}>{month}</Text>
-                                    <Text style={[styles.tableCell, styles.attendanceValueColumn]}>
-                                        {att.workingDays}
-                                    </Text>
-                                    <Text style={[styles.tableCell, styles.attendanceValueColumn]}>
-                                        {att.presentDays}
-                                    </Text>
-                                    <Text style={[styles.tableCell, styles.attendanceValueColumn, styles.percentageCell]}>
-                                        {percentage}
-                                    </Text>
-                                </View>
+                                <Text key={exam} style={[styles.tableHeader, styles.markCol]}>
+                                    {columnTotal > 0 ? columnTotal : '-'}
+                                </Text>
                             );
                         })}
                     </View>
-                </ScrollView>
-            </View>
+                </View>
 
-            {/* Footer */}
-            <View style={styles.footer}>
-                <Text style={styles.footerText}>End of Report Card</Text>
+                {/* Attendance Table */}
+                <Text style={styles.attendanceTitle}>Attendance Particulars</Text>
+                <ScrollView horizontal>
+                    <View>
+                        <View style={styles.tableRow}>
+                            <Text style={[styles.tableHeader, styles.attendanceHeaderCol]}>Month</Text>
+                            {MONTHS.map(month => <Text key={month} style={[styles.tableHeader, styles.attendanceDataCol]}>{formatMonthForDisplay(month)}</Text>)}
+                        </View>
+                        <View style={styles.tableRow}>
+                            <Text style={[styles.tableCell, styles.attendanceHeaderCol, { fontWeight: 'bold' }]}>Working Days</Text>
+                            {MONTHS.map(month => (
+                                <Text key={month} style={[styles.tableCell, styles.attendanceDataCol]}>
+                                    {attendanceData[month]?.workingDays ?? '-'}
+                                </Text>
+                            ))}
+                        </View>
+                        <View style={styles.tableRow}>
+                            <Text style={[styles.tableCell, styles.attendanceHeaderCol, { fontWeight: 'bold' }]}>Present Days</Text>
+                            {MONTHS.map(month => (
+                                <Text key={month} style={[styles.tableCell, styles.attendanceDataCol]}>
+                                    {attendanceData[month]?.presentDays ?? '-'}
+                                </Text>
+                            ))}
+                        </View>
+                    </View>
+                </ScrollView>
             </View>
         </ScrollView>
     );
@@ -263,7 +222,15 @@ const StudentReportCardScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f0f2f5'
+        backgroundColor: '#e0e0e0',
+        padding: 10,
+    },
+    card: {
+        backgroundColor: '#fff',
+        padding: 15,
+        borderRadius: 5,
+        borderWidth: 1,
+        borderColor: '#000',
     },
     loaderContainer: {
         flex: 1,
@@ -272,141 +239,98 @@ const styles = StyleSheet.create({
     },
     errorText: {
         fontSize: 16,
-        color: '#e74c3c'
+        color: '#d32f2f'
     },
-    header: {
-        backgroundColor: '#2c3e50',
-        padding: 20,
-        alignItems: 'center'
+    schoolHeader: {
+        alignItems: 'center',
+        marginBottom: 15,
     },
     schoolName: {
-        fontSize: 22,
+        fontSize: 18,
         fontWeight: 'bold',
-        color: '#fff',
-        marginBottom: 5
+        color: '#000',
     },
-    academicYear: {
-        fontSize: 16,
-        color: '#ecf0f1'
+    schoolSub: {
+        fontSize: 14,
+        color: '#333',
     },
-    infoCard: {
-        backgroundColor: '#fff',
-        margin: 15,
-        padding: 20,
-        borderRadius: 10,
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4
-    },
-    profileImage: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        alignSelf: 'center',
-        marginBottom: 15,
-        borderWidth: 3,
-        borderColor: '#2c3e50'
+    studentInfoContainer: {
+        marginBottom: 10,
+        padding: 10,
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 4,
     },
     infoRow: {
         flexDirection: 'row',
-        marginBottom: 10
+        marginBottom: 4,
     },
     infoLabel: {
-        fontSize: 15,
         fontWeight: 'bold',
-        color: '#34495e',
-        width: 140
+        fontSize: 14,
+        width: 80,
     },
     infoValue: {
-        fontSize: 15,
-        color: '#2c3e50',
-        flex: 1
+        fontSize: 14,
+        flex: 1,
     },
-    section: {
-        backgroundColor: '#fff',
-        margin: 15,
-        marginTop: 0,
-        padding: 15,
-        borderRadius: 10,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2
-    },
-    sectionTitle: {
-        fontSize: 18,
+    progressCardTitle: {
+        fontSize: 16,
         fontWeight: 'bold',
-        color: '#2c3e50',
-        marginBottom: 15,
-        borderBottomWidth: 2,
-        borderBottomColor: '#3498db',
-        paddingBottom: 5
+        textAlign: 'center',
+        marginVertical: 10,
+        textDecorationLine: 'underline',
+    },
+    table: {
+        borderWidth: 1,
+        borderColor: '#000',
+        marginBottom: 20,
     },
     tableRow: {
         flexDirection: 'row',
         borderBottomWidth: 1,
-        borderBottomColor: '#ddd'
+        borderBottomColor: '#000',
     },
     tableHeader: {
-        padding: 12,
+        padding: 8,
         fontWeight: 'bold',
-        backgroundColor: '#34495e',
-        color: '#fff',
         textAlign: 'center',
-        fontSize: 12,
         borderRightWidth: 1,
-        borderRightColor: '#fff'
+        borderRightColor: '#000',
+        backgroundColor: '#f0f0f0',
+        fontSize: 11,
     },
     tableCell: {
-        padding: 12,
-        backgroundColor: '#fff',
+        padding: 8,
         textAlign: 'center',
-        fontSize: 13,
         borderRightWidth: 1,
-        borderRightColor: '#ddd',
-        color: '#2c3e50'
+        borderRightColor: '#000',
+        fontSize: 12,
     },
-    subjectHeaderColumn: {
-        width: 120,
+    subjectCol: {
+        width: 80,
         textAlign: 'left',
-        paddingLeft: 10
     },
-    subjectName: {
+    markCol: {
+        width: 45,
+    },
+    totalRow: {
+        backgroundColor: '#e0e0e0',
+    },
+    attendanceTitle: {
+        fontSize: 15,
         fontWeight: 'bold',
-        backgroundColor: '#ecf0f1'
+        textAlign: 'center',
+        marginBottom: 10,
     },
-    examColumn: {
-        width: 90
-    },
-    overallCell: {
-        backgroundColor: '#fff3cd',
-        fontWeight: 'bold',
-        color: '#856404'
-    },
-    monthColumn: {
-        width: 120,
+    // Styles for horizontal scroll attendance table
+    attendanceHeaderCol: {
+        width: 100, // Fixed width for the first column
         textAlign: 'left',
-        paddingLeft: 10
     },
-    attendanceValueColumn: {
-        width: 100
+    attendanceDataCol: {
+        width: 60, // Fixed width for data columns
     },
-    percentageCell: {
-        fontWeight: 'bold',
-        color: '#27ae60'
-    },
-    footer: {
-        padding: 30,
-        alignItems: 'center'
-    },
-    footerText: {
-        fontSize: 14,
-        color: '#7f8c8d',
-        fontStyle: 'italic'
-    }
 });
 
 export default StudentReportCardScreen;

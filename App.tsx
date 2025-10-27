@@ -26,8 +26,8 @@ import AboutUs from './src/components/AboutUs';
 // import ResetPasswordScreen from './src/screens/ResetPasswordScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 
-// import MarksEntryScreen from './src/screens/report/MarksEntryScreen';
-import ReportNavigator from './src/screens/report/ReportNavigator';
+// ★★★ FIX 1: Import BOTH navigators from the same file ★★★
+import ReportNavigator, { StudentReportNavigator } from './src/screens/report/ReportNavigator';
 
 // Authenticated Dashboards
 import AdminDashboard from './src/components/AdminDashboard';
@@ -244,11 +244,12 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="TeacherAttendanceReportScreen" component={TeacherAttendanceReportScreen} />  
 
       {/* <Stack.Screen name="MarksEntryScreen" component={MarksEntryScreen} /> */}
-      <Stack.Screen name="ReportScreen" component={ReportNavigator} options={{ headerShown: true, 
+      <Stack.Screen name="ReportScreen" component={ReportNavigator} options={{ headerShown: false, 
           title: 'Progress Reports',
           headerStyle: { backgroundColor: '#e0f2f7' },
           headerTintColor: '#008080',
           headerTitleStyle: { fontWeight: 'bold' } }} />
+      <Stack.Screen name="StudentProgressReport" component={StudentReportNavigator} options={{ headerShown: false }} />
       {/* <Stack.Screen name="ChatAIScreen" component={ChatAIScreen} />
       <Stack.Screen name="DonorSuggestionsScreen" component={DonorSuggestionsScreen} />
       <Stack.Screen name="AdminSuggestionsScreen" component={AdminSuggestionsScreen} />

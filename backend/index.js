@@ -7386,7 +7386,7 @@ app.post('/api/reports/attendance/bulk', [verifyToken, isTeacherOrAdmin], async 
     }
 });
 
-// --- STUDENT ROUTE ---
+// --- STUDENT ROUTE (CORRECTED) ---
 
 // GET: Student's own report card
 app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
@@ -7394,25 +7394,31 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
     const academicYear = getCurrentAcademicYear();
     
     try {
-        const [[studentInfo]] = await db.query(
+        // ★★★ FIX: REMOVED a) CRASH-PRONE DESTRUCTURING and b) NON-EXISTENT COLUMNS ★★★
+        const [studentRows] = await db.query(
             `SELECT 
                 u.id, 
                 u.full_name, 
                 u.class_group, 
                 COALESCE(p.roll_no, u.username) as roll_no, 
-                p.profile_image_url,
-                p.father_name,
-                p.mother_name,
-                p.date_of_birth
+                p.profile_image_url
+                -- The columns below did not exist in your user_profiles table, causing the crash.
+                -- p.father_name,
+                -- p.mother_name,
+                -- p.date_of_birth
             FROM users u 
             LEFT JOIN user_profiles p ON u.id = p.user_id 
             WHERE u.id = ?`,
             [studentId]
         );
         
-        if (!studentInfo) {
+        // Safely check if we got any results to prevent crashes.
+        if (studentRows.length === 0) {
             return res.status(404).json({ message: "Student not found" });
         }
+        
+        const studentInfo = studentRows[0];
+        // ★★★ END OF FIX ★★★
 
         const [marks] = await db.query(
             "SELECT subject, exam_type, marks_obtained FROM report_student_marks WHERE student_id = ? AND academic_year = ?",
@@ -7430,7 +7436,6 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
         res.status(500).json({ message: "Failed to fetch report card" });
     }
 });
-
 
 
 
