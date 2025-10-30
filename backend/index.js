@@ -19,17 +19,6 @@ const googleMapsClient = new Client({});
 // const { galleryUpload, createBulkNotifications } = require('../middleware'); // Adjust path to your middleware
 // // const { OpenAI } = require('openai');
 
-// ★★★★★ ADD THIS MANDATORY DEBUGGING BLOCK ★★★★★
-console.log("--- [STARTUP LOGS - VIVEKANANDA APP] ---");
-console.log("--- Checking All Environment Variables ---");
-console.log("MYSQLHOST:", process.env.MYSQLHOST);
-console.log("MYSQLUSER:", process.env.MYSQLUSER);
-console.log("MYSQLDATABASE:", process.env.MYSQLDATABASE);
-console.log("MYSQLPORT:", process.env.MYSQLPORT);
-console.log("Is MYSQLPASSWORD present?:", process.env.MYSQLPASSWORD ? "Yes" : "No, it is UNDEFINED");
-console.log("--- [END OF DEBUG LOGS] ---");
-// ★★★★★ END OF DEBUGGING BLOCK ★★★★★
-
 // ★★★ NEW IMPORTS FOR REAL-TIME CHAT ★★★
 const http = require('http');
 const { Server } = require("socket.io");
@@ -152,13 +141,8 @@ const videoUpload = multer({
 });
 
 
-// THIS IS THE CORRECT CODE
 const db = mysql.createPool({
-    host: process.env.MYSQLHOST,
-    user: process.env.MYSQLUSER,
-    password: process.env.MYSQLPASSWORD,
-    database: process.env.MYSQLDATABASE,
-    port: process.env.MYSQLPORT,
+    uri: process.env.DATABASE_URL,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
