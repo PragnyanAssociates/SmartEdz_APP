@@ -6,9 +6,9 @@ import {
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import apiClient from '../../api/client';
+import { SERVER_URL } from '../../apiConfig'; // ★ 1. IMPORT SERVER_URL
 
 const StudentResourcesScreen = () => {
-    // Updated view flow: CLASS_LIST -> BOARD_TYPE -> OPTIONS -> SUBJECTS
     const [view, setView] = useState('CLASS_LIST'); 
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -49,7 +49,6 @@ const StudentResourcesScreen = () => {
         if (!selectedClass || !selectedBoard) return;
         setIsLoading(true);
         try {
-            // Updated API call with syllabus_type
             const response = await apiClient.get(`/resources/syllabus/class/${selectedClass}/${selectedBoard}`);
             setSubjects(response.data);
             setView('SUBJECTS');
@@ -63,7 +62,6 @@ const StudentResourcesScreen = () => {
     const handleTextbookPress = async () => {
         if (!selectedClass || !selectedBoard) return;
         try {
-            // Updated API call with syllabus_type
             const response = await apiClient.get(`/resources/textbook/class/${selectedClass}/${selectedBoard}`);
             handleLinkPress(response.data.url, 'textbook');
         } catch (e) {
@@ -77,11 +75,8 @@ const StudentResourcesScreen = () => {
             return;
         }
         const canOpen = await Linking.canOpenURL(url);
-        if (canOpen) {
-            await Linking.openURL(url);
-        } else {
-            Alert.alert("Error", `Could not open the ${type} link.`);
-        }
+        if (canOpen) { await Linking.openURL(url); } 
+        else { Alert.alert("Error", `Could not open the ${type} link.`); }
     };
 
     const goBack = (targetView: string) => {
@@ -113,7 +108,6 @@ const StudentResourcesScreen = () => {
         );
     }
     
-    // --- Render Logic ---
     if (view === 'SUBJECTS') {
          return (
             <SafeAreaView style={styles.container}>
@@ -122,15 +116,19 @@ const StudentResourcesScreen = () => {
                     data={subjects}
                     keyExtractor={(item) => item.id.toString()}
                     numColumns={2}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity style={styles.gridItem} onPress={() => handleLinkPress(item.url, 'syllabus')}>
-                            <Image 
-                                source={{ uri: item.cover_image_url || 'https://via.placeholder.com/150/DCDCDC/808080?text=Syllabus' }} 
-                                style={styles.coverImage} 
-                            />
-                            <Text style={styles.gridText}>{item.subject_name}</Text>
-                        </TouchableOpacity>
-                    )}
+                    renderItem={({ item }) => {
+                        // ★ 2. DETERMINE THE IMAGE SOURCE ★
+                        const imageUri = item.cover_image_url
+                            ? `${SERVER_URL}${item.cover_image_url}`
+                            : 'https://via.placeholder.com/150/DCDCDC/808080?text=Syllabus';
+
+                        return (
+                            <TouchableOpacity style={styles.gridItem} onPress={() => handleLinkPress(item.url, 'syllabus')}>
+                                <Image source={{ uri: imageUri }} style={styles.coverImage} />
+                                <Text style={styles.gridText}>{item.subject_name}</Text>
+                            </TouchableOpacity>
+                        );
+                    }}
                     contentContainerStyle={styles.gridContainer}
                     ListEmptyComponent={<Text style={styles.errorText}>No syllabus found for this class.</Text>}
                 />
@@ -174,7 +172,6 @@ const StudentResourcesScreen = () => {
         );
     }
 
-    // Default view: CLASS_LIST
     return (
         <SafeAreaView style={styles.container}>
             <Text style={styles.mainHeaderText}>Select a Class</Text>
