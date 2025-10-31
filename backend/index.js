@@ -7437,6 +7437,111 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
     }
 });
 
+// ==========================================================
+// --- ADD THIS NEW API ROUTE TO YOUR BACKEND SERVER FILE ---
+// ==========================================================
+
+// GET: Get performance summaries for all classes
+app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (req, res) => {
+    const academicYear = getCurrentAcademicYear();
+    try {
+        // Step 1: Get all unique class groups
+        const [classes] = await db.query(
+            "SELECT DISTINCT class_group FROM users WHERE role = 'student' AND class_group IS NOT NULL AND class_group != '' ORDER BY class_group"
+        );
+        const classGroups = classes.map(c => c.class_group);
+
+        const summaries = [];
+
+        // Step 2: Loop through each class to calculate its summary
+        for (const classGroup of classGroups) {
+            // Step 3: Fetch all 'Overall' marks for every student in the current class
+            const [marks] = await db.query(
+                `SELECT 
+                    m.student_id, 
+                    u.full_name, 
+                    m.subject, 
+                    m.marks_obtained
+                 FROM report_student_marks m
+                 JOIN users u ON m.student_id = u.id
+                 WHERE m.class_group = ? AND m.academic_year = ? AND m.exam_type = 'Total'`,
+                [classGroup, academicYear]
+            );
+
+            if (marks.length === 0) {
+                summaries.push({
+                    class_group: classGroup,
+                    totalClassMarks: 0,
+                    topStudent: { name: 'N/A', marks: 0 },
+                    topSubject: { name: 'N/A', marks: 0 },
+                });
+                continue; // Skip to the next class if no marks are found
+            }
+
+            // Step 4: Calculate stats using the fetched marks
+            const studentTotals = {};
+            const subjectTotals = {};
+            let totalClassMarks = 0;
+
+            marks.forEach(mark => {
+                const studentId = mark.student_id;
+                const studentName = mark.full_name;
+                const currentMark = mark.marks_obtained || 0;
+
+                // Aggregate student totals
+                if (!studentTotals[studentId]) {
+                    studentTotals[studentId] = { name: studentName, total: 0 };
+                }
+                studentTotals[studentId].total += currentMark;
+
+                // Aggregate subject totals
+                if (!subjectTotals[mark.subject]) {
+                    subjectTotals[mark.subject] = 0;
+                }
+                subjectTotals[mark.subject] += currentMark;
+                
+                // Add to overall class total
+                totalClassMarks += currentMark;
+            });
+
+            // Find top student
+            let topStudent = { name: 'N/A', marks: 0 };
+            for (const studentId in studentTotals) {
+                if (studentTotals[studentId].total > topStudent.marks) {
+                    topStudent = { 
+                        name: studentTotals[studentId].name, 
+                        marks: studentTotals[studentId].total 
+                    };
+                }
+            }
+
+            // Find top subject
+            let topSubject = { name: 'N/A', marks: 0 };
+            for (const subjectName in subjectTotals) {
+                if (subjectTotals[subjectName] > topSubject.marks) {
+                    topSubject = { 
+                        name: subjectName, 
+                        marks: subjectTotals[subjectName] 
+                    };
+                }
+            }
+            
+            summaries.push({
+                class_group: classGroup,
+                totalClassMarks,
+                topStudent,
+                topSubject,
+            });
+        }
+
+        res.json(summaries);
+
+    } catch (error) {
+        console.error("Error fetching class summaries:", error);
+        res.status(500).json({ message: "Failed to fetch class summaries" });
+    }
+});
+
 
 
 // By using "server.listen", you enable both your API routes and the real-time chat.
