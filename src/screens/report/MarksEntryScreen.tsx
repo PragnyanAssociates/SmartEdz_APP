@@ -1,7 +1,7 @@
 /**
  * File: src/screens/report/MarksEntryScreen.js
  * Purpose: Teachers/Admins enter marks - Full editable table with all subjects
- * Version: 2.0 (With Edit/Save Flow)
+ * Version: 2.1 (With Dropdown for Sorting)
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -9,7 +9,6 @@ import {
     TouchableOpacity, Alert, ActivityIndicator, RefreshControl
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import Icon from 'react-native-vector-icons/Ionicons';
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
@@ -92,7 +91,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
     const [viewMode, setViewMode] = useState('marks');
     const [sortOrder, setSortOrder] = useState('rollno');
     
-    // ★★★ NEW ★★★: State to manage if marks are currently editable
     const [isEditing, setIsEditing] = useState(true);
 
     const [loading, setLoading] = useState(true);
@@ -103,7 +101,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
         fetchClassData();
     }, [classGroup]);
     
-    // ★★★ NEW ★★★: Reset to edit mode when user switches exam or view mode
     useEffect(() => {
         setIsEditing(true);
     }, [selectedExam, viewMode]);
@@ -235,7 +232,7 @@ const MarksEntryScreen = ({ route, navigation }) => {
 
     const getSortedStudents = () => {
         if (sortOrder === 'rollno') {
-            return [...students];
+            return [...students].sort((a, b) => a.roll_no - b.roll_no);
         }
         const studentsWithTotals = students.map(student => ({
             ...student,
@@ -289,7 +286,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
         try {
             await apiClient.post('/reports/marks/bulk', { marksPayload });
             Alert.alert('Success', 'Marks saved successfully! Progress reports updated.');
-            // ★★★ MODIFIED ★★★: After saving, switch to view mode
             setIsEditing(false); 
             fetchClassData();
         } catch (error) {
@@ -325,24 +321,12 @@ const MarksEntryScreen = ({ route, navigation }) => {
         }
     };
 
-    const toggleSortOrder = () => {
-        if (sortOrder === 'rollno') {
-            setSortOrder('descending');
-        } else if (sortOrder === 'descending') {
-            setSortOrder('ascending');
-        } else {
-            setSortOrder('rollno');
-        }
-    };
-
     if (loading) {
         return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#2c3e50" /></View>;
     }
 
     const sortedStudents = getSortedStudents();
     const isOverallView = selectedExam === 'Overall';
-    
-    // ★★★ MODIFIED ★★★: Determine if editing is allowed based on multiple conditions
     const canEditMarks = !isOverallView && isEditing;
 
     return (
@@ -375,10 +359,20 @@ const MarksEntryScreen = ({ route, navigation }) => {
                                 </Picker>
                             </View>
                         </View>
-                        <TouchableOpacity style={styles.sortButton} onPress={toggleSortOrder}>
-                            <Icon name={sortOrder === 'rollno' ? 'list' : sortOrder === 'descending' ? 'arrow-down' : 'arrow-up'} size={20} color="#fff" />
-                            <Text style={styles.sortButtonText}>{sortOrder === 'rollno' ? 'Roll No' : sortOrder === 'descending' ? 'High→Low' : 'Low→High'}</Text>
-                        </TouchableOpacity>
+                        
+                        {/* ★★★ MODIFIED: Replaced TouchableOpacity with a styled Picker ★★★ */}
+                        <View style={styles.sortPickerContainer}>
+                            <Picker
+                                selectedValue={sortOrder}
+                                onValueChange={(itemValue) => setSortOrder(itemValue)}
+                                style={styles.sortPicker}
+                                dropdownIconColor="#fff"
+                            >
+                                <Picker.Item label="Roll No" value="rollno" />
+                                <Picker.Item label="Rank (High-Low)" value="descending" />
+                                <Picker.Item label="Rank (Low-High)" value="ascending" />
+                            </Picker>
+                        </View>
                     </View>
 
                     <ScrollView>
@@ -408,7 +402,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
                                                 return (
                                                     <View key={subject} style={[styles.cell, styles.cellSubject]}>
                                                         <TextInput
-                                                            // ★★★ MODIFIED ★★★: Use the new canEditMarks flag
                                                             style={[styles.input, !canEditMarks && styles.inputDisabled, isOverallView && styles.inputOverallView]}
                                                             keyboardType="numeric"
                                                             maxLength={isOverallView ? 4 : 3}
@@ -520,26 +513,21 @@ const MarksEntryScreen = ({ route, navigation }) => {
                 </ScrollView>
             )}
 
-            {/* ★★★ MODIFIED ★★★: Dynamic button rendering logic */}
             {viewMode === 'attendance' ? (
-                // Show Save button for Attendance
                 <TouchableOpacity style={[styles.saveButton, saving && styles.saveButtonDisabled]} onPress={handleSave} disabled={saving}>
                     {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Changes</Text>}
                 </TouchableOpacity>
             ) : viewMode === 'marks' && !isOverallView ? (
-                // For Marks Entry (but not 'Overall' view)
                 isEditing ? (
-                    // If editing, show "Save" button
                     <TouchableOpacity style={[styles.saveButton, saving && styles.saveButtonDisabled]} onPress={handleSave} disabled={saving}>
                         {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Marks</Text>}
                     </TouchableOpacity>
                 ) : (
-                    // If not editing, show "Edit" button
                     <TouchableOpacity style={styles.editButton} onPress={() => setIsEditing(true)}>
                         <Text style={styles.editButtonText}>Edit Marks</Text>
                     </TouchableOpacity>
                 )
-            ) : null /* Do not show any button for Overall marks view */}
+            ) : null}
         </View>
     );
 };
@@ -556,8 +544,17 @@ const styles = StyleSheet.create({
     pickerSection: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
     label: { fontSize: 16, fontWeight: '600', marginRight: 10, color: '#2c3e50' },
     pickerContainer: { flex: 1, borderWidth: 1, borderColor: '#bdc3c7', borderRadius: 8, backgroundColor: '#fff' },
-    sortButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3498db', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8, gap: 5 },
-    sortButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+    // ★★★ NEW STYLES for the sort dropdown ★★★
+    sortPickerContainer: {
+        backgroundColor: '#3498db',
+        borderRadius: 8,
+        height: 50,
+        justifyContent: 'center',
+        minWidth: 160, // Adjusted width for longer text
+    },
+    sortPicker: {
+        color: '#fff',
+    },
     tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#ddd' },
     footerRow: { borderTopWidth: 2, borderTopColor: '#34495e' },
     cellHeader: { backgroundColor: '#34495e', padding: 12, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#2c3e50' },
@@ -583,7 +580,6 @@ const styles = StyleSheet.create({
     saveButton: { backgroundColor: '#27ae60', padding: 16, margin: 15, borderRadius: 10, alignItems: 'center', elevation: 3 },
     saveButtonDisabled: { backgroundColor: '#95a5a6' },
     saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-    // ★★★ NEW ★★★: Style for the new Edit button
     editButton: { backgroundColor: '#3498db', padding: 16, margin: 15, borderRadius: 10, alignItems: 'center', elevation: 3 },
     editButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
 });
