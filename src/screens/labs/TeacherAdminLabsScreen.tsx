@@ -1,4 +1,4 @@
-// 📂 File: src/screens/labs/TeacherAdminLabsScreen.tsx (MODIFIED & CORRECTED)
+// 📂 File: src/screens/labs/TeacherAdminLabsScreen.tsx (REPLACE THIS FILE)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, ScrollView } from 'react-native';
@@ -17,7 +17,11 @@ const TeacherAdminLabsScreen = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLab, setEditingLab] = useState<Lab | null>(null);
     
-    const initialFormState = { title: '', subject: '', lab_type: '', description: '', access_url: '' };
+    // Updated initial state with all new fields
+    const initialFormState = { 
+        title: '', subject: '', lab_type: '', description: '', access_url: '',
+        topic: '', video_url: '', meet_link: '', class_datetime: '',
+    };
     const [formData, setFormData] = useState(initialFormState);
     const [selectedImage, setSelectedImage] = useState<ImagePickerResponse | null>(null);
     const [selectedFile, setSelectedFile] = useState<any | null>(null);
@@ -50,7 +54,7 @@ const TeacherAdminLabsScreen = () => {
     }, [fetchLabs]);
 
     const handleChoosePhoto = () => {
-        launchImageLibrary({ mediaType: 'photo' }, (response) => {
+        launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response) => {
             if (response.didCancel) return;
             if (response.errorCode) return Alert.alert("Image Error", response.errorMessage);
             setSelectedImage(response);
@@ -60,19 +64,26 @@ const TeacherAdminLabsScreen = () => {
     const handleChooseFile = async () => {
         try {
             const result = await pick({ type: [types.allFiles], allowMultiSelection: false });
-            if (result && result.length > 0) {
-                setSelectedFile(result[0]);
-            }
+            if (result && result.length > 0) { setSelectedFile(result[0]); }
         } catch (err) {
-            if (isCancel(err)) { console.log('User cancelled file selection.'); } 
-            else { Alert.alert('Error', 'An unknown error occurred while selecting the file.'); console.error(err); }
+            if (!isCancel(err)) { Alert.alert('Error', 'An unknown error occurred.'); }
         }
     };
 
     const handleOpenModal = (lab: Lab | null = null) => {
         setEditingLab(lab);
         if (lab) {
-            setFormData({ title: lab.title, subject: lab.subject, lab_type: lab.lab_type, description: lab.description, access_url: lab.access_url || '' });
+            setFormData({ 
+                title: lab.title, 
+                subject: lab.subject, 
+                lab_type: lab.lab_type, 
+                description: lab.description, 
+                access_url: lab.access_url || '',
+                topic: lab.topic || '',
+                video_url: lab.video_url || '',
+                meet_link: lab.meet_link || '',
+                class_datetime: lab.class_datetime ? new Date(lab.class_datetime).toISOString().slice(0, 16) : ''
+            });
             setSelectedClass(lab.class_group || '');
         } else {
             setFormData(initialFormState);
@@ -82,17 +93,19 @@ const TeacherAdminLabsScreen = () => {
     };
 
     const handleSave = async () => {
-        if (!formData.title || !formData.description) {
-            return Alert.alert("Validation Error", "Title and Description are required.");
-        }
-        if (!formData.access_url && !selectedFile && !editingLab?.file_path) {
-            return Alert.alert("Validation Error", "You must provide an Access URL or upload a file.");
+        if (!formData.title || !formData.description || !formData.subject) {
+            return Alert.alert("Validation Error", "Title, Subject, and Description are required.");
         }
         
         const data = new FormData();
-        Object.keys(formData).forEach(key => data.append(key, formData[key]));
+        // Append all form data fields
+        Object.keys(formData).forEach(key => {
+            if (formData[key]) { // Only append if value is not empty
+                data.append(key, formData[key]);
+            }
+        });
+
         if (user) data.append('created_by', user.id.toString());
-        
         data.append('class_group', selectedClass);
 
         if (selectedImage?.assets?.[0]) {
@@ -103,10 +116,11 @@ const TeacherAdminLabsScreen = () => {
         }
         
         try {
+            const config = { headers: { 'Content-Type': 'multipart/form-data' } };
             if (editingLab) {
-                await apiClient.put(`/labs/${editingLab.id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } });
+                await apiClient.put(`/labs/${editingLab.id}`, data, config);
             } else {
-                await apiClient.post('/labs', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+                await apiClient.post('/labs', data, config);
             }
             Alert.alert("Success", `Lab ${editingLab ? 'updated' : 'created'} successfully!`);
             setIsModalOpen(false);
@@ -142,41 +156,64 @@ const TeacherAdminLabsScreen = () => {
                         <MaterialIcons name="science" size={30} color="#00695c" />
                         <View style={styles.headerTextContainer}>
                             <Text style={styles.headerTitle}>Manage Digital Labs</Text>
-                            <Text style={styles.headerSubtitle}>Add or remove learning resources.</Text>
+                            <Text style={styles.headerSubtitle}>Add, edit, or remove learning resources.</Text>
                         </View>
                     </View>
                 }
-                ListFooterComponent={ <TouchableOpacity style={styles.addButton} onPress={() => handleOpenModal(null)}><MaterialIcons name="add" size={24} color="#fff" /><Text style={styles.addButtonText}>Add New Lab</Text></TouchableOpacity> }
-                ListEmptyComponent={<Text style={styles.emptyText}>No labs created yet. Add one below.</Text>}
+                ListFooterComponent={ <TouchableOpacity style={styles.addButton} onPress={() => handleOpenModal(null)}><MaterialIcons name="add" size={24} color="#fff" /><Text style={styles.addButtonText}>Add New Digital Lab</Text></TouchableOpacity> }
+                ListEmptyComponent={<View style={styles.centered}><Text style={styles.emptyText}>No labs created yet. Tap the button below to add one.</Text></View>}
+                contentContainerStyle={{ flexGrow: 1 }}
             />
             <Modal visible={isModalOpen} onRequestClose={() => setIsModalOpen(false)} animationType="slide">
                 <ScrollView style={styles.modalContainer} contentContainerStyle={{ paddingBottom: 40 }}>
                     <Text style={styles.modalTitle}>{editingLab ? 'Edit Digital Lab' : 'Add New Digital Lab'}</Text>
                     
+                    <Text style={styles.label}>Assign to Class</Text>
                     <View style={styles.pickerContainer}>
-                        <Picker
-                            selectedValue={selectedClass}
-                            onValueChange={(itemValue) => setSelectedClass(itemValue)}
-                        >
-                            <Picker.Item label="-- Assign to a Class (Optional) --" value="" />
+                        <Picker selectedValue={selectedClass} onValueChange={(itemValue) => setSelectedClass(itemValue)}>
                             <Picker.Item label="All Classes" value="" />
                             {studentClasses.map(c => <Picker.Item key={c} label={c} value={c} />)}
                         </Picker>
                     </View>
 
-                    <TextInput style={styles.input} placeholder="Title (e.g., Virtual Chemistry Lab)" value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
-                    <TextInput style={styles.input} placeholder="Subject (e.g., Science)" value={formData.subject} onChangeText={t => setFormData({...formData, subject: t})} />
-                    <TextInput style={styles.input} placeholder="Type (e.g., Simulation, PDF, Video)" value={formData.lab_type} onChangeText={t => setFormData({...formData, lab_type: t})} />
-                    <TextInput style={styles.textarea} placeholder="Description" value={formData.description} onChangeText={t => setFormData({...formData, description: t})} multiline />
+                    <Text style={styles.label}>Title*</Text>
+                    <TextInput style={styles.input} placeholder="e.g., Virtual Chemistry Lab" value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
+                    
+                    <Text style={styles.label}>Subject*</Text>
+                    <TextInput style={styles.input} placeholder="e.g., Science" value={formData.subject} onChangeText={t => setFormData({...formData, subject: t})} />
+                    
+                    <Text style={styles.label}>Type</Text>
+                    <TextInput style={styles.input} placeholder="e.g., Simulation, PDF, Video" value={formData.lab_type} onChangeText={t => setFormData({...formData, lab_type: t})} />
+                    
+                    <Text style={styles.label}>Topic</Text>
+                    <TextInput style={styles.input} placeholder="e.g., Titration Experiment (Optional)" value={formData.topic} onChangeText={t => setFormData({...formData, topic: t})} />
+
+                    <Text style={styles.label}>Description*</Text>
+                    <TextInput style={styles.textarea} placeholder="Detailed instructions for the lab..." value={formData.description} onChangeText={t => setFormData({...formData, description: t})} multiline />
+                    
+                    <Text style={styles.label}>Scheduled Time (Optional)</Text>
+                    <TextInput style={styles.input} placeholder="YYYY-MM-DDTHH:mm" value={formData.class_datetime} onChangeText={t => setFormData({...formData, class_datetime: t})} />
+
                     <TouchableOpacity style={styles.uploadButton} onPress={handleChoosePhoto}><MaterialIcons name="image" size={20} color="#fff" /><Text style={styles.uploadButtonText}>{editingLab?.cover_image_url || selectedImage ? 'Change Cover Image' : 'Select Cover Image'}</Text></TouchableOpacity>
                     {selectedImage?.assets?.[0]?.uri && <Text style={styles.fileNameText}>Selected: {selectedImage.assets[0].fileName}</Text>}
-                    <Text style={styles.orText}>- OR -</Text>
-                    <TextInput style={styles.input} placeholder="Access URL (Optional if uploading file)" value={formData.access_url} onChangeText={t => setFormData({...formData, access_url: t})} keyboardType="url" />
+                    
+                    <Text style={styles.orText}>- Lab Access Methods -</Text>
+                    
+                    <Text style={styles.label}>Access URL (Optional)</Text>
+                    <TextInput style={styles.input} placeholder="https://..." value={formData.access_url} onChangeText={t => setFormData({...formData, access_url: t})} keyboardType="url" />
+
+                    <Text style={styles.label}>Video URL (Optional)</Text>
+                    <TextInput style={styles.input} placeholder="https://youtube.com/..." value={formData.video_url} onChangeText={t => setFormData({...formData, video_url: t})} keyboardType="url" />
+
+                    <Text style={styles.label}>Meet Link (Optional)</Text>
+                    <TextInput style={styles.input} placeholder="https://meet.google.com/..." value={formData.meet_link} onChangeText={t => setFormData({...formData, meet_link: t})} keyboardType="url" />
+                    
                     <TouchableOpacity style={[styles.uploadButton, {backgroundColor: '#5cb85c'}]} onPress={handleChooseFile}><MaterialIcons name="attach-file" size={20} color="#fff" /><Text style={styles.uploadButtonText}>{editingLab?.file_path || selectedFile ? 'Change Lab File' : 'Upload Lab File (PDF, etc.)'}</Text></TouchableOpacity>
                     {selectedFile?.name && <Text style={styles.fileNameText}>Selected: {selectedFile.name}</Text>}
                     {editingLab?.file_path && !selectedFile && <Text style={styles.fileNameText}>Current file: {editingLab.file_path.split('/').pop()}</Text>}
+
                     <View style={styles.modalActions}>
-                        <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setIsModalOpen(false)}><Text>Cancel</Text></TouchableOpacity>
+                        <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setIsModalOpen(false)}><Text style={styles.cancelButtonText}>Cancel</Text></TouchableOpacity>
                         <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleSave}><Text style={styles.saveButtonText}>Save Lab</Text></TouchableOpacity>
                     </View>
                 </ScrollView>
@@ -185,29 +222,32 @@ const TeacherAdminLabsScreen = () => {
     );
 };
 
+// Add new styles for labels etc.
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#e8f5e9' },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#ddd', flexDirection: 'row', alignItems: 'center' },
+    container: { flex: 1, backgroundColor: '#f0f4f8' },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    header: { padding: 20, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e0e0e0', flexDirection: 'row', alignItems: 'center' },
     headerTextContainer: { marginLeft: 15 },
     headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#004d40' },
     headerSubtitle: { fontSize: 15, color: '#37474f', marginTop: 4 },
-    emptyText: { textAlign: 'center', marginVertical: 40, fontSize: 16 },
-    addButton: { flexDirection: 'row', backgroundColor: '#00796b', padding: 15, margin: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    emptyText: { textAlign: 'center', marginVertical: 40, fontSize: 16, color: '#555' },
+    addButton: { flexDirection: 'row', backgroundColor: '#00796b', padding: 15, margin: 20, borderRadius: 30, justifyContent: 'center', alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5, elevation: 5 },
     addButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginLeft: 10 },
-    modalContainer: { flex: 1, padding: 20, backgroundColor: '#f5f5f5' },
-    modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+    modalContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 10, backgroundColor: '#f5f5f5' },
+    modalTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 25, textAlign: 'center', color: '#333' },
+    label: { fontSize: 16, fontWeight: '600', color: '#444', marginBottom: 8, marginLeft: 2 },
     input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
-    textarea: { height: 100, textAlignVertical: 'top', backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
-    uploadButton: { flexDirection: 'row', backgroundColor: '#1e88e5', padding: 12, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 5 },
-    uploadButtonText: { color: '#fff', marginLeft: 10, fontWeight: 'bold' },
+    textarea: { height: 120, textAlignVertical: 'top', backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
+    uploadButton: { flexDirection: 'row', backgroundColor: '#1e88e5', padding: 14, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 5 },
+    uploadButtonText: { color: '#fff', marginLeft: 10, fontWeight: 'bold', fontSize: 16 },
     fileNameText: { textAlign: 'center', marginBottom: 15, marginTop: 5, color: '#333', fontStyle: 'italic' },
-    orText: { textAlign: 'center', marginVertical: 10, fontSize: 16, color: '#777', fontWeight: 'bold' },
-    modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 15 },
-    modalButton: { paddingVertical: 12, paddingHorizontal: 25, borderRadius: 8 },
-    cancelButton: { backgroundColor: '#ddd' },
+    orText: { textAlign: 'center', marginVertical: 15, fontSize: 16, color: '#777', fontWeight: 'bold' },
+    modalActions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 20, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 20 },
+    modalButton: { paddingVertical: 12, paddingHorizontal: 30, borderRadius: 8, flex: 0.45, alignItems: 'center' },
+    cancelButton: { backgroundColor: '#e0e0e0' },
+    cancelButtonText: { color: '#333', fontWeight: 'bold', fontSize: 16 },
     saveButton: { backgroundColor: '#00796b' },
-    saveButtonText: { color: '#fff', fontWeight: 'bold' },
+    saveButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
     pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 15, backgroundColor: '#fff' },
 });
 

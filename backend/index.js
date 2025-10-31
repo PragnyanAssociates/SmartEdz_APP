@@ -2275,21 +2275,27 @@ app.delete('/api/ptm/:id', verifyToken, async (req, res) => {
 
 
 // ==========================================================
-// --- DIGITAL LABS API ROUTES (NEW) ---
+// --- DIGITAL LABS API ROUTES (UPDATED) ---
 // ==========================================================
 // This section handles creating, fetching, and managing digital lab resources.
 // It uses the 'upload' multer instance you already configured.
 
-// GET all digital labs (Publicly accessible for students to view)
-// ★ 1. MODIFIED: GET labs for a specific STUDENT's class
+// Helper function for creating bulk notifications (assuming it exists elsewhere)
+// async function createBulkNotifications(connection, recipientIds, senderName, title, message, link) { ... }
+
+// ★ 1. MODIFIED: GET labs for a specific STUDENT's class (includes teacher name)
 app.get('/api/labs/student/:classGroup', async (req, res) => {
     const { classGroup } = req.params;
     try {
-        // This query fetches labs assigned to the specific class OR labs assigned to ALL classes (where class_group is NULL)
+        // Query now JOINS with the users table to fetch the creator's name.
         const query = `
-            SELECT * FROM digital_labs 
-            WHERE class_group = ? OR class_group IS NULL OR class_group = ''
-            ORDER BY created_at DESC
+            SELECT 
+                dl.*, 
+                u.full_name as teacher_name 
+            FROM digital_labs dl
+            LEFT JOIN users u ON dl.created_by = u.id
+            WHERE dl.class_group = ? OR dl.class_group IS NULL OR dl.class_group = ''
+            ORDER BY dl.created_at DESC
         `;
         const [labs] = await db.query(query, [classGroup]);
         res.status(200).json(labs);
@@ -2299,11 +2305,19 @@ app.get('/api/labs/student/:classGroup', async (req, res) => {
     }
 });
 
-// ★ 2. MODIFIED: GET all labs created by a specific TEACHER (for the manage screen)
+// ★ 2. MODIFIED: GET all labs created by a specific TEACHER (includes teacher name)
 app.get('/api/labs/teacher/:teacherId', async (req, res) => {
     const { teacherId } = req.params;
     try {
-        const query = `SELECT * FROM digital_labs WHERE created_by = ? ORDER BY created_at DESC`;
+        const query = `
+            SELECT 
+                dl.*, 
+                u.full_name as teacher_name 
+            FROM digital_labs dl
+            LEFT JOIN users u ON dl.created_by = u.id
+            WHERE dl.created_by = ? 
+            ORDER BY dl.created_at DESC
+        `;
         const [labs] = await db.query(query, [teacherId]);
         res.status(200).json(labs);
     } catch (error) {
@@ -2312,12 +2326,13 @@ app.get('/api/labs/teacher/:teacherId', async (req, res) => {
     }
 });
 
-// 📂 File: server.js (REPLACE THIS ROUTE)
-
-// ★ 3. MODIFIED: POST a new digital lab (with class_group)
+// ★ 3. MODIFIED: POST a new digital lab (handles all new fields)
 app.post('/api/labs', upload.fields([{ name: 'coverImage', maxCount: 1 }, { name: 'labFile', maxCount: 1 }]), async (req, res) => {
-    // Add class_group to the destructured body
-    const { title, subject, lab_type, class_group, description, access_url, created_by } = req.body;
+    // Destructure all new fields from the request body
+    const { 
+        title, subject, lab_type, class_group, description, access_url, 
+        created_by, topic, video_url, meet_link, class_datetime 
+    } = req.body;
 
     const coverImageFile = req.files['coverImage'] ? req.files['coverImage'][0] : null;
     const labFile = req.files['labFile'] ? req.files['labFile'][0] : null;
@@ -2325,24 +2340,35 @@ app.post('/api/labs', upload.fields([{ name: 'coverImage', maxCount: 1 }, { name
     const cover_image_url = coverImageFile ? `/uploads/${coverImageFile.filename}` : null;
     const file_path = labFile ? `/uploads/${labFile.filename}` : null;
     
-    if (!access_url && !file_path) {
-        return res.status(400).json({ message: 'You must provide either an Access URL or upload a Lab File.' });
+    // A lab should have at least one way to be accessed
+    if (!access_url && !file_path && !video_url && !meet_link) {
+        return res.status(400).json({ message: 'You must provide an Access URL, Video URL, Meet Link, or upload a Lab File.' });
     }
 
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
 
-        // Update INSERT query to include class_group
+        // Updated INSERT query with all new columns
         const query = `
-            INSERT INTO digital_labs (title, subject, lab_type, class_group, description, access_url, file_path, cover_image_url, created_by) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO digital_labs (
+                title, subject, lab_type, class_group, description, access_url, 
+                created_by, topic, video_url, meet_link, class_datetime, 
+                file_path, cover_image_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        await connection.query(query, [title, subject, lab_type, class_group || null, description, access_url || null, file_path, cover_image_url, created_by || null]);
+        
+        // Use 'NULL' for empty strings to avoid database errors, especially for datetime.
+        const classDateTimeValue = class_datetime ? class_datetime : null;
+
+        await connection.query(query, [
+            title, subject, lab_type, class_group || null, description, access_url || null, 
+            created_by || null, topic || null, video_url || null, meet_link || null, classDateTimeValue,
+            file_path, cover_image_url
+        ]);
         
         // --- MODIFIED NOTIFICATION LOGIC ---
         let usersToNotifyQuery;
-        // If a class is specified, notify only that class. Otherwise, notify all students and teachers.
         if (class_group) {
              usersToNotifyQuery = connection.query("SELECT id FROM users WHERE role = 'student' AND class_group = ? AND id != ?", [class_group, created_by]);
         } else {
@@ -2355,7 +2381,7 @@ app.post('/api/labs', upload.fields([{ name: 'coverImage', maxCount: 1 }, { name
             const senderName = creator.full_name || "School Administration";
             const recipientIds = usersToNotify.map(u => u.id);
             const notificationTitle = `New Digital Lab: ${subject}`;
-            const notificationMessage = `A new lab titled "${title}" has been added.`;
+            const notificationMessage = `A new lab titled "${title}" has been added by ${senderName}.`;
 
             await createBulkNotifications(connection, recipientIds, senderName, notificationTitle, notificationMessage, '/labs');
         }
@@ -2372,13 +2398,14 @@ app.post('/api/labs', upload.fields([{ name: 'coverImage', maxCount: 1 }, { name
 });
 
 
-// 📂 File: server.js (REPLACE THIS ROUTE)
-
-// ★ 4. MODIFIED: UPDATE an existing lab (with class_group)
+// ★ 4. MODIFIED: UPDATE an existing lab (handles all new fields)
 app.put('/api/labs/:id', upload.fields([{ name: 'coverImage', maxCount: 1 }, { name: 'labFile', maxCount: 1 }]), async (req, res) => {
     const { id } = req.params;
-    // Add class_group
-    const { title, subject, lab_type, class_group, description, access_url, created_by } = req.body;
+    // Destructure all new fields
+    const { 
+        title, subject, lab_type, class_group, description, access_url, 
+        created_by, topic, video_url, meet_link, class_datetime 
+    } = req.body;
     
     const connection = await db.getConnection();
     try {
@@ -2396,19 +2423,23 @@ app.put('/api/labs/:id', upload.fields([{ name: 'coverImage', maxCount: 1 }, { n
 
         let cover_image_url = coverImageFile ? `/uploads/${coverImageFile.filename}` : existingLab.cover_image_url;
         let file_path = labFile ? `/uploads/${labFile.filename}` : existingLab.file_path;
+        const classDateTimeValue = class_datetime ? class_datetime : null;
 
-        // Update UPDATE query to include class_group
+        // Updated UPDATE query with all new columns
         const query = `
             UPDATE digital_labs SET 
-            title = ?, subject = ?, lab_type = ?, class_group = ?, description = ?, access_url = ?, file_path = ?, cover_image_url = ?
+                title = ?, subject = ?, lab_type = ?, class_group = ?, description = ?, 
+                access_url = ?, topic = ?, video_url = ?, meet_link = ?, class_datetime = ?, 
+                file_path = ?, cover_image_url = ?
             WHERE id = ?
         `;
-        await connection.query(query, [title, subject, lab_type, class_group || null, description, access_url || null, file_path, cover_image_url, id]);
+        await connection.query(query, [
+            title, subject, lab_type, class_group || null, description, 
+            access_url || null, topic || null, video_url || null, meet_link || null, classDateTimeValue,
+            file_path, cover_image_url, id
+        ]);
         
-        // --- NOTE: Notification on update can be complex (e.g., if class changes). 
-        // For simplicity, we can notify the new class or all users again.
-        // Let's notify the assigned class (or all if no class is assigned).
-        
+        // --- Notification on update ---
         let usersToNotifyQuery;
         if (class_group) {
              usersToNotifyQuery = connection.query("SELECT id FROM users WHERE role = 'student' AND class_group = ? AND id != ?", [class_group, created_by]);
@@ -2438,12 +2469,10 @@ app.put('/api/labs/:id', upload.fields([{ name: 'coverImage', maxCount: 1 }, { n
     }
 });
 
-
-// DELETE a digital lab (Admin/Teacher only)
+// DELETE a digital lab (No changes needed, but included for completeness)
 app.delete('/api/labs/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        // You might want to add logic here to delete the associated image file from the /uploads folder
         const [result] = await db.query('DELETE FROM digital_labs WHERE id = ?', [id]);
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: 'Digital lab not found.' });
