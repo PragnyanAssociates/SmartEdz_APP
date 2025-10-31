@@ -7,8 +7,6 @@ import {
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import apiClient from '../../api/client';
 
-// ★ IMPORTANT: REPLACE WITH YOUR ACTUAL SERVER URL ★
-// This is needed to correctly load cover images from your backend.
 const SERVER_URL = 'https://vivekanandapublicschoolerp-production.up.railway.app'; 
 
 const StudentResourcesScreen = () => {
@@ -19,7 +17,11 @@ const StudentResourcesScreen = () => {
     const [availableClasses, setAvailableClasses] = useState([]);
     const [selectedClass, setSelectedClass] = useState<string | null>(null);
     const [selectedBoard, setSelectedBoard] = useState<'state' | 'central' | null>(null);
+    
+    // ★ UPDATED ★ Both syllabi and textbooks are now lists of subjects
     const [subjects, setSubjects] = useState([]);
+    // ★ NEW ★ State to track which resource type is being viewed
+    const [resourceType, setResourceType] = useState<'Syllabus' | 'Textbooks' | null>(null);
 
     const fetchAvailableClasses = useCallback(async () => {
         setIsLoading(true);
@@ -51,6 +53,7 @@ const StudentResourcesScreen = () => {
     const handleSyllabusPress = async () => {
         if (!selectedClass || !selectedBoard) return;
         setIsLoading(true);
+        setResourceType('Syllabus'); // ★ Set the resource type
         try {
             const response = await apiClient.get(`/resources/syllabus/class/${selectedClass}/${selectedBoard}`);
             setSubjects(response.data);
@@ -62,13 +65,20 @@ const StudentResourcesScreen = () => {
         }
     };
 
+    // ★ UPDATED ★ This function now works identically to handleSyllabusPress
     const handleTextbookPress = async () => {
         if (!selectedClass || !selectedBoard) return;
+        setIsLoading(true);
+        setResourceType('Textbooks'); // ★ Set the resource type
         try {
+            // The API now returns a list of subjects for textbooks
             const response = await apiClient.get(`/resources/textbook/class/${selectedClass}/${selectedBoard}`);
-            handleLinkPress(response.data.url, 'textbook');
+            setSubjects(response.data);
+            setView('SUBJECTS');
         } catch (e) {
-            Alert.alert("Not Found", "Textbook link has not been published for this class and board.");
+            Alert.alert("Not Found", "Textbooks have not been published for this class and board yet.");
+        } finally {
+            setIsLoading(false);
         }
     };
     
@@ -84,8 +94,18 @@ const StudentResourcesScreen = () => {
 
     const goBack = (targetView: string) => {
         setView(targetView);
-        if (targetView === 'CLASS_LIST') setSelectedClass(null);
-        if (targetView === 'BOARD_TYPE') setSelectedBoard(null);
+        if (targetView === 'CLASS_LIST') {
+            setSelectedClass(null);
+            setSelectedBoard(null);
+            setResourceType(null);
+        }
+        if (targetView === 'BOARD_TYPE') {
+            setSelectedBoard(null);
+            setResourceType(null);
+        }
+        if (targetView === 'OPTIONS') {
+            setResourceType(null);
+        }
     };
 
     const renderHeader = (title: string, backTarget: string, backText: string) => (
@@ -111,10 +131,11 @@ const StudentResourcesScreen = () => {
         );
     }
     
+    // ★ UPDATED ★ This view is now used for both Syllabus and Textbooks
     if (view === 'SUBJECTS') {
          return (
             <SafeAreaView style={styles.container}>
-                {renderHeader(`Syllabus - ${selectedClass}`, 'OPTIONS', 'Back to Options')}
+                {renderHeader(`${resourceType} - ${selectedClass}`, 'OPTIONS', 'Back to Options')}
                 <FlatList
                     data={subjects}
                     keyExtractor={(item: any) => item.id.toString()}
@@ -122,17 +143,17 @@ const StudentResourcesScreen = () => {
                     renderItem={({ item }) => {
                         const imageUri = item.cover_image_url
                             ? `${SERVER_URL}${item.cover_image_url}`
-                            : 'https://via.placeholder.com/150/DCDCDC/808080?text=Syllabus';
+                            : `https://via.placeholder.com/150/DCDCDC/808080?text=${item.subject_name}`;
 
                         return (
-                            <TouchableOpacity style={styles.gridItem} onPress={() => handleLinkPress(item.url, 'syllabus')}>
+                            <TouchableOpacity style={styles.gridItem} onPress={() => handleLinkPress(item.url, resourceType?.toLowerCase() ?? 'item')}>
                                 <Image source={{ uri: imageUri }} style={styles.coverImage} />
                                 <Text style={styles.gridText}>{item.subject_name}</Text>
                             </TouchableOpacity>
                         );
                     }}
                     contentContainerStyle={styles.gridContainer}
-                    ListEmptyComponent={<Text style={styles.errorText}>No syllabus found for this class.</Text>}
+                    ListEmptyComponent={<Text style={styles.errorText}>No {resourceType?.toLowerCase()} found for this class.</Text>}
                 />
             </SafeAreaView>
         );
@@ -149,7 +170,7 @@ const StudentResourcesScreen = () => {
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.optionCard} onPress={handleTextbookPress}>
                         <MaterialIcons name="auto-stories" size={50} color="#008080" />
-                        <Text style={styles.optionText}>Textbooks Link</Text>
+                        <Text style={styles.optionText}>Textbooks</Text>
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
