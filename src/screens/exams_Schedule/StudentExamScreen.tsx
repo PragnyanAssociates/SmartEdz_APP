@@ -1,16 +1,58 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView, RefreshControl, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 
+// ★ Reusable Schedule Card component for the list
+const ScheduleCard = ({ item }: { item: any }) => {
+    // This is the same table view from the admin screen, now used for each card
+    return (
+        <View style={styles.scheduleContainer}>
+            <Text style={styles.scheduleTitle}>{item.title}</Text>
+            {item.exam_type && (
+                <View style={styles.badgeContainer}>
+                    <Text style={styles.badgeText}>{item.exam_type} Exam</Text>
+                </View>
+            )}
+            <Text style={styles.scheduleSubtitle}>{item.subtitle}</Text>
+            <View style={styles.table}>
+                <View style={styles.tableRow}>
+                    <View style={[styles.tableCell, styles.headerCell, { flex: 2.5 }]}><Text style={styles.headerCellText}>Date</Text></View>
+                    <View style={[styles.tableCell, styles.headerCell, { flex: 3 }]}><Text style={styles.headerCellText}>Subject</Text></View>
+                    <View style={[styles.tableCell, styles.headerCell, { flex: 3.5 }]}><Text style={styles.headerCellText}>Time</Text></View>
+                    <View style={[styles.tableCell, styles.headerCell, { flex: 1.5, borderRightWidth: 0 }]}><Text style={styles.headerCellText}>Block</Text></View>
+                </View>
+                {item.schedule_data.map((row: any, index: number) => {
+                     if (row.type === 'special') {
+                        return (
+                            <View key={index} style={styles.specialRow}>
+                                <Text style={styles.specialRowText}>{row.mainText}</Text>
+                                {row.subText && <Text style={styles.specialRowSubText}>{row.subText}</Text>}
+                            </View>
+                        );
+                    }
+                    const isLastRow = index === item.schedule_data.length - 1;
+                    return (
+                        <View key={index} style={[styles.tableRow, isLastRow && { borderBottomWidth: 0 }]}>
+                            <View style={[styles.tableCell, { flex: 2.5 }]}><Text style={styles.dataCellText}>{row.date}</Text></View>
+                            <View style={[styles.tableCell, { flex: 3 }]}><Text style={styles.dataCellText}>{row.subject}</Text></View>
+                            <View style={[styles.tableCell, { flex: 3.5 }]}><Text style={styles.dataCellText}>{row.time}</Text></View>
+                            <View style={[styles.tableCell, { flex: 1.5, borderRightWidth: 0 }]}><Text style={styles.dataCellText}>{row.block}</Text></View>
+                        </View>
+                    );
+                })}
+            </View>
+        </View>
+    );
+};
+
 const StudentExamScreen = () => {
     const { user } = useAuth();
     const [schedules, setSchedules] = useState<any[]>([]);
-    const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
-    const [showList, setShowList] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState('Internal'); // State for tabs
 
     const fetchSchedule = useCallback(async () => {
         if (!user || !user.class_group) {
@@ -22,24 +64,13 @@ const StudentExamScreen = () => {
         setError(null);
         try {
             const response = await apiClient.get(`/exam-schedules/class/${user.class_group}`);
-            const data = response.data;
-
-            if (Array.isArray(data)) {
-                setSchedules(data);
-                if (data.length > 0) {
-                    setSelectedSchedule(data[0]);
-                    setShowList(data.length > 1);
-                } else {
-                    throw new Error("No exam schedule has been published for your class yet.");
-                }
-            } else {
-                 throw new Error("Received an unexpected data format.");
-            }
+            setSchedules(response.data || []);
         } catch (e: any) {
             const errorMessage = e.response?.status === 404
                 ? "No exam schedule has been published for your class yet."
-                : e.response?.data?.message || "Failed to fetch the exam schedule.";
+                : e.response?.data?.message || "Failed to fetch exam schedules.";
             setError(errorMessage);
+            setSchedules([]); // Clear schedules on error
         } finally {
             setIsLoading(false);
         }
@@ -49,134 +80,74 @@ const StudentExamScreen = () => {
         fetchSchedule();
     }, [fetchSchedule]);
 
-    const renderTable = () => {
-        if (!selectedSchedule || !selectedSchedule.schedule_data) return null;
-
-        return (
-            <View style={styles.table}>
-                <View style={styles.tableHeader}>
-                    <Text style={[styles.headerCell, styles.dateCol]}>Date</Text>
-                    <Text style={[styles.headerCell, styles.subjectCol]}>Subject</Text>
-                    <Text style={[styles.headerCell, styles.timeCol]}>Time</Text>
-                    <Text style={[styles.headerCell, styles.blockCol]}>Block</Text>
-                </View>
-                {selectedSchedule.schedule_data.map((row: any, index: number) => {
-                    if (row.type === 'special') {
-                        return (
-                            <View key={index} style={styles.specialRow}>
-                                <Text style={styles.specialRowText}>{row.mainText}</Text>
-                                {row.subText && <Text style={styles.specialRowSubText}>{row.subText}</Text>}
-                            </View>
-                        );
-                    }
-                    const rowStyle = index % 2 === 0 ? styles.tableRowEven : styles.tableRowOdd;
-                    return (
-                        <View key={index} style={[styles.tableRow, rowStyle]}>
-                            <Text style={[styles.dataCell, styles.dateCol]}>{row.date}</Text>
-                            <Text style={[styles.dataCell, styles.subjectCol]}>{row.subject}</Text>
-                            <Text style={[styles.dataCell, styles.timeCol]}>{row.time}</Text>
-                            <Text style={[styles.dataCell, styles.blockCol]}>{row.block}</Text>
-                        </View>
-                    );
-                })}
-            </View>
-        );
-    };
-
-    const renderScheduleSelector = () => {
-        if (!showList || schedules.length <= 1) return null;
-
-        return (
-            <View style={styles.selectorContainer}>
-                <Text style={styles.selectorLabel}>Select Schedule:</Text>
-                {schedules.map((schedule, index) => (
-                    <TouchableOpacity
-                        key={schedule.id || index}
-                        style={[
-                            styles.selectorButton,
-                            selectedSchedule?.id === schedule.id && styles.selectorButtonActive
-                        ]}
-                        onPress={() => setSelectedSchedule(schedule)}
-                    >
-                        <Text style={[
-                            styles.selectorButtonText,
-                            selectedSchedule?.id === schedule.id && styles.selectorButtonTextActive
-                        ]}>
-                            {schedule.title} {schedule.subtitle && `- ${schedule.subtitle}`}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
-        );
-    };
+    // Filter schedules based on the active tab
+    const filteredSchedules = schedules.filter(
+        schedule => schedule.exam_type === activeTab
+    );
 
     return (
-        <ScrollView
-            style={styles.container}
-            contentContainerStyle={styles.scrollContent}
-            refreshControl={<RefreshControl refreshing={isLoading} onRefresh={fetchSchedule} colors={['#FF6347']} />}
-        >
-            <View style={styles.mainHeader}>
-                <MaterialIcons name="event-note" size={30} color="#FF6347" />
-                <Text style={styles.mainHeaderText}>Exam Schedule</Text>
+        <View style={styles.container}>
+            <View style={styles.tabContainer}>
+                <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'Internal' && styles.tabButtonActive]}
+                    onPress={() => setActiveTab('Internal')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'Internal' && styles.tabTextActive]}>Internal Exams</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tabButton, activeTab === 'External' && styles.tabButtonActive]}
+                    onPress={() => setActiveTab('External')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'External' && styles.tabTextActive]}>External Exams</Text>
+                </TouchableOpacity>
             </View>
 
-            {isLoading && !selectedSchedule && <ActivityIndicator size="large" color="#FF6347" style={{ marginTop: 50 }}/>}
-
-            {error && (
-                 <View style={styles.errorContainer}>
-                    <MaterialIcons name="error-outline" size={24} color="#757575" />
-                    <Text style={styles.errorText}>{error}</Text>
-                </View>
+            {isLoading ? (
+                <ActivityIndicator size="large" color="#FF6347" style={{ marginTop: 50 }} />
+            ) : (
+                <FlatList
+                    data={filteredSchedules}
+                    keyExtractor={(item) => item.id.toString()}
+                    renderItem={({ item }) => <ScheduleCard item={item} />}
+                    ListEmptyComponent={
+                        <View style={styles.errorContainer}>
+                            <MaterialIcons name="error-outline" size={24} color="#757575" />
+                            <Text style={styles.errorText}>
+                                {error ? error : `No ${activeTab.toLowerCase()} exam schedules published yet.`}
+                            </Text>
+                        </View>
+                    }
+                    refreshControl={<RefreshControl refreshing={isLoading} onRefresh={fetchSchedule} colors={['#FF6347']} />}
+                    contentContainerStyle={styles.listContentContainer}
+                />
             )}
-
-            {selectedSchedule && (
-                <View style={styles.scheduleContainer}>
-                    <Text style={styles.scheduleTitle}>{selectedSchedule.title}</Text>
-                    {/* ★ NEW: Display Exam Type */}
-                    {selectedSchedule.exam_type && (
-                        <Text style={styles.examTypeLabel}>{selectedSchedule.exam_type} Exam</Text>
-                    )}
-                    <Text style={styles.scheduleSubtitle}>{selectedSchedule.subtitle}</Text>
-                    {renderScheduleSelector()}
-                    {renderTable()}
-                </View>
-            )}
-        </ScrollView>
+        </View>
     );
 };
 
-// ★ ADDED NEW STYLE
+// Styles for Student Screen
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f4f6f8' },
-    scrollContent: { padding: 15, paddingBottom: 40 },
-    mainHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-    mainHeaderText: { fontSize: 24, fontWeight: 'bold', marginLeft: 10, color: '#263238' },
-    errorContainer: { marginTop: 50, alignItems: 'center', padding: 20, backgroundColor: '#fff', borderRadius: 10 },
+    tabContainer: { flexDirection: 'row', paddingHorizontal: 15, paddingTop: 15, backgroundColor: '#f4f6f8' },
+    tabButton: { flex: 1, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent', alignItems: 'center' },
+    tabButtonActive: { borderBottomColor: '#47ffe0ff' },
+    tabText: { fontSize: 16, color: '#546e7a', fontWeight: '500' },
+    tabTextActive: { color: '#4e2eceff', fontWeight: 'bold' },
+    listContentContainer: { paddingBottom: 20 },
+    errorContainer: { marginTop: 50, alignItems: 'center', padding: 20, marginHorizontal: 15 },
     errorText: { fontSize: 16, color: '#757575', textAlign: 'center', marginTop: 10 },
-    scheduleContainer: { backgroundColor: '#ffffff', borderRadius: 12, padding: 15, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
-    scheduleTitle: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: '#212121' },
-    // ★ NEW: Style for the exam type badge
-    examTypeLabel: { textAlign: 'center', color: '#FF6347', fontSize: 14, fontWeight: 'bold', marginTop: 4, backgroundColor: '#ffebee', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 15, alignSelf: 'center' },
-    scheduleSubtitle: { fontSize: 16, color: '#757575', textAlign: 'center', marginBottom: 20, marginTop: 4 },
-    selectorContainer: { marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#e0e0e0', paddingBottom: 15 },
-    selectorLabel: { fontSize: 16, fontWeight: 'bold', color: '#455a64', marginBottom: 10 },
-    selectorButton: { backgroundColor: '#f5f5f5', borderRadius: 8, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e0e0e0' },
-    selectorButtonActive: { backgroundColor: '#fff0eb', borderColor: '#FF6347' },
-    selectorButtonText: { fontSize: 14, color: '#666', textAlign: 'center' },
-    selectorButtonTextActive: { color: '#FF6347', fontWeight: 'bold' },
-    table: { borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, overflow: 'hidden' },
-    tableHeader: { flexDirection: 'row', backgroundColor: '#f7f9fc', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' },
-    headerCell: { paddingVertical: 14, paddingHorizontal: 6, fontWeight: 'bold', textAlign: 'center', color: '#455a64', fontSize: 14 },
-    tableRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' },
-    tableRowEven: { backgroundColor: '#ffffff' },
-    tableRowOdd: { backgroundColor: '#f7f9fc' },
-    dataCell: { paddingVertical: 16, paddingHorizontal: 6, textAlign: 'center', color: '#37474f', fontSize: 14 },
-    dateCol: { flex: 2.5 },
-    subjectCol: { flex: 3 },
-    timeCol: { flex: 2 },
-    blockCol: { flex: 1 },
-    specialRow: { padding: 20, backgroundColor: '#e3f2fd', justifyContent: 'center', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' },
+    scheduleContainer: { backgroundColor: '#ffffff', borderRadius: 24, marginHorizontal: 15, marginVertical: 10, padding: 20, elevation: 4, shadowColor: '#999', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }},
+    scheduleTitle: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', color: '#111', marginBottom: 8 },
+    badgeContainer: { alignSelf: 'center', backgroundColor: '#FEF1F2', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 16, marginBottom: 8 },
+    badgeText: { color: '#E53E3E', fontSize: 12, fontWeight: 'bold' },
+    scheduleSubtitle: { fontSize: 15, color: '#6c757d', textAlign: 'center', marginBottom: 20 },
+    table: { backgroundColor: '#f8f9fa', borderRadius: 16, borderWidth: 1, borderColor: '#e9ecef', overflow: 'hidden' },
+    tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
+    tableCell: { paddingVertical: 14, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: '#e9ecef', justifyContent: 'center' },
+    headerCell: { backgroundColor: '#f8f9fa' },
+    headerCellText: { color: '#6c757d', fontSize: 13, fontWeight: '500', textAlign: 'left' },
+    dataCellText: { color: '#212121', fontSize: 13, textAlign: 'left' },
+    specialRow: { padding: 20, backgroundColor: '#e3f2fd', justifyContent: 'center', alignItems: 'center', margin: 10, borderRadius: 16 },
     specialRowText: { fontWeight: 'bold', fontSize: 15, color: '#1e88e5' },
     specialRowSubText: { fontSize: 13, color: '#64b5f6', fontStyle: 'italic', marginTop: 4 },
 });
