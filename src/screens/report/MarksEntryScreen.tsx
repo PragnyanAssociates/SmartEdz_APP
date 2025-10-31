@@ -1,6 +1,7 @@
 /**
  * File: src/screens/report/MarksEntryScreen.js
  * Purpose: Teachers/Admins enter marks - Full editable table with all subjects
+ * Version: 2.0 (With Edit/Save Flow)
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -30,9 +31,9 @@ const CLASS_SUBJECTS = {
 
 // Exams that teachers can enter marks for (Display Names)
 const EDITABLE_EXAM_TYPES = [
-    'Assignment-1', 'Unitest-1', 
-    'Assignment-2', 'Unitest-2', 
-    'Assignment-3', 'Unitest-3', 
+    'Assignment-1', 'Unitest-1',
+    'Assignment-2', 'Unitest-2',
+    'Assignment-3', 'Unitest-3',
     'Assignment-4', 'Unitest-4',
     'SA1', 'SA2'
 ];
@@ -40,7 +41,6 @@ const EDITABLE_EXAM_TYPES = [
 // All options available in the dropdown, including the calculated 'Overall' view
 const ALL_EXAM_OPTIONS = ['Overall', ...EDITABLE_EXAM_TYPES];
 
-// ★★★ FIX #1: CREATE A REVERSE MAPPING ★★★
 // This maps the display name back to the short key for saving to the database.
 const EXAM_KEY_MAPPING = {
     'Assignment-1': 'AT1',
@@ -53,10 +53,9 @@ const EXAM_KEY_MAPPING = {
     'Unitest-4': 'UT4',
     'SA1': 'SA1',
     'SA2': 'SA2',
-    'Overall': 'Total' // Maps 'Overall' view to 'Total' key if needed
+    'Overall': 'Total'
 };
 
-// ★★★ FIX #2: CREATE A FORWARD MAPPING ★★★
 // Maps the backend key to the display name for reading data.
 const EXAM_DISPLAY_MAPPING = {
     'AT1': 'Assignment-1',
@@ -88,11 +87,14 @@ const MarksEntryScreen = ({ route, navigation }) => {
     const [students, setStudents] = useState([]);
     const [marksData, setMarksData] = useState({});
     const [attendanceData, setAttendanceData] = useState({});
-    
+
     const [selectedExam, setSelectedExam] = useState('Overall');
     const [viewMode, setViewMode] = useState('marks');
     const [sortOrder, setSortOrder] = useState('rollno');
     
+    // ★★★ NEW ★★★: State to manage if marks are currently editable
+    const [isEditing, setIsEditing] = useState(true);
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
@@ -100,6 +102,11 @@ const MarksEntryScreen = ({ route, navigation }) => {
     useEffect(() => {
         fetchClassData();
     }, [classGroup]);
+    
+    // ★★★ NEW ★★★: Reset to edit mode when user switches exam or view mode
+    useEffect(() => {
+        setIsEditing(true);
+    }, [selectedExam, viewMode]);
 
     useEffect(() => {
         if (userRole === 'admin') {
@@ -119,6 +126,7 @@ const MarksEntryScreen = ({ route, navigation }) => {
     }, [navigation, classGroup, userRole]);
 
     const fetchClassData = async () => {
+        setLoading(true);
         try {
             const response = await apiClient.get(`/reports/class-data/${classGroup}`);
             const { students, marks, attendance } = response.data;
@@ -138,11 +146,9 @@ const MarksEntryScreen = ({ route, navigation }) => {
 
             marks.forEach(mark => {
                 if (marksMap[mark.student_id] && marksMap[mark.student_id][mark.subject]) {
-                    // ★★★ FIX #3: USE THE FORWARD MAPPING TO POPULATE THE STATE ★★★
-                    // This converts the key from the DB ('AT1') to the display name ('Assignment-1') for the input fields.
                     const displayExamType = EXAM_DISPLAY_MAPPING[mark.exam_type];
                     if (displayExamType && EDITABLE_EXAM_TYPES.includes(displayExamType)) {
-                        marksMap[mark.student_id][mark.subject][displayExamType] = 
+                        marksMap[mark.student_id][mark.subject][displayExamType] =
                             mark.marks_obtained !== null ? mark.marks_obtained.toString() : '';
                     }
                 }
@@ -256,18 +262,16 @@ const MarksEntryScreen = ({ route, navigation }) => {
         const marksPayload = [];
         students.forEach(student => {
             subjects.forEach(subject => {
-                EDITABLE_EXAM_TYPES.forEach(examDisplayType => { // 'Assignment-1'
-                    // ★★★ FIX #4: USE THE REVERSE MAPPING TO GET THE KEY ★★★
-                    // This converts 'Assignment-1' back to 'AT1' before sending to the backend.
-                    const examKey = EXAM_KEY_MAPPING[examDisplayType]; // 'AT1'
+                EDITABLE_EXAM_TYPES.forEach(examDisplayType => {
+                    const examKey = EXAM_KEY_MAPPING[examDisplayType];
                     const marksValue = marksData[student.id]?.[subject]?.[examDisplayType] || '';
-                    
-                    if (examKey) { // Ensure we have a valid key
+
+                    if (examKey) {
                         marksPayload.push({
                             student_id: student.id,
                             class_group: classGroup,
                             subject: subject,
-                            exam_type: examKey, // SEND THE CORRECT KEY
+                            exam_type: examKey,
                             marks_obtained: marksValue === '' ? null : marksValue
                         });
                     }
@@ -277,7 +281,7 @@ const MarksEntryScreen = ({ route, navigation }) => {
                     student_id: student.id,
                     class_group: classGroup,
                     subject: subject,
-                    exam_type: 'Total', // Use 'Total' for overall to match student screen mapping
+                    exam_type: 'Total',
                     marks_obtained: overallValue === '' ? null : overallValue
                 });
             });
@@ -285,6 +289,8 @@ const MarksEntryScreen = ({ route, navigation }) => {
         try {
             await apiClient.post('/reports/marks/bulk', { marksPayload });
             Alert.alert('Success', 'Marks saved successfully! Progress reports updated.');
+            // ★★★ MODIFIED ★★★: After saving, switch to view mode
+            setIsEditing(false); 
             fetchClassData();
         } catch (error) {
             console.error('Error saving marks:', error);
@@ -335,8 +341,10 @@ const MarksEntryScreen = ({ route, navigation }) => {
 
     const sortedStudents = getSortedStudents();
     const isOverallView = selectedExam === 'Overall';
+    
+    // ★★★ MODIFIED ★★★: Determine if editing is allowed based on multiple conditions
+    const canEditMarks = !isOverallView && isEditing;
 
-    // The rest of the return/JSX part of the component remains exactly the same
     return (
         <View style={styles.container}>
             <View style={styles.modeToggle}>
@@ -353,7 +361,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
                     <Text style={[styles.modeButtonText, viewMode === 'attendance' && styles.modeButtonTextActive]}>Attendance</Text>
                 </TouchableOpacity>
             </View>
-
 
             {viewMode === 'marks' && (
                 <>
@@ -374,11 +381,9 @@ const MarksEntryScreen = ({ route, navigation }) => {
                         </TouchableOpacity>
                     </View>
 
-
                     <ScrollView>
                         <ScrollView horizontal>
                             <View>
-                                {/* Header Row */}
                                 <View style={styles.tableRow}>
                                     <View style={[styles.cellHeader, styles.cellRollNo]}><Text style={styles.headerText}>Roll No</Text></View>
                                     <View style={[styles.cellHeader, styles.cellName]}><Text style={styles.headerText}>Name</Text></View>
@@ -389,11 +394,8 @@ const MarksEntryScreen = ({ route, navigation }) => {
                                     <View style={[styles.cellHeader, styles.cellTotal, styles.grandTotalHeader]}><Text style={styles.headerText}>Grand Total</Text></View>
                                 </View>
 
-
-                                {/* Student Rows */}
                                 {sortedStudents.map(student => {
                                     const studentGrandTotal = calculateStudentGrandTotal(student.id);
-                                    const canEdit = !isOverallView; // Simplified permission
                                     return (
                                         <View key={student.id} style={styles.tableRow}>
                                             <View style={[styles.cell, styles.cellRollNo]}><Text style={styles.cellText}>{student.roll_no}</Text></View>
@@ -406,18 +408,18 @@ const MarksEntryScreen = ({ route, navigation }) => {
                                                 return (
                                                     <View key={subject} style={[styles.cell, styles.cellSubject]}>
                                                         <TextInput
-                                                            style={[styles.input, !canEdit && styles.inputDisabled, isOverallView && styles.inputOverallView]}
+                                                            // ★★★ MODIFIED ★★★: Use the new canEditMarks flag
+                                                            style={[styles.input, !canEditMarks && styles.inputDisabled, isOverallView && styles.inputOverallView]}
                                                             keyboardType="numeric"
                                                             maxLength={isOverallView ? 4 : 3}
                                                             value={displayValue}
                                                             onChangeText={(val) => updateMarks(student.id, subject, selectedExam, val)}
-                                                            editable={canEdit}
+                                                            editable={canEditMarks}
                                                             placeholder="-"
                                                         />
                                                     </View>
                                                 );
                                             })}
-
 
                                             <View style={[styles.cell, styles.cellTotal]}>
                                                 <Text style={[styles.cellText, styles.overallText]}>
@@ -430,7 +432,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
                                                 </Text>
                                             </View>
 
-
                                             <View style={[styles.cell, styles.cellTotal, styles.grandTotalCell]}>
                                                 <Text style={[styles.cellText, styles.totalText]}>{studentGrandTotal || '-'}</Text>
                                             </View>
@@ -438,7 +439,6 @@ const MarksEntryScreen = ({ route, navigation }) => {
                                     );
                                 })}
 
-                                {/* Footer Total Row */}
                                 <View style={[styles.tableRow, styles.footerRow]}>
                                     <View style={[styles.cellHeader, styles.cellRollNo]}><Text style={styles.headerText}>-</Text></View>
                                     <View style={[styles.cellHeader, styles.cellName]}><Text style={styles.headerText}>Total</Text></View>
@@ -477,13 +477,11 @@ const MarksEntryScreen = ({ route, navigation }) => {
                                          </Text>
                                     </View>
                                 </View>
-
                             </View>
                         </ScrollView>
                     </ScrollView>
                 </>
             )}
-
 
             {viewMode === 'attendance' && (
                  <ScrollView>
@@ -522,15 +520,30 @@ const MarksEntryScreen = ({ route, navigation }) => {
                 </ScrollView>
             )}
 
-
-            <TouchableOpacity style={[styles.saveButton, saving && styles.saveButtonDisabled]} onPress={handleSave} disabled={saving}>
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Changes</Text>}
-            </TouchableOpacity>
+            {/* ★★★ MODIFIED ★★★: Dynamic button rendering logic */}
+            {viewMode === 'attendance' ? (
+                // Show Save button for Attendance
+                <TouchableOpacity style={[styles.saveButton, saving && styles.saveButtonDisabled]} onPress={handleSave} disabled={saving}>
+                    {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Changes</Text>}
+                </TouchableOpacity>
+            ) : viewMode === 'marks' && !isOverallView ? (
+                // For Marks Entry (but not 'Overall' view)
+                isEditing ? (
+                    // If editing, show "Save" button
+                    <TouchableOpacity style={[styles.saveButton, saving && styles.saveButtonDisabled]} onPress={handleSave} disabled={saving}>
+                        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Marks</Text>}
+                    </TouchableOpacity>
+                ) : (
+                    // If not editing, show "Edit" button
+                    <TouchableOpacity style={styles.editButton} onPress={() => setIsEditing(true)}>
+                        <Text style={styles.editButtonText}>Edit Marks</Text>
+                    </TouchableOpacity>
+                )
+            ) : null /* Do not show any button for Overall marks view */}
         </View>
     );
 };
 
-// Styles remain the same
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f0f2f5' },
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -569,8 +582,10 @@ const styles = StyleSheet.create({
     attendanceSeparator: { marginHorizontal: 4, fontSize: 14, fontWeight: 'bold', color: '#7f8c8d' },
     saveButton: { backgroundColor: '#27ae60', padding: 16, margin: 15, borderRadius: 10, alignItems: 'center', elevation: 3 },
     saveButtonDisabled: { backgroundColor: '#95a5a6' },
-    saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+    saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+    // ★★★ NEW ★★★: Style for the new Edit button
+    editButton: { backgroundColor: '#3498db', padding: 16, margin: 15, borderRadius: 10, alignItems: 'center', elevation: 3 },
+    editButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
 });
-
 
 export default MarksEntryScreen;
