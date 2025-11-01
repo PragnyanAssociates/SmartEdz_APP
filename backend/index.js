@@ -1489,122 +1489,125 @@ app.put('/api/sports/application/remarks', async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error updating remarks.' }); }
 });
 
+
+
+
 // ==========================================================
-// --- EVENTS API ROUTES (NEW) ---
+// --- EVENTS API ROUTES (UPDATED) ---
 // ==========================================================
 
-// STUDENT: Get all upcoming events, along with the student's RSVP status for each.
-app.get('/api/events/all-for-student/:userId', async (req, res) => {
-    const { userId } = req.params;
-    const query = `
-        SELECT e.*, er.status as rsvp_status
-        FROM events e
-        LEFT JOIN event_rsvps er ON e.id = er.event_id AND er.student_id = ?
-        WHERE e.event_datetime >= CURDATE()
-        ORDER BY e.event_datetime ASC`;
+// GET ALL UNIQUE CLASS GROUPS FOR THE EVENT FORM
+app.get('/api/classes', async (req, res) => {
+    // This query selects distinct, non-empty class_group values from the users table.
+    const query = "SELECT DISTINCT class_group FROM users WHERE class_group IS NOT NULL AND class_group != '' ORDER BY class_group ASC";
     try {
-        const [events] = await db.query(query, [userId]);
-        res.json(events);
-    } catch (error) { console.error(error); res.status(500).json({ message: 'Error fetching events.' }); }
+        const [classes] = await db.query(query);
+        // We map the database result to a simple array of strings.
+        const classList = classes.map(c => c.class_group);
+        res.json(classList);
+    } catch (error) {
+        console.error("Error fetching class groups:", error);
+        res.status(500).json({ message: 'Error fetching class groups.' });
+    }
 });
 
-// 📂 File: server.js (REPLACE THIS ROUTE)
-
-// STUDENT: RSVP for an event.
-app.post('/api/events/rsvp', async (req, res) => {
-    const { eventId, userId } = req.body;
+// STUDENT/TEACHER/ADMIN: Get all upcoming events relevant to them.
+app.get('/api/events/all-for-user/:userId', async (req, res) => {
+    const { userId } = req.params;
     const connection = await db.getConnection();
     try {
-        await connection.beginTransaction();
+        // First, get the user's role and class group.
+        const [[user]] = await connection.query("SELECT role, class_group FROM users WHERE id = ?", [userId]);
 
-        // Step 1: Insert the RSVP
-        await connection.query('INSERT INTO event_rsvps (event_id, student_id) VALUES (?, ?)', [eventId, userId]);
-        
-        // ★★★★★ START: NEW NOTIFICATION LOGIC ★★★★★
-
-        // 1. Find all admins
-        const [admins] = await connection.query("SELECT id FROM users WHERE role = 'admin'");
-        
-        if (admins.length > 0) {
-            // 2. Get details for the notification message
-            const [[student]] = await connection.query("SELECT full_name, class_group FROM users WHERE id = ?", [userId]);
-            const [[event]] = await connection.query("SELECT title FROM events WHERE id = ?", [eventId]);
-
-            // 3. Prepare and send notifications
-            const adminIds = admins.map(a => a.id);
-            const notificationTitle = "New Event RSVP";
-            const notificationMessage = `${student.full_name} (${student.class_group}) has RSVP'd for the "${event.title}" event.`;
-            
-            await createBulkNotifications(
-                connection,
-                adminIds,
-                student.full_name,
-                notificationTitle,
-                notificationMessage,
-                '/admin/events' // A link for admins to see the event list
-            );
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
         }
 
-        // ★★★★★ END: NEW NOTIFICATION LOGIC ★★★★★
-        
-        await connection.commit();
-        res.status(201).json({ message: 'RSVP successful! Awaiting approval.' });
+        let query;
+        let queryParams = [];
+
+        // Admins and teachers see all events.
+        if (user.role === 'admin' || user.role === 'teacher') {
+            query = `
+                SELECT * FROM events 
+                WHERE event_datetime >= CURDATE() 
+                ORDER BY event_datetime ASC`;
+        } else { // Students see events for 'All' or their specific class_group.
+            query = `
+                SELECT * FROM events 
+                WHERE event_datetime >= CURDATE() AND (target_class = 'All' OR target_class = ?)
+                ORDER BY event_datetime ASC`;
+            queryParams.push(user.class_group);
+        }
+
+        const [events] = await connection.query(query, queryParams);
+        res.json(events);
 
     } catch (error) {
-        await connection.rollback();
-        if (error.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ message: 'You have already RSVP\'d for this event.' });
-        }
-        console.error("Error processing RSVP:", error);
-        res.status(500).json({ message: 'Error processing RSVP.' });
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching events.' });
     } finally {
         connection.release();
     }
 });
 
-// 📂 File: server.js (REPLACE THIS ROUTE)
 
 // ADMIN/TEACHER: Create a new event.
 app.post('/api/events', async (req, res) => {
-    const { title, category, event_datetime, location, description, rsvp_required, created_by } = req.body;
+    // Note: rsvp_required is removed, target_class is added.
+    const { title, category, event_datetime, location, description, created_by, target_class } = req.body;
     const connection = await db.getConnection();
+
     try {
         await connection.beginTransaction();
 
-        // Step 1: Create the event
-        const query = 'INSERT INTO events (title, category, event_datetime, location, description, rsvp_required, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)';
-        await connection.query(query, [title, category, event_datetime, location, description, rsvp_required, created_by]);
+        // Step 1: Create the event with the new target_class field.
+        const query = 'INSERT INTO events (title, category, event_datetime, location, description, created_by, target_class) VALUES (?, ?, ?, ?, ?, ?, ?)';
+        await connection.query(query, [title, category, event_datetime, location, description, created_by, target_class]);
 
-        // ★★★★★ START: NEW NOTIFICATION LOGIC ★★★★★
+        // ★★★★★ START: MODIFIED NOTIFICATION LOGIC ★★★★★
+
+        let usersToNotifyQuery;
+        const queryParams = [created_by];
+
+        // Define who receives the notification based on the target_class.
+        if (target_class === 'All') {
+            // All students and teachers (except the creator).
+            usersToNotifyQuery = "SELECT id FROM users WHERE role IN ('student', 'teacher') AND id != ?";
+        } else {
+            // All teachers plus students in the specific class.
+            usersToNotifyQuery = "SELECT id FROM users WHERE (role = 'teacher' OR class_group = ?) AND id != ?";
+            queryParams.unshift(target_class); // Add target_class to the beginning of params.
+        }
         
-        // 1. Find all students and teachers (excluding the creator)
-        const [usersToNotify] = await connection.query("SELECT id FROM users WHERE role IN ('student', 'teacher') AND id != ?", [created_by]);
-        
+        const [usersToNotify] = await connection.query(usersToNotifyQuery, queryParams);
+
         if (usersToNotify.length > 0) {
-            // 2. Get the creator's name
+            // Get creator's name for the notification.
             const [[creator]] = await connection.query("SELECT full_name FROM users WHERE id = ?", [created_by]);
             const senderName = creator.full_name || "School Administration";
 
-            // 3. Prepare and send notifications
+            // Prepare and send notifications in bulk.
             const recipientIds = usersToNotify.map(u => u.id);
             const notificationTitle = `New Event: ${title}`;
             const eventDate = new Date(event_datetime).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            const notificationMessage = `Join us for the "${title}" event on ${eventDate}. Check the events section for details.`;
+            const notificationMessage = `A new event "${title}" is scheduled for ${eventDate}. Check the events section for details.`;
 
+            // This function is assumed to exist elsewhere in your backend.
             await createBulkNotifications(
                 connection,
                 recipientIds,
                 senderName,
                 notificationTitle,
                 notificationMessage,
-                '/events' // Generic link to the events screen
+                '/events' // A generic link to the events screen.
             );
         }
 
-        // ★★★★★ END: NEW NOTIFICATION LOGIC ★★★★★
+        // ★★★★★ END: MODIFIED NOTIFICATION LOGIC ★★★★★
 
         await connection.commit();
-        res.status(201).json({ message: 'Event created and users notified successfully!' });
+        res.status(201).json({ message: 'Event created and notifications sent successfully!' });
 
     } catch (error) {
         await connection.rollback();
@@ -1615,122 +1618,44 @@ app.post('/api/events', async (req, res) => {
     }
 });
 
-// ADMIN/TEACHER: Get all events for the management view.
+
+// ADMIN/TEACHER: Get all events for the management view (simplified).
 app.get('/api/events/all-for-admin', async (req, res) => {
+    // Simplified query without RSVP counts.
     const query = `
-        SELECT e.*, COUNT(er.id) as rsvp_count 
+        SELECT e.* 
         FROM events e
-        LEFT JOIN event_rsvps er ON e.id = er.event_id AND er.status = 'Applied'
-        GROUP BY e.id ORDER BY e.event_datetime DESC`;
+        ORDER BY e.event_datetime DESC`;
     try {
         const [events] = await db.query(query);
         res.json(events);
-    } catch (error) { console.error(error); res.status(500).json({ message: 'Error fetching admin event list.' }); }
-});
-
-// ADMIN/TEACHER: Get all RSVPs (all statuses) for a specific event.
-app.get('/api/events/rsvps/:eventId', async (req, res) => {
-    const { eventId } = req.params;
-    const query = `
-        SELECT r.id as rsvp_id, r.status, u.id as student_id, u.full_name, r.rsvp_date
-        FROM event_rsvps r
-        JOIN users u ON r.student_id = u.id
-        WHERE r.event_id = ?
-        ORDER BY r.rsvp_date DESC`;
-    try {
-        const [rsvps] = await db.query(query, [eventId]);
-        res.json(rsvps);
-    } catch (error) { console.error(error); res.status(500).json({ message: 'Error fetching RSVPs.' }); }
-});
-
-// 📂 File: server.js (REPLACE THIS ROUTE)
-
-// ADMIN/TEACHER: Update an RSVP status (Approve/Reject).
-app.put('/api/events/rsvp/status', async (req, res) => {
-    const { rsvpId, status, adminId } = req.body; // Expect adminId from the frontend
-    const connection = await db.getConnection();
-    try {
-        await connection.beginTransaction();
-
-        // Step 1: Update the RSVP status
-        await connection.query('UPDATE event_rsvps SET status = ? WHERE id = ?', [status, rsvpId]);
-        
-        // ★★★★★ START: NEW NOTIFICATION LOGIC ★★★★★
-
-        // 1. Get details about the RSVP for the message
-        const [[rsvpDetails]] = await connection.query(`
-            SELECT r.student_id, e.title AS event_title
-            FROM event_rsvps r
-            JOIN events e ON r.event_id = e.id
-            WHERE r.id = ?
-        `, [rsvpId]);
-
-        if (rsvpDetails) {
-            // 2. Get the admin's name
-            const [[admin]] = await connection.query("SELECT full_name FROM users WHERE id = ?", [adminId]);
-            const senderName = admin.full_name || "School Administration";
-
-            // 3. Prepare notification details
-            const notificationTitle = `RSVP ${status}`;
-            const notificationMessage = `Your RSVP for the event "${rsvpDetails.event_title}" has been ${status}.`;
-
-            // 4. Send a single notification to the student
-            await createNotification(
-                connection,
-                rsvpDetails.student_id,
-                senderName,
-                notificationTitle,
-                notificationMessage,
-                '/events' // Link to the student's event screen
-            );
-        }
-
-        // ★★★★★ END: NEW NOTIFICATION LOGIC ★★★★★
-        
-        await connection.commit();
-        res.status(200).json({ message: `RSVP status updated.` });
-
     } catch (error) {
-        await connection.rollback();
-        console.error("Error updating RSVP status:", error);
-        res.status(500).json({ message: 'Error updating RSVP status.' });
-    } finally {
-        connection.release();
+        console.error(error);
+        res.status(500).json({ message: 'Error fetching admin event list.' });
     }
 });
 
-// STUDENT: Get full details for a SINGLE event, including their specific RSVP.
-app.get('/api/events/details/:eventId/:userId', async (req, res) => {
-    const { eventId, userId } = req.params;
-
-    // First query: Get the main event details
+// STUDENT/TEACHER/ADMIN: Get full details for a SINGLE event.
+app.get('/api/events/details/:eventId', async (req, res) => {
+    const { eventId } = req.params;
     const eventQuery = 'SELECT * FROM events WHERE id = ?';
-    
-    // Second query: Get the specific student's RSVP for this event
-    const rsvpQuery = 'SELECT * FROM event_rsvps WHERE event_id = ? AND student_id = ?';
 
     try {
         const [eventResult] = await db.query(eventQuery, [eventId]);
         if (eventResult.length === 0) {
             return res.status(404).json({ message: 'Event not found.' });
         }
-        
-        const [rsvpResult] = await db.query(rsvpQuery, [eventId, userId]);
-
-        const eventDetails = eventResult[0];
-        const rsvpDetails = rsvpResult.length > 0 ? rsvpResult[0] : null;
-
-        // Combine the results into a single response object
-        res.json({
-            event: eventDetails,
-            rsvp: rsvpDetails
-        });
+        // The response is now simpler, just containing the event details.
+        res.json({ event: eventResult[0] });
 
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Error fetching event details.' });
     }
 });
+
+
+
 
 // ==========================================================
 // --- HELP DESK API ROUTES (NEW) ---
