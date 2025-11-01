@@ -7,8 +7,8 @@ import apiClient from '../../api/client';
 import LinearGradient from 'react-native-linear-gradient';
 
 const THEME = {
-    primary: '#6a11cb',
-    primary_light: '#2575fc',
+    primary: '#74c1f1ff',
+    primary_light: '#135ee0ff',
     background: '#f4f6f9',
     card: '#ffffff',
     text_dark: '#343a40',
@@ -154,10 +154,10 @@ const InfoRow = ({ icon, text }) => (
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: THEME.background },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    headerBanner: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 60, flexDirection: 'row', alignItems: 'center', gap: 15 },
+    headerBanner: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', gap: 10 },
     bannerTitle: { color: THEME.white, fontSize: 24, fontWeight: 'bold' },
     bannerSubtitle: { color: 'rgba(255, 255, 255, 0.8)', fontSize: 14 },
-    listContainer: { paddingHorizontal: 15, paddingTop: 20, paddingBottom: 40, marginTop: -40 },
+    listContainer: { paddingHorizontal: 15, paddingTop: 20, paddingBottom: 40, marginTop: 0.5 },
     card: { backgroundColor: THEME.card, borderRadius: 16, marginBottom: 20, shadowColor: THEME.shadow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
     cardContent: { flexDirection: 'row', padding: 15 },
     dateBlock: { alignItems: 'center', justifyContent: 'center', backgroundColor: THEME.tag_bg, borderRadius: 12, paddingVertical: 10, width: 70, height: 70, marginRight: 15 },
