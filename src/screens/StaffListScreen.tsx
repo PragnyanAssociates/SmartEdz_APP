@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react'; // Import useCallback
 import {
     View, Text, StyleSheet, ScrollView, ActivityIndicator,
     TouchableOpacity, Image, RefreshControl
 } from 'react-native';
+// ★★★ STEP 1: Import useFocusEffect from React Navigation ★★★
+import { useFocusEffect } from '@react-navigation/native';
 import apiClient from '../api/client'; // Make sure this path is correct
 
 const StaffListScreen = ({ navigation }) => {
@@ -11,7 +13,8 @@ const StaffListScreen = ({ navigation }) => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const fetchStaff = async () => {
+    // Renamed fetchStaff to be more descriptive and handle loading state better
+    const loadStaffData = async () => {
         try {
             const response = await apiClient.get('/staff/all');
             setAdmins(response.data.admins || []);
@@ -24,13 +27,21 @@ const StaffListScreen = ({ navigation }) => {
         }
     };
 
-    useEffect(() => {
-        fetchStaff();
-    }, []);
+    // ★★★ STEP 2: Replace useEffect with useFocusEffect ★★★
+    // This will run the function inside it every time the screen comes into focus (i.e., when you navigate back to it).
+    useFocusEffect(
+      useCallback(() => {
+        // Set loading to true only if it's the first load
+        if (admins.length === 0 && teachers.length === 0) {
+            setLoading(true);
+        }
+        loadStaffData();
+      }, [])
+    );
 
     const onRefresh = () => {
         setRefreshing(true);
-        fetchStaff();
+        loadStaffData();
     };
 
     const StaffMember = ({ item }) => (
@@ -42,8 +53,8 @@ const StaffListScreen = ({ navigation }) => {
                 source={
                     item.profile_image_url
                         ? { uri: item.profile_image_url }
-                        // This path is correct. The issue is the server cache.
-                        : require('../assets/default_avatar.png')
+                        // The backend will now add a timestamp to the URL to prevent caching issues.
+                        : require('../assets/default_avatar.png') 
                 }
                 style={styles.avatar}
             />
@@ -83,6 +94,7 @@ const StaffListScreen = ({ navigation }) => {
     );
 };
 
+// Styles remain the same
 const styles = StyleSheet.create({
     container: {
         flex: 1,

@@ -7621,7 +7621,7 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
 // ===============================================================
 
 // GET all staff members (Admins and Teachers) for the list screen
-// This should be protected and only accessible by admins.
+// GET all staff members (Admins and Teachers) for the list screen
 app.get('/api/staff/all', async (req, res) => {
     try {
         const query = `
@@ -7637,9 +7637,21 @@ app.get('/api/staff/all', async (req, res) => {
         `;
         const [staff] = await db.query(query);
 
-        // Separate the results into two arrays for easier frontend rendering
-        const admins = staff.filter(member => member.role === 'admin');
-        const teachers = staff.filter(member => member.role === 'teacher');
+        // ★★★ FIX: Add a unique timestamp to image URLs to break the cache ★★★
+        const staffWithCacheBust = staff.map(member => {
+            if (member.profile_image_url) {
+                // This appends a parameter like "?t=1678886400000" to the URL
+                return {
+                    ...member,
+                    profile_image_url: `${member.profile_image_url}?t=${new Date().getTime()}`
+                };
+            }
+            return member;
+        });
+
+        // Use the modified data to create the final lists
+        const admins = staffWithCacheBust.filter(member => member.role === 'admin');
+        const teachers = staffWithCacheBust.filter(member => member.role === 'teacher');
 
         res.json({ admins, teachers });
 
