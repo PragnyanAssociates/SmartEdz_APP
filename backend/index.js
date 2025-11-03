@@ -3754,35 +3754,37 @@ app.get('/api/reports/:reportId/details', async (req, res) => {
 });
 
 // ===============================================================
-// --- TEACHER PERFORMANCE MODULE API ROUTES (CORRECTED) ---
+// --- TEACHER PERFORMANCE MODULE API ROUTES (FINAL CORRECTED VERSION) ---
 // ===============================================================
 
 // Helper function to calculate average and total marks for a given set of assignments
 const calculateTeacherPerformance = async (db, teacherId, academicYear) => {
-    // ★★★ FIX ★★★: Added rta.academic_year = rsm.academic_year to the JOIN condition.
-    // This was the critical missing piece causing marks to be double-counted.
+    // ★★★ FINAL FIX ★★★: The query now uses a subquery with DISTINCT.
+    // This ensures that even if there are accidental duplicate entries in the assignments table,
+    // each student mark is joined and counted only ONCE. This definitively solves the duplication bug.
     const performanceQuery = `
         SELECT
-            rta.subject,
-            rta.class_group,
+            T.subject,
+            T.class_group,
             AVG(rsm.marks_obtained) AS average_marks,
             SUM(rsm.marks_obtained) AS total_marks,
             COUNT(rsm.id) AS mark_entries_count
-        FROM report_teacher_assignments AS rta
+        FROM
+            (SELECT DISTINCT class_group, subject, academic_year
+             FROM report_teacher_assignments
+             WHERE teacher_id = ? AND academic_year = ?) AS T
         JOIN report_student_marks AS rsm
-            ON rta.class_group = rsm.class_group
-            AND rta.subject = rsm.subject
-            AND rta.academic_year = rsm.academic_year -- This condition fixes the bug
+            ON T.class_group = rsm.class_group
+            AND T.subject = rsm.subject
+            AND T.academic_year = rsm.academic_year
         WHERE
-            rta.teacher_id = ?
-            AND rta.academic_year = ?
-            AND rsm.marks_obtained IS NOT NULL
+            rsm.marks_obtained IS NOT NULL
         GROUP BY
-            rta.subject,
-            rta.class_group
+            T.subject,
+            T.class_group
         ORDER BY
-            rta.class_group,
-            rta.subject;
+            T.class_group,
+            T.subject;
     `;
     const [performanceData] = await db.query(performanceQuery, [teacherId, academicYear]);
     return performanceData;
@@ -3794,14 +3796,12 @@ app.get('/api/performance/admin/all-teachers/:academicYear', async (req, res) =>
     try {
         const { academicYear } = req.params;
 
-        // 1. Get all users who are teachers
         const [teachers] = await db.query("SELECT id, full_name FROM users WHERE role = 'teacher'");
         
         if (teachers.length === 0) {
             return res.json([]);
         }
 
-        // 2. Fetch performance data for each teacher
         const allPerformanceData = [];
         for (const teacher of teachers) {
             const performance = await calculateTeacherPerformance(db, teacher.id, academicYear);
@@ -3809,7 +3809,7 @@ app.get('/api/performance/admin/all-teachers/:academicYear', async (req, res) =>
             let totalAverage = 0;
             let overallTotalMarks = 0;
             if (performance.length > 0) {
-                // ★★★ IMPROVEMENT ★★★: Calculate a more accurate overall average.
+                // Correctly calculate the overall total and a more accurate weighted average
                 const totalMarksSum = performance.reduce((sum, p) => sum + parseInt(p.total_marks || 0, 10), 0);
                 const totalEntries = performance.reduce((sum, p) => sum + parseInt(p.mark_entries_count || 0, 10), 0);
                 
