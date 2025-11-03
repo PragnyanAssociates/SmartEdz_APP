@@ -48,6 +48,8 @@ import TeacherSyllabusScreen from '../screens/syllabus/TeacherSyllabusScreen';
 import TeacherAdminResourcesScreen from '../screens/syllabus_Textbook/TeacherAdminResourcesScreen';
 import TeacherAttendanceReportScreen from '../screens/teacher_attendence/TeacherAttendanceReportScreen';
 
+import TeacherPerformanceScreen from '../screens/Performance/TeacherPerformanceScreen';
+
 // --- Constants & Colors ---
 const { width: windowWidth } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -105,6 +107,7 @@ const TeacherDashboard = ({ navigation }) => {
 
   const allQuickAccessItems = [
     { id: 'qa23', title: 'My Attendence', imageSource: 'https://cdn-icons-png.flaticon.com/128/12404/12404284.png', navigateToTab: 'TeacherAttendanceReportScreen' },
+    { id: 'qa24', title: 'My Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/939/939354.png', navigateToTab: 'TeacherPerformanceScreen' },
     { id: 'qa2', title: 'Timetable', imageSource: 'https://cdn-icons-png.flaticon.com/128/1254/1254275.png', navigateToTab: 'Timetable' },
     { id: 'qa3', title: 'Student Attendance', imageSource: 'https://cdn-icons-png.flaticon.com/128/10293/10293877.png', navigateToTab: 'Attendance' },
     { id: 'qa4', title: 'Home Work', imageSource: 'https://cdn-icons-png.flaticon.com/128/11647/11647336.png', navigateToTab: 'TeacherAdminHomeworkScreen' },
@@ -208,6 +211,7 @@ const TeacherDashboard = ({ navigation }) => {
       case 'TeacherSyllabusScreen': return ( <><ContentScreenHeader title="Syllabus Tracking" onBack={handleBack} /><TeacherSyllabusScreen /></> );
       case 'TeacherAdminResourcesScreen': return ( <><ContentScreenHeader title="Textbooks" onBack={handleBack} /><TeacherAdminResourcesScreen /></> );
       case 'TeacherAttendanceReportScreen': return ( <><ContentScreenHeader title="My Attendence" onBack={handleBack} /><TeacherAttendanceReportScreen /></> );
+      case 'TeacherPerformanceScreen': return ( <><ContentScreenHeader title="My Performance" onBack={handleBack} /><TeacherPerformanceScreen /></> );
 
       default: return ( <><ContentScreenHeader title={capitalize(activeTab)} onBack={handleBack} /><View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content not available yet.</Text></View></> );
     }

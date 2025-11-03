@@ -3753,6 +3753,96 @@ app.get('/api/reports/:reportId/details', async (req, res) => {
     }
 });
 
+// ===============================================================
+// --- TEACHER PERFORMANCE MODULE API ROUTES ---
+// ===============================================================
+
+// Helper function to calculate average marks for a given set of assignments
+const calculateTeacherPerformance = async (db, teacherId, academicYear) => {
+    const performanceQuery = `
+        SELECT
+            rta.subject,
+            rta.class_group,
+            AVG(rsm.marks_obtained) AS average_marks,
+            COUNT(DISTINCT rsm.student_id) AS student_count
+        FROM report_teacher_assignments AS rta
+        JOIN report_student_marks AS rsm
+            ON rta.class_group = rsm.class_group AND rta.subject = rsm.subject
+        WHERE
+            rta.teacher_id = ?
+            AND rta.academic_year = ?
+            AND rsm.marks_obtained IS NOT NULL
+        GROUP BY
+            rta.subject,
+            rta.class_group
+        ORDER BY
+            rta.class_group,
+            rta.subject;
+    `;
+    const [performanceData] = await db.query(performanceQuery, [teacherId, academicYear]);
+    return performanceData;
+};
+
+// --- ADMIN ROUTE ---
+// GET performance data for all teachers
+app.get('/api/performance/admin/all-teachers/:academicYear', async (req, res) => {
+    try {
+        const { academicYear } = req.params;
+
+        // 1. Get all users who are teachers
+        const [teachers] = await db.query("SELECT id, full_name FROM users WHERE role = 'teacher'");
+        
+        if (teachers.length === 0) {
+            return res.json([]);
+        }
+
+        // 2. Fetch performance data for each teacher
+        const allPerformanceData = [];
+        for (const teacher of teachers) {
+            const performance = await calculateTeacherPerformance(db, teacher.id, academicYear);
+            
+            // Calculate an overall average for the teacher across all their subjects/classes
+            let totalAverage = 0;
+            if (performance.length > 0) {
+                const totalMarks = performance.reduce((sum, p) => sum + parseFloat(p.average_marks), 0);
+                totalAverage = totalMarks / performance.length;
+            }
+            
+            allPerformanceData.push({
+                teacher_id: teacher.id,
+                teacher_name: teacher.full_name,
+                overall_average: totalAverage.toFixed(2),
+                detailed_performance: performance
+            });
+        }
+
+        res.json(allPerformanceData);
+
+    } catch (error) {
+        console.error("Error fetching all teachers' performance:", error);
+        res.status(500).json({ message: "Failed to fetch teacher performance data." });
+    }
+});
+
+
+// --- TEACHER ROUTE ---
+// GET performance data for the currently logged-in teacher
+app.get('/api/performance/teacher/:teacherId/:academicYear', async (req, res) => {
+    try {
+        const { teacherId, academicYear } = req.params;
+        
+        const performance = await calculateTeacherPerformance(db, teacherId, academicYear);
+        
+        res.json(performance);
+
+    } catch (error) {
+        console.error("Error fetching teacher's performance:", error);
+        res.status(500).json({ message: "Failed to fetch your performance data." });
+    }
+});
+
+
+
 
 
 // ==========================================================

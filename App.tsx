@@ -91,6 +91,8 @@ import StudentResourcesScreen from './src/screens/syllabus_Textbook/StudentResou
 import TeacherAttendanceMarkingScreen from './src/screens/teacher_attendence/TeacherAttendanceMarkingScreen';
 import TeacherAttendanceReportScreen from './src/screens/teacher_attendence/TeacherAttendanceReportScreen';
 
+import TeacherPerformanceScreen from './src/screens/Performance/TeacherPerformanceScreen';
+
 
 import PDFViewerScreen from './src/screens/syllabus_Textbook/PDFViewerScreen';
 // Donor-Specific Screens
@@ -247,6 +249,8 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="TeacherAttendanceReportScreen" component={TeacherAttendanceReportScreen} />  
 
       {/* <Stack.Screen name="MarksEntryScreen" component={MarksEntryScreen} /> */}
+
+      <Stack.Screen name="TeacherPerformanceScreen" component={TeacherPerformanceScreen} />
       <Stack.Screen name="ReportScreen" component={ReportNavigator} options={{ headerShown: false, 
           title: 'Progress Reports',
           headerStyle: { backgroundColor: '#e0f2f7' },
