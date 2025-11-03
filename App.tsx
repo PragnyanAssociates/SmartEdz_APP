@@ -95,6 +95,9 @@ import TeacherPerformanceScreen from './src/screens/Performance/TeacherPerforman
 
 
 import PDFViewerScreen from './src/screens/syllabus_Textbook/PDFViewerScreen';
+
+import StaffListScreen from './src/screens/StaffListScreen';
+import StaffDetailScreen from './src/screens/StaffListScreen';
 // Donor-Specific Screens
 // import DonorNotifications from './src/components/DonorNotifications';
 
@@ -246,7 +249,10 @@ const AuthenticatedStack = () => {
           headerTintColor: '#008080',
           headerTitleStyle: { fontWeight: 'bold' } }} />
       <Stack.Screen name="TeacherAttendanceMarkingScreen" component={TeacherAttendanceMarkingScreen} />
-      <Stack.Screen name="TeacherAttendanceReportScreen" component={TeacherAttendanceReportScreen} />  
+      <Stack.Screen name="TeacherAttendanceReportScreen" component={TeacherAttendanceReportScreen} />
+
+      <Stack.Screen name="StaffList" component={StaffListScreen} options={{ title: 'Staff' }} />
+      <Stack.Screen name="StaffDetail" component={StaffDetailScreen} options={{ title: 'Staff Profile' }} />  
 
       {/* <Stack.Screen name="MarksEntryScreen" component={MarksEntryScreen} /> */}
 

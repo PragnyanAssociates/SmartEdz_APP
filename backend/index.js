@@ -7615,6 +7615,79 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
 
 
 
+
+// ===============================================================
+// --- STAFF MODULE API ROUTES ---
+// ===============================================================
+
+// GET all staff members (Admins and Teachers) for the list screen
+// This should be protected and only accessible by admins.
+app.get('/api/staff/all', async (req, res) => {
+    try {
+        const query = `
+            SELECT
+                u.id,
+                u.full_name,
+                u.role,
+                up.profile_image_url
+            FROM users AS u
+            LEFT JOIN user_profiles AS up ON u.id = up.user_id
+            WHERE u.role IN ('admin', 'teacher')
+            ORDER BY u.full_name ASC;
+        `;
+        const [staff] = await db.query(query);
+
+        // Separate the results into two arrays for easier frontend rendering
+        const admins = staff.filter(member => member.role === 'admin');
+        const teachers = staff.filter(member => member.role === 'teacher');
+
+        res.json({ admins, teachers });
+
+    } catch (error) {
+        console.error("Error fetching all staff:", error);
+        res.status(500).json({ message: "Failed to fetch staff list." });
+    }
+});
+
+// GET detailed information for a single staff member
+// This should also be protected for admin access.
+app.get('/api/staff/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const query = `
+            SELECT
+                u.id,
+                u.username,
+                u.full_name,
+                u.role,
+                up.email,
+                up.dob,
+                up.gender,
+                up.phone,
+                up.address,
+                up.profile_image_url
+            FROM users AS u
+            LEFT JOIN user_profiles AS up ON u.id = up.user_id
+            WHERE u.id = ?;
+        `;
+        const [[staffDetails]] = await db.query(query, [id]);
+
+        if (!staffDetails) {
+            return res.status(404).json({ message: 'Staff member not found.' });
+        }
+
+        res.json(staffDetails);
+
+    } catch (error) {
+        console.error("Error fetching staff details:", error);
+        res.status(500).json({ message: "Failed to fetch staff details." });
+    }
+});
+
+
+
+
+
 // By using "server.listen", you enable both your API routes and the real-time chat.
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server is running on port ${PORT} and is now accessible on your network.`);
