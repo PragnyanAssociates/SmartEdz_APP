@@ -13,24 +13,33 @@ import * as Animatable from 'react-native-animatable';
 import FastImage from 'react-native-fast-image';
 
 // --- Type Definitions ---
+// MODIFIED: ProfileData includes all possible fields and roles
 export interface ProfileData {
   id: number;
   username: string;
   full_name: string;
-  role: string;
+  role: 'student' | 'teacher' | 'admin' | 'others';
   class_group: string;
   dob?: string;
   gender?: string;
   phone?: string;
   address?: string;
   profile_image_url?: string;
+  email?: string;
+
+  // Student Fields
   admission_date?: string;
   roll_no?: string;
-  email?: string;
   admission_no?: string;
   parent_name?: string;
-  aadhar_no?: string;
   pen_no?: string;
+
+  // Admin / Teacher / Others Fields
+  aadhar_no?: string;
+  joining_date?: string;
+  previous_salary?: string;
+  present_salary?: string;
+  experience?: string;
 }
 
 interface ProfileScreenProps {
@@ -51,10 +60,7 @@ const BORDER_COLOR = '#EAECEF';
 // --- Helper Functions ---
 const getProfileImageSource = (url?: string | null) => {
   if (!url || typeof url !== 'string') {
-    // This is a placeholder text, you can replace it with a default image require()
      return require('../assets/default_avatar.png');
-    // Using a text-based placeholder for simplicity if you don't have a default image.
-    // return { uri: 'https://via.placeholder.com/150/e0e0e0/808080?text=No+Image' }; 
   }
   if (url.startsWith('http') || url.startsWith('file')) {
     return { uri: url, priority: FastImage.priority.normal };
@@ -88,7 +94,6 @@ const EditField = memo(({ label, value, onChange, ...props }: any) => (
 
 const DisplayProfileView = memo(({ userProfile, onEditPress }: { userProfile: ProfileData, onEditPress: () => void }) => {
   const profileImageSource = getProfileImageSource(userProfile.profile_image_url);
-  const showAcademicDetails = userProfile.role !== 'donor';
   const [isViewerVisible, setViewerVisible] = useState(false);
 
   return (
@@ -128,8 +133,8 @@ const DisplayProfileView = memo(({ userProfile, onEditPress }: { userProfile: Pr
         <Animatable.View animation="fadeInUp" duration={500} delay={200} style={styles.detailsCard}>
           <Text style={styles.cardTitle}>Personal Information</Text>
           <DetailRow label="User ID:" value={userProfile.username} icon="badge" />
-          {showAcademicDetails && <DetailRow label="Date of Birth:" value={userProfile.dob} icon="cake" />}
-          {showAcademicDetails && <DetailRow label="Gender:" value={userProfile.gender} icon="wc" />}
+          <DetailRow label="Date of Birth:" value={userProfile.dob} icon="cake" />
+          <DetailRow label="Gender:" value={userProfile.gender} icon="wc" />
         </Animatable.View>
         <Animatable.View animation="fadeInUp" duration={500} delay={300} style={styles.detailsCard}>
           <Text style={styles.cardTitle}>Contact Information</Text>
@@ -137,7 +142,9 @@ const DisplayProfileView = memo(({ userProfile, onEditPress }: { userProfile: Pr
           <DetailRow label="Phone:" value={userProfile.phone} icon="phone" />
           <DetailRow label="Address:" value={userProfile.address} icon="home" />
         </Animatable.View>
-        {showAcademicDetails && (
+
+        {/* MODIFIED: Conditionally render the correct details card */}
+        {userProfile.role === 'student' ? (
           <Animatable.View animation="fadeInUp" duration={500} delay={400} style={styles.detailsCard}>
             <Text style={styles.cardTitle}>Academic Details</Text>
             <DetailRow label="Class:" value={userProfile.class_group} icon="class" />
@@ -147,6 +154,15 @@ const DisplayProfileView = memo(({ userProfile, onEditPress }: { userProfile: Pr
             <DetailRow label="Aadhar No.:" value={userProfile.aadhar_no} icon="fingerprint" />
             <DetailRow label="PEN No.:" value={userProfile.pen_no} icon="description" />
             <DetailRow label="Admission Date:" value={userProfile.admission_date} icon="event" />
+          </Animatable.View>
+        ) : (
+          <Animatable.View animation="fadeInUp" duration={500} delay={400} style={styles.detailsCard}>
+            <Text style={styles.cardTitle}>Professional Details</Text>
+            <DetailRow label="Aadhar No.:" value={userProfile.aadhar_no} icon="fingerprint" />
+            <DetailRow label="Joining Date:" value={userProfile.joining_date} icon="event-available" />
+            <DetailRow label="Previous Salary:" value={userProfile.previous_salary} icon="money-off" />
+            <DetailRow label="Present Salary:" value={userProfile.present_salary} icon="attach-money" />
+            <DetailRow label="Experience:" value={userProfile.experience} icon="work" />
           </Animatable.View>
         )}
       </ScrollView>
@@ -203,13 +219,12 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
   const handleChange = useCallback((field: keyof ProfileData, value: string) => {
     setEditedData(prev => ({ ...prev, [field]: value }));
   }, []);
-  
+
   const handleSaveChanges = () => {
     onSave(editedData, newImage);
   }
 
   const imageSource = getProfileImageSource(editedData.profile_image_url);
-  const showAcademicFields = userProfile.role !== 'donor';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -227,23 +242,36 @@ const EditProfileView = memo(({ userProfile, onSave, onCancel, isSaving }: { use
               </TouchableOpacity>
           </View>
         </View>
+
+        {/* Common editable fields */}
         <EditField label="Full Name" value={editedData.full_name} onChange={text => handleChange('full_name', text)} />
         <EditField label="Email" value={editedData.email} onChange={text => handleChange('email', text)} keyboardType="email-address" />
         <EditField label="Phone" value={editedData.phone} onChange={text => handleChange('phone', text)} keyboardType="phone-pad" />
         <EditField label="Address" value={editedData.address} onChange={text => handleChange('address', text)} multiline />
-        {showAcademicFields && (
+        <EditField label="Date of Birth" value={editedData.dob} onChange={text => handleChange('dob', text)} placeholder="YYYY-MM-DD" />
+        <EditField label="Gender" value={editedData.gender} onChange={text => handleChange('gender', text)} />
+
+        {/* MODIFIED: Conditionally render the correct edit fields */}
+        {userProfile.role === 'student' ? (
           <>
-            <EditField label="Date of Birth" value={editedData.dob} onChange={text => handleChange('dob', text)} placeholder="YYYY-MM-DD" />
-            <EditField label="Gender" value={editedData.gender} onChange={text => handleChange('gender', text)} />
             <EditField label="Class / Group" value={editedData.class_group} onChange={text => handleChange('class_group', text)} />
-            <EditField label="Roll No." value={editedData.roll_no} onChange={text => handleChange('roll_no', text)} />
+            <EditField label="Roll No." value={editedData.roll_no} onChange={text => handleChange('roll_no', text)} keyboardType="numeric" />
             <EditField label="Admission No." value={editedData.admission_no} onChange={text => handleChange('admission_no', text)} />
             <EditField label="Parent Name" value={editedData.parent_name} onChange={text => handleChange('parent_name', text)} />
             <EditField label="Aadhar No." value={editedData.aadhar_no} onChange={text => handleChange('aadhar_no', text)} keyboardType="numeric" maxLength={12} />
             <EditField label="PEN No." value={editedData.pen_no} onChange={text => handleChange('pen_no', text)} />
             <EditField label="Admission Date" value={editedData.admission_date} onChange={text => handleChange('admission_date', text)} placeholder="YYYY-MM-DD" />
           </>
+        ) : (
+          <>
+            <EditField label="Aadhar No." value={editedData.aadhar_no} onChange={text => handleChange('aadhar_no', text)} keyboardType="numeric" maxLength={12} />
+            <EditField label="Joining Date" value={editedData.joining_date} onChange={text => handleChange('joining_date', text)} placeholder="YYYY-MM-DD" />
+            <EditField label="Previous Salary" value={editedData.previous_salary} onChange={text => handleChange('previous_salary', text)} keyboardType="numeric" />
+            <EditField label="Present Salary" value={editedData.present_salary} onChange={text => handleChange('present_salary', text)} keyboardType="numeric" />
+            <EditField label="Experience" value={editedData.experience} onChange={text => handleChange('experience', text)} multiline />
+          </>
         )}
+
         {isSaving ? <ActivityIndicator size="large" color={PRIMARY_ACCENT} style={{ marginTop: 20 }} /> : (
             <View style={styles.editActionsContainer}>
                 <TouchableOpacity style={[styles.editActionButton, styles.cancelButton]} onPress={onCancel}>
@@ -384,8 +412,8 @@ const ProfileScreen = ({ staticProfileData, onStaticSave, onProfileUpdate }: Pro
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: PAGE_BACKGROUND },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: PAGE_BACKGROUND },
-  container: { 
-    paddingHorizontal: 15, 
+  container: {
+    paddingHorizontal: 15,
     paddingBottom: 40,
     paddingTop: 20
   },

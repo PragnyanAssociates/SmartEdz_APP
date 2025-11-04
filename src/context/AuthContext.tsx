@@ -2,12 +2,12 @@ import React, { createContext, useState, useContext, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from '../api/client';
 
-// The User interface is correct. It already includes the optional profile_image_url.
+// The User interface is correct. It already includes the updated roles.
 interface User {
   id: string;
   username: string;
   full_name: string;
-  role: 'admin' | 'teacher' | 'student' | 'donor';
+  role: 'admin' | 'teacher' | 'student' | 'others';
   profile_image_url?: string;
 }
 
@@ -54,7 +54,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     loadSession();
   }, []);
 
-  // --- MODIFIED LOGIN FUNCTION ---
+  // This login function correctly fetches the full profile for ANY user role.
   const login = async (userFromLoginApi: User, token: string) => {
     try {
       // 1. Set the authorization header immediately so the next API call is authenticated
@@ -65,8 +65,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const fullUserProfile = profileResponse.data;
 
       // 3. Create a final, complete user object by merging the basic login data
-      //    with the detailed profile data. The profile data will overwrite any
-      //    conflicting fields (like full_name), ensuring it's the most current.
+      //    with the detailed profile data.
       const completeUser = {
         ...userFromLoginApi, // Contains basic info like id, username, role
         ...fullUserProfile,  // Contains everything else like full_name, profile_image_url, etc.
@@ -79,8 +78,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
     } catch (e) {
       console.error("AuthContext: Failed to login or fetch full profile", e);
-      // If fetching the profile fails, it's a critical error.
-      // It's safer to log the user out to prevent a broken state.
+      // If fetching the profile fails, it's safer to log the user out to prevent a broken state.
       await logout();
     }
   };
@@ -93,8 +91,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     } catch (e) { console.error("AuthContext: Failed to clear session", e); }
   };
 
-  // This updateUser function is already implemented correctly and is crucial
-  // for updating the profile image *during* an active session. No changes needed here.
   const updateUser = (newUserData: Partial<User>) => {
     setAuthState(prevAuthState => {
       if (!prevAuthState.user) {

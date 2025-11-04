@@ -12,22 +12,31 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const CLASS_CATEGORIES = [ 'Admins', 'Teachers', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10' ];
-const USER_ROLES = ['admin', 'teacher', 'student'];
+// MODIFIED: Added 'Others' to categories and roles
+const CLASS_CATEGORIES = [ 'Admins', 'Teachers', 'Others', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10' ];
+const USER_ROLES = ['admin', 'teacher', 'student', 'others'];
 
+// MODIFIED: User interface with all possible fields and new role
 interface User {
   id: number;
   username: string;
   password?: string;
   full_name: string;
-  role: 'student' | 'teacher' | 'admin';
+  role: 'student' | 'teacher' | 'admin' | 'others';
   class_group: string;
   subjects_taught?: string[];
+  // Student fields
   roll_no?: string;
   admission_no?: string;
   parent_name?: string;
-  aadhar_no?: string;
   pen_no?: string;
+  admission_date?: string;
+  // Shared / Admin / Teacher / Others fields
+  aadhar_no?: string;
+  joining_date?: string;
+  previous_salary?: string;
+  present_salary?: string;
+  experience?: string;
 }
 
 const AdminLM = () => {
@@ -38,7 +47,6 @@ const AdminLM = () => {
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-  // NEW: State to manage the text input for adding a single subject
   const [currentSubjectInput, setCurrentSubjectInput] = useState('');
 
   const fetchUsers = async () => {
@@ -60,9 +68,13 @@ const AdminLM = () => {
   const groupedUsers = useMemo(() => {
     const groups: { [key: string]: User[] } = {};
     CLASS_CATEGORIES.forEach(category => {
+        // MODIFIED: Handle Admins and Others by role, everything else by class_group
         if (category === 'Admins') {
              groups[category] = users.filter(user => user.role === 'admin');
-        } else {
+        } else if (category === 'Others') {
+             groups[category] = users.filter(user => user.role === 'others');
+        }
+        else {
             groups[category] = users.filter(user => user.class_group === category);
         }
     });
@@ -71,13 +83,15 @@ const AdminLM = () => {
 
   const openAddModal = () => {
     setEditingUser(null);
-    setFormData({ 
-      username: '', password: '', full_name: '', role: 'student', 
-      class_group: 'LKG', subjects_taught: [], roll_no: '',
-      admission_no: '', parent_name: '', aadhar_no: '', pen_no: ''
+    // MODIFIED: Initialize all possible fields
+    setFormData({
+      username: '', password: '', full_name: '', role: 'student',
+      class_group: 'LKG', subjects_taught: [],
+      roll_no: '', admission_no: '', parent_name: '', aadhar_no: '', pen_no: '', admission_date: '',
+      joining_date: '', previous_salary: '', present_salary: '', experience: ''
     });
     setIsPasswordVisible(false);
-    setCurrentSubjectInput(''); // NEW: Reset subject input
+    setCurrentSubjectInput('');
     setIsModalVisible(true);
   };
 
@@ -85,7 +99,7 @@ const AdminLM = () => {
     setEditingUser(user);
     setFormData({ ...user, subjects_taught: user.subjects_taught || [] });
     setIsPasswordVisible(false);
-    setCurrentSubjectInput(''); // NEW: Reset subject input
+    setCurrentSubjectInput('');
     setIsModalVisible(true);
   };
 
@@ -94,18 +108,21 @@ const AdminLM = () => {
       Alert.alert('Error', 'Username and Full Name are required.');
       return;
     }
-    if (!formData.password) {
-        Alert.alert('Error', 'Password cannot be empty.');
+    if (!editingUser && !formData.password) {
+        Alert.alert('Error', 'Password cannot be empty for new users.');
         return;
     }
 
     const payload = { ...formData };
-    if (payload.role === 'student' || payload.role === 'admin') {
+    if (payload.role !== 'teacher') {
         delete payload.subjects_taught;
     }
     if (payload.role === 'admin') {
         payload.class_group = 'Admins';
+    } else if (payload.role === 'others') {
+        payload.class_group = 'Others';
     }
+
 
     const isEditing = !!editingUser;
 
@@ -115,7 +132,7 @@ const AdminLM = () => {
       } else {
         await apiClient.post('/users', payload);
       }
-      
+
       Alert.alert('Success', `User ${isEditing ? 'updated' : 'created'} successfully!`);
       setIsModalVisible(false);
       setEditingUser(null);
@@ -133,8 +150,8 @@ const AdminLM = () => {
             await apiClient.delete(`/users/${user.id}`);
             Alert.alert('Deleted!', `"${user.full_name}" was removed successfully.`);
             fetchUsers();
-          } catch (error: any) { 
-            Alert.alert('Error', error.response?.data?.message || 'Failed to delete the user.'); 
+          } catch (error: any) {
+            Alert.alert('Error', error.response?.data?.message || 'Failed to delete the user.');
           }
       }},
     ]);
@@ -156,18 +173,16 @@ const AdminLM = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedClass(expandedClass === className ? null : className);
   };
-  
-  // NEW: Function to add a subject to the formData state
+
   const handleAddSubject = () => {
       const subjectToAdd = currentSubjectInput.trim();
       if (subjectToAdd && !formData.subjects_taught?.includes(subjectToAdd)) {
           const updatedSubjects = [...(formData.subjects_taught || []), subjectToAdd];
           setFormData({ ...formData, subjects_taught: updatedSubjects });
-          setCurrentSubjectInput(''); // Clear the input field after adding
+          setCurrentSubjectInput('');
       }
   };
 
-  // NEW: Function to remove a subject from the formData state
   const handleRemoveSubject = (subjectToRemove: string) => {
       const updatedSubjects = formData.subjects_taught.filter((sub: string) => sub !== subjectToRemove);
       setFormData({ ...formData, subjects_taught: updatedSubjects });
@@ -176,9 +191,9 @@ const AdminLM = () => {
 
   const renderUserItem = (item: User) => (
     <View style={styles.userRow}>
-      <Icon 
-        name={ item.role === 'admin' ? 'admin-panel-settings' : item.role === 'teacher' ? 'school' : 'person' } 
-        size={24} color="#008080" style={styles.userIcon} 
+      <Icon
+        name={ item.role === 'admin' ? 'admin-panel-settings' : item.role === 'teacher' ? 'school' : item.role === 'others' ? 'group' : 'person' }
+        size={24} color="#008080" style={styles.userIcon}
       />
       <View style={styles.userInfo}>
         <Text style={styles.userName}>{item.full_name}</Text>
@@ -245,39 +260,42 @@ const AdminLM = () => {
                 <ScrollView contentContainerStyle={styles.modalContent}>
                     <Text style={styles.modalTitle}>{isEditing ? 'Edit User' : 'Add New User'}</Text>
                     <View style={styles.modalTitleSeparator} />
-                    
+
                     <Text style={styles.inputLabel}>Username</Text>
                     <TextInput style={styles.input} placeholder="e.g., john.doe, STU101" value={formData.username} onChangeText={(val) => setFormData({ ...formData, username: val })} autoCapitalize="none" />
-                    
+
                     <Text style={styles.inputLabel}>Password</Text>
                     <View style={styles.passwordContainer}>
-                      <TextInput 
-                        style={styles.passwordInput} 
-                        placeholder="Enter user password" 
-                        value={formData.password} 
-                        onChangeText={(val) => setFormData({ ...formData, password: val })} 
-                        secureTextEntry={!isPasswordVisible} 
+                      <TextInput
+                        style={styles.passwordInput}
+                        placeholder={isEditing ? "Leave blank to keep same" : "Enter user password"}
+                        value={formData.password}
+                        onChangeText={(val) => setFormData({ ...formData, password: val })}
+                        secureTextEntry={!isPasswordVisible}
                       />
                       <TouchableOpacity onPress={() => setIsPasswordVisible(!isPasswordVisible)} style={styles.eyeIcon}>
                         <Icon name={isPasswordVisible ? 'visibility' : 'visibility-off'} size={22} color="#7F8C8D" />
                       </TouchableOpacity>
                     </View>
-                    
+
                     <Text style={styles.inputLabel}>Full Name</Text>
                     <TextInput style={styles.input} placeholder="Enter user's full name" value={formData.full_name} onChangeText={(val) => setFormData({ ...formData, full_name: val })} />
-                    
+
                     <Text style={styles.inputLabel}>Role</Text>
                     <View style={styles.pickerWrapper}>
                         <Picker selectedValue={formData.role} onValueChange={(val) => {
-                                const newClassGroup = val === 'teacher' ? 'Teachers' : (val === 'admin' ? 'Admins' : formData.class_group || 'LKG');
+                                // MODIFIED: Handle class_group assignment for all roles
+                                let newClassGroup = formData.class_group || 'LKG';
+                                if (val === 'teacher') newClassGroup = 'Teachers';
+                                else if (val === 'admin') newClassGroup = 'Admins';
+                                else if (val === 'others') newClassGroup = 'Others';
                                 setFormData({ ...formData, role: val, class_group: newClassGroup });
                             }} style={styles.modalPicker}>
                             {USER_ROLES.map((role) => (<Picker.Item key={role} label={role.charAt(0).toUpperCase() + role.slice(1)} value={role} />))}
                         </Picker>
                     </View>
-                    
-                    {/* MODIFIED: Complete overhaul of the teacher subjects input section */}
-                    {formData.role === 'teacher' ? (
+
+                    {formData.role === 'teacher' && (
                         <>
                             <Text style={styles.inputLabel}>Subjects Taught</Text>
                             <View style={styles.subjectInputContainer}>
@@ -286,13 +304,13 @@ const AdminLM = () => {
                                     placeholder="e.g., English"
                                     value={currentSubjectInput}
                                     onChangeText={setCurrentSubjectInput}
-                                    onSubmitEditing={handleAddSubject} // Allows adding by pressing 'enter' on keyboard
+                                    onSubmitEditing={handleAddSubject}
                                 />
                                 <TouchableOpacity style={styles.subjectAddButton} onPress={handleAddSubject}>
                                     <Text style={styles.subjectAddButtonText}>Add</Text>
                                 </TouchableOpacity>
                             </View>
-                            
+
                             <View style={styles.subjectTagContainer}>
                                 {formData.subjects_taught?.map((subject: string, index: number) => (
                                     <Animatable.View animation="fadeIn" duration={300} key={index} style={styles.subjectTag}>
@@ -304,32 +322,44 @@ const AdminLM = () => {
                                 ))}
                             </View>
                         </>
-                    ) : formData.role === 'student' ? (
+                    )}
+
+                    {formData.role === 'student' ? (
                         <>
+                          {/* --- STUDENT ACADEMIC FIELDS --- */}
                           <Text style={styles.inputLabel}>Class / Group</Text>
                           <View style={styles.pickerWrapper}>
                               <Picker selectedValue={formData.class_group} onValueChange={(val) => setFormData({ ...formData, class_group: val })} style={styles.modalPicker}>
-                              {CLASS_CATEGORIES.filter(c => c !== 'Teachers' && c !== 'Admins').map((level) => ( <Picker.Item key={level} label={level} value={level} /> ))}
+                              {CLASS_CATEGORIES.filter(c => !['Admins', 'Teachers', 'Others'].includes(c)).map((level) => ( <Picker.Item key={level} label={level} value={level} /> ))}
                               </Picker>
                           </View>
-                          
                           <Text style={styles.inputLabel}>Roll No.</Text>
                           <TextInput style={styles.input} placeholder="Enter class roll number" value={formData.roll_no} onChangeText={(val) => setFormData({ ...formData, roll_no: val })} keyboardType="numeric" />
-
                           <Text style={styles.inputLabel}>Admission No.</Text>
                           <TextInput style={styles.input} placeholder="Enter admission number" value={formData.admission_no} onChangeText={(val) => setFormData({ ...formData, admission_no: val })} />
-
                           <Text style={styles.inputLabel}>Parent Name</Text>
                           <TextInput style={styles.input} placeholder="Enter parent's full name" value={formData.parent_name} onChangeText={(val) => setFormData({ ...formData, parent_name: val })} />
-                          
                           <Text style={styles.inputLabel}>Aadhar No.</Text>
                           <TextInput style={styles.input} placeholder="Enter 12-digit Aadhar number" value={formData.aadhar_no} onChangeText={(val) => setFormData({ ...formData, aadhar_no: val })} keyboardType="numeric" maxLength={12} />
-
                           <Text style={styles.inputLabel}>PEN No.</Text>
                           <TextInput style={styles.input} placeholder="Enter PEN number" value={formData.pen_no} onChangeText={(val) => setFormData({ ...formData, pen_no: val })} />
                         </>
-                    ) : null}
-                    
+                    ) : (
+                        <>
+                          {/* --- ADMIN, TEACHER & OTHERS PROFESSIONAL FIELDS --- */}
+                          <Text style={styles.inputLabel}>Aadhar No.</Text>
+                          <TextInput style={styles.input} placeholder="Enter 12-digit Aadhar number" value={formData.aadhar_no} onChangeText={(val) => setFormData({ ...formData, aadhar_no: val })} keyboardType="numeric" maxLength={12} />
+                          <Text style={styles.inputLabel}>Joining Date</Text>
+                          <TextInput style={styles.input} placeholder="YYYY-MM-DD" value={formData.joining_date} onChangeText={(val) => setFormData({ ...formData, joining_date: val })} />
+                          <Text style={styles.inputLabel}>Previous Salary</Text>
+                          <TextInput style={styles.input} placeholder="e.g., 50000" value={formData.previous_salary} onChangeText={(val) => setFormData({ ...formData, previous_salary: val })} keyboardType="numeric" />
+                          <Text style={styles.inputLabel}>Present Salary</Text>
+                          <TextInput style={styles.input} placeholder="e.g., 60000" value={formData.present_salary} onChangeText={(val) => setFormData({ ...formData, present_salary: val })} keyboardType="numeric" />
+                          <Text style={styles.inputLabel}>Experience</Text>
+                          <TextInput style={styles.input} placeholder="e.g., 5 years in Mathematics" value={formData.experience} onChangeText={(val) => setFormData({ ...formData, experience: val })} />
+                        </>
+                    )}
+
                     <View style={styles.modalButtonContainer}>
                         <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setIsModalVisible(false)}>
                         <Text style={styles.modalButtonText}>Cancel</Text>
@@ -346,32 +376,31 @@ const AdminLM = () => {
   );
 };
 
-// MODIFIED: Added new styles for the subject tag input system
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F7F9FC' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F9FC' },
-  header: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, 
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15,
     backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E0E0E0',
     elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 2,
   },
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#008080' },
-  addButton: { 
-    flexDirection: 'row', backgroundColor: '#27AE60', paddingVertical: 10, paddingHorizontal: 14, 
+  addButton: {
+    flexDirection: 'row', backgroundColor: '#27AE60', paddingVertical: 10, paddingHorizontal: 14,
     borderRadius: 20, alignItems: 'center', elevation: 2,
   },
   addButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', marginLeft: 5 },
   container: { padding: 10 },
-  accordionSection: { 
-    backgroundColor: '#FFFFFF', borderRadius: 12, marginBottom: 12, overflow: 'hidden', 
+  accordionSection: {
+    backgroundColor: '#FFFFFF', borderRadius: 12, marginBottom: 12, overflow: 'hidden',
     elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3,
   },
   accordionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 18, paddingHorizontal: 15 },
   accordionTitle: { fontSize: 18, fontWeight: '600', color: '#2C3E50' },
   userListContainer: { borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  userRow: { 
-    flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 15, 
-    borderBottomWidth: 1, borderBottomColor: '#ECEFF1', 
+  userRow: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 15,
+    borderBottomWidth: 1, borderBottomColor: '#ECEFF1',
   },
   userIcon: { marginRight: 15 },
   userInfo: { flex: 1 },
@@ -392,7 +421,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center', marginTop: 8, marginBottom: 25,
   },
   inputLabel: { fontSize: 16, color: '#34495E', marginBottom: 8, fontWeight: '500' },
-  input: { 
+  input: {
     backgroundColor: '#F7F9FC', borderRadius: 10, paddingHorizontal: 15, paddingVertical: 12,
     fontSize: 16, color: '#2C3E50', borderWidth: 1, borderColor: '#E0E0E0', marginBottom: 20,
   },
@@ -416,8 +445,7 @@ const styles = StyleSheet.create({
   cancelButton: { backgroundColor: '#95A5A6', marginRight: 10 },
   submitButton: { backgroundColor: '#27AE60', marginLeft: 10 },
   modalButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
-  
-  // NEW STYLES: For the subject input and tags
+
   subjectInputContainer: {
     flexDirection: 'row',
     marginBottom: 10,
