@@ -7756,6 +7756,89 @@ app.get('/api/staff/:id', async (req, res) => {
 
 
 
+// ===============================================================
+// --- STUDENT MODULE API ROUTES ---
+// ===============================================================
+
+// GET all students, to be grouped by class on the frontend
+app.get('/api/students/all', async (req, res) => {
+    try {
+        const query = `
+            SELECT
+                u.id,
+                u.full_name,
+                u.role,
+                u.class_group,
+                up.profile_image_url
+            FROM users AS u
+            LEFT JOIN user_profiles AS up ON u.id = up.user_id
+            WHERE u.role = 'student'
+            ORDER BY u.class_group ASC, u.full_name ASC;
+        `;
+        const [students] = await db.query(query);
+
+        const studentsWithCacheBust = students.map(student => {
+            if (student.profile_image_url) {
+                return {
+                    ...student,
+                    profile_image_url: `${student.profile_image_url}?t=${new Date().getTime()}`
+                };
+            }
+            return student;
+        });
+
+        res.json(studentsWithCacheBust); // Return a flat list of all students
+
+    } catch (error) {
+        console.error("Error fetching all students:", error);
+        res.status(500).json({ message: "Failed to fetch student list." });
+    }
+});
+
+// GET detailed information for a single student
+app.get('/api/students/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const query = `
+            SELECT
+                u.id,
+                u.username,
+                u.full_name,
+                u.role,
+                u.class_group,
+                up.email,
+                up.dob,
+                up.gender,
+                up.phone,
+                up.address,
+                up.profile_image_url,
+                up.admission_date,
+                up.roll_no,
+                up.admission_no,
+                up.parent_name,
+                up.aadhar_no,
+                up.pen_no
+            FROM users AS u
+            LEFT JOIN user_profiles AS up ON u.id = up.user_id
+            WHERE u.id = ? AND u.role = 'student';
+        `;
+        const [[studentDetails]] = await db.query(query, [id]);
+
+        if (!studentDetails) {
+            return res.status(404).json({ message: 'Student not found.' });
+        }
+
+        res.json(studentDetails);
+
+    } catch (error) {
+        console.error("Error fetching student details:", error);
+        res.status(500).json({ message: "Failed to fetch student details." });
+    }
+});
+
+
+
+
 
 // By using "server.listen", you enable both your API routes and the real-time chat.
 server.listen(PORT, '0.0.0.0', () => {

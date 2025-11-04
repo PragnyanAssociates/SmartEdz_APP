@@ -107,7 +107,8 @@ const AdminDashboard = ({ navigation }) => {
 
   const allQuickAccessItems = [
     { id: 'qa0', title: 'LM', imageSource: 'https://cdn-icons-png.flaticon.com/128/15096/15096966.png', navigateToTab: 'AdminLM' },
-    { id: 'qa25', title: 'Staff', imageSource: 'https://cdn-icons-png.flaticon.com/128/12105/12105197.png', navigateTo: 'StaffNavigator' },
+    { id: 'qa25', title: 'Staff', imageSource: 'https://cdn-icons-png.flaticon.com/128/12105/12105197.png', navigateToTab: 'StaffNavigator' },
+    { id: 'qa25', title: 'Students', imageSource: 'https://cdn-icons-png.flaticon.com/128/10156/10156019.png', navigateToTab: 'StudentStackNavigator' },
     { id: 'qa23', title: 'Teacher Attendence', imageSource: 'https://cdn-icons-png.flaticon.com/128/12404/12404284.png', navigateToTab: 'TeacherAttendanceMarkingScreen' },
     { id: 'qa24', title: 'Teacher Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/939/939354.png', navigateToTab: 'TeacherPerformanceScreen' },
     { id: 'qa1', title: 'Time Table', imageSource: 'https://cdn-icons-png.flaticon.com/128/1254/1254275.png', navigateToTab: 'Timetable' },

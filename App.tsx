@@ -97,6 +97,7 @@ import TeacherPerformanceScreen from './src/screens/Performance/TeacherPerforman
 import PDFViewerScreen from './src/screens/syllabus_Textbook/PDFViewerScreen';
 
 import StaffNavigator from './src/screens/StaffNavigator';
+import StudentStackNavigator from './src/screens/StudentStackNavigator';
 // Donor-Specific Screens
 // import DonorNotifications from './src/components/DonorNotifications';
 
@@ -250,7 +251,8 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="TeacherAttendanceMarkingScreen" component={TeacherAttendanceMarkingScreen} />
       <Stack.Screen name="TeacherAttendanceReportScreen" component={TeacherAttendanceReportScreen} />
 
-      <Stack.Screen name="StaffNavigator" component={StaffNavigator}  />  
+      <Stack.Screen name="StaffNavigator" component={StaffNavigator}  />
+      <Stack.Screen name="StudentStackNavigator" component={StudentStackNavigator}  />  
 
       {/* <Stack.Screen name="MarksEntryScreen" component={MarksEntryScreen} /> */}
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, ActivityIndicator,
     TouchableOpacity, Image, RefreshControl
@@ -7,21 +7,20 @@ import { useFocusEffect } from '@react-navigation/native';
 import apiClient from '../api/client';
 import { SERVER_URL } from '../../apiConfig';
 
-const StaffListScreen = ({ navigation }) => {
-    const [admins, setAdmins] = useState([]);
-    const [teachers, setTeachers] = useState([]);
-    const [others, setOthers] = useState([]);
+// Define the order of classes to be displayed
+const CLASS_ORDER = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
+
+const StudentListScreen = ({ navigation }) => {
+    const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const loadStaffData = async () => {
+    const loadStudentData = async () => {
         try {
-            const response = await apiClient.get('/staff/all');
-            setAdmins(response.data.admins || []);
-            setTeachers(response.data.teachers || []);
-            setOthers(response.data.others || []);
+            const response = await apiClient.get('/students/all');
+            setStudents(response.data || []);
         } catch (error) {
-            console.error('Error fetching staff list:', error);
+            console.error('Error fetching student list:', error);
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -30,27 +29,40 @@ const StaffListScreen = ({ navigation }) => {
 
     useFocusEffect(
       useCallback(() => {
-        if (admins.length === 0 && teachers.length === 0 && others.length === 0) {
+        if (students.length === 0) {
             setLoading(true);
         }
-        loadStaffData();
+        loadStudentData();
       }, [])
     );
 
     const onRefresh = () => {
         setRefreshing(true);
-        loadStaffData();
+        loadStudentData();
     };
 
-    const StaffMember = ({ item }) => {
+    // Group students by their class_group using useMemo for performance
+    const groupedStudents = useMemo(() => {
+        const groups = {};
+        students.forEach(student => {
+            const groupName = student.class_group;
+            if (!groups[groupName]) {
+                groups[groupName] = [];
+            }
+            groups[groupName].push(student);
+        });
+        return groups;
+    }, [students]);
+
+    const StudentMember = ({ item }) => {
         const imageUrl = item.profile_image_url
             ? `${SERVER_URL}${item.profile_image_url.startsWith('/') ? '' : '/'}${item.profile_image_url}`
             : null;
 
         return (
             <TouchableOpacity
-                style={styles.staffMemberContainer}
-                onPress={() => navigation.navigate('StaffDetail', { staffId: item.id })}
+                style={styles.studentMemberContainer}
+                onPress={() => navigation.navigate('StudentDetail', { studentId: item.id })}
             >
                 <Image
                     source={
@@ -60,25 +72,24 @@ const StaffListScreen = ({ navigation }) => {
                     }
                     style={styles.avatar}
                 />
-                <Text style={styles.staffName} numberOfLines={2}>
+                <Text style={styles.studentName} numberOfLines={2}>
                     {item.full_name}
                 </Text>
             </TouchableOpacity>
         );
     };
 
-    const StaffSection = ({ title, data }) => {
-        // This check ensures that a section is only rendered if it has data.
+    const StudentSection = ({ title, data }) => {
         if (!data || data.length === 0) {
-            return null;
+            return null; // Don't render a section if there are no students in it
         }
 
         return (
             <View style={styles.sectionContainer}>
                 <Text style={styles.sectionTitle}>{title}</Text>
-                <View style={styles.staffGrid}>
+                <View style={styles.studentGrid}>
                     {data.map(item => (
-                        <StaffMember key={item.id} item={item} />
+                        <StudentMember key={item.id} item={item} />
                     ))}
                 </View>
             </View>
@@ -94,9 +105,13 @@ const StaffListScreen = ({ navigation }) => {
             style={styles.container}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
-            <StaffSection title="Admin" data={admins} />
-            <StaffSection title="Teachers" data={teachers} />
-            <StaffSection title="Non-Teaching" data={others} />
+            {CLASS_ORDER.map(className => (
+                <StudentSection
+                    key={className}
+                    title={className}
+                    data={groupedStudents[className]}
+                />
+            ))}
         </ScrollView>
     );
 };
@@ -124,12 +139,12 @@ const styles = StyleSheet.create({
         borderBottomWidth: 2,
         borderBottomColor: '#dfe4ea',
     },
-    staffGrid: {
+    studentGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
     },
-    staffMemberContainer: {
-        width: '25%',
+    studentMemberContainer: {
+        width: '25%', // 4 items per row
         alignItems: 'center',
         marginBottom: 20,
         paddingHorizontal: 5,
@@ -142,19 +157,13 @@ const styles = StyleSheet.create({
         borderWidth: 2,
         borderColor: '#ffffff',
     },
-    staffName: {
+    studentName: {
         marginTop: 8,
         fontSize: 12,
         fontWeight: '500',
         color: '#34495e',
         textAlign: 'center',
     },
-    noDataText: {
-        fontSize: 14,
-        color: '#7f8c8d',
-        textAlign: 'center',
-        marginTop: 10,
-    },
 });
 
-export default StaffListScreen;
+export default StudentListScreen;
