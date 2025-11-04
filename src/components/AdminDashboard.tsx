@@ -54,6 +54,7 @@ import TeacherAdminResourcesScreen from '../screens/syllabus_Textbook/TeacherAdm
 import TeacherAttendanceMarkingScreen from '../screens/teacher_attendence/TeacherAttendanceMarkingScreen';
 
 import TeacherPerformanceScreen from '../screens/Performance/TeacherPerformanceScreen';
+import StudentStackNavigator from '../screens/StudentStackNavigator';
 
 const { width: windowWidth } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -211,6 +212,7 @@ const AdminDashboard = ({ navigation }) => {
         case 'TeacherAdminResourcesScreen': return ( <><ContentScreenHeader title="Textbooks" onBack={handleBack} /><TeacherAdminResourcesScreen /></> );
         case 'TeacherAttendanceMarkingScreen': return ( <><ContentScreenHeader title="Teacher Attendence" onBack={handleBack} /><TeacherAttendanceMarkingScreen /></> );
         case 'TeacherPerformanceScreen': return ( <><ContentScreenHeader title="Teacher Performance" onBack={handleBack} /><TeacherPerformanceScreen /></> );
+        case 'StudentStackNavigator': return ( <><ContentScreenHeader title="Students" onBack={handleBack} /><StudentStackNavigator /></> );
 
         default: return ( <View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content for '{activeTab}' is not available.</Text><TouchableOpacity onPress={handleBack}><Text style={styles.fallbackLink}>Go to Home</Text></TouchableOpacity></View> );
       }

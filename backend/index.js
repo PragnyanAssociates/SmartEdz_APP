@@ -7760,7 +7760,7 @@ app.get('/api/staff/:id', async (req, res) => {
 // --- STUDENT MODULE API ROUTES ---
 // ===============================================================
 
-// GET all students, to be grouped by class on the frontend
+// MODIFIED: GET all students, now including roll number
 app.get('/api/students/all', async (req, res) => {
     try {
         const query = `
@@ -7769,7 +7769,8 @@ app.get('/api/students/all', async (req, res) => {
                 u.full_name,
                 u.role,
                 u.class_group,
-                up.profile_image_url
+                up.profile_image_url,
+                up.roll_no
             FROM users AS u
             LEFT JOIN user_profiles AS up ON u.id = up.user_id
             WHERE u.role = 'student'
@@ -7787,7 +7788,7 @@ app.get('/api/students/all', async (req, res) => {
             return student;
         });
 
-        res.json(studentsWithCacheBust); // Return a flat list of all students
+        res.json(studentsWithCacheBust);
 
     } catch (error) {
         console.error("Error fetching all students:", error);
@@ -7795,29 +7796,15 @@ app.get('/api/students/all', async (req, res) => {
     }
 });
 
-// GET detailed information for a single student
+// GET detailed information for a single student (this route remains the same and is already correct)
 app.get('/api/students/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const query = `
             SELECT
-                u.id,
-                u.username,
-                u.full_name,
-                u.role,
-                u.class_group,
-                up.email,
-                up.dob,
-                up.gender,
-                up.phone,
-                up.address,
-                up.profile_image_url,
-                up.admission_date,
-                up.roll_no,
-                up.admission_no,
-                up.parent_name,
-                up.aadhar_no,
-                up.pen_no
+                u.id, u.username, u.full_name, u.role, u.class_group, up.email, up.dob, up.gender,
+                up.phone, up.address, up.profile_image_url, up.admission_date, up.roll_no,
+                up.admission_no, up.parent_name, up.aadhar_no, up.pen_no
             FROM users AS u
             LEFT JOIN user_profiles AS up ON u.id = up.user_id
             WHERE u.id = ? AND u.role = 'student';

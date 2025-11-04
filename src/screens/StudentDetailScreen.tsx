@@ -37,7 +37,7 @@ const StudentDetailScreen = ({ route }) => {
     );
 
     if (loading) {
-        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#34495e" /></View>;
+        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#008080" /></View>;
     }
 
     if (!studentDetails) {
@@ -90,7 +90,6 @@ const StudentDetailScreen = ({ route }) => {
                     <Text style={styles.role}>{studentDetails.class_group}</Text>
                 </View>
 
-                {/* Personal Details Section */}
                 <View style={styles.card}>
                     <Text style={styles.cardTitle}>Personal Details</Text>
                     <DetailRow label="Full Name" value={studentDetails.full_name} />
@@ -99,7 +98,6 @@ const StudentDetailScreen = ({ route }) => {
                     <DetailRow label="Gender" value={studentDetails.gender} />
                 </View>
 
-                {/* Contact Details Section */}
                 <View style={styles.card}>
                     <Text style={styles.cardTitle}>Contact Details</Text>
                     <DetailRow label="Mobile No" value={studentDetails.phone} />
@@ -107,7 +105,6 @@ const StudentDetailScreen = ({ route }) => {
                     <DetailRow label="Address" value={studentDetails.address} />
                 </View>
 
-                {/* Academic Details Section */}
                 <View style={styles.card}>
                     <Text style={styles.cardTitle}>Academic Details</Text>
                     <DetailRow label="Class" value={studentDetails.class_group} />
@@ -138,7 +135,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 30,
         paddingHorizontal: 15,
-        backgroundColor: '#008080', // Using a different color to distinguish from staff
+        backgroundColor: '#008080',
     },
     avatar: {
         width: 120,

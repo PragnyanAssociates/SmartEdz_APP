@@ -1,7 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import StudentListScreen from './StudentListScreen'; // Adjust path if necessary
-import StudentDetailScreen from './StudentDetailScreen'; // Adjust path if necessary
+import StudentListScreen from './StudentListScreen';
+import StudentDetailScreen from './StudentDetailScreen';
 
 const Stack = createStackNavigator();
 
@@ -10,7 +10,7 @@ const StudentStackNavigator = () => {
         <Stack.Navigator
             screenOptions={{
                 headerStyle: {
-                    backgroundColor: '#008080', // Or your app's primary color
+                    backgroundColor: '#008080',
                 },
                 headerTintColor: '#fff',
                 headerTitleStyle: {
@@ -26,9 +26,9 @@ const StudentStackNavigator = () => {
             <Stack.Screen
                 name="StudentDetail"
                 component={StudentDetailScreen}
-                options={({ route }) => ({
-                    title: 'Student Profile', // Title can be dynamic if needed
-                })}
+                options={{
+                    title: 'Student Profile',
+                }}
             />
         </Stack.Navigator>
     );
