@@ -2,7 +2,7 @@ import React, { createContext, useState, useContext, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from '../api/client';
 
-// The User interface is correct. It already includes the updated roles.
+// CORRECTED: 'others' should be lowercase to match the database enum
 interface User {
   id: string;
   username: string;
@@ -54,31 +54,26 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     loadSession();
   }, []);
 
-  // This login function correctly fetches the full profile for ANY user role.
   const login = async (userFromLoginApi: User, token: string) => {
     try {
-      // 1. Set the authorization header immediately so the next API call is authenticated
       apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-      // 2. Fetch the user's full, detailed profile from the server using their ID
+      // This call will now receive the correct user ID from the backend
       const profileResponse = await apiClient.get(`/profiles/${userFromLoginApi.id}`);
       const fullUserProfile = profileResponse.data;
 
-      // 3. Create a final, complete user object by merging the basic login data
-      //    with the detailed profile data.
+      // The fullUserProfile now contains the correct ID, so merging is safe
       const completeUser = {
-        ...userFromLoginApi, // Contains basic info like id, username, role
-        ...fullUserProfile,  // Contains everything else like full_name, profile_image_url, etc.
+        ...userFromLoginApi,
+        ...fullUserProfile,
       };
 
-      // 4. Set the application state and save the COMPLETE user object to AsyncStorage
       setAuthState({ user: completeUser, token });
       await AsyncStorage.setItem('userSession', JSON.stringify(completeUser));
       await AsyncStorage.setItem('userToken', token);
 
     } catch (e) {
       console.error("AuthContext: Failed to login or fetch full profile", e);
-      // If fetching the profile fails, it's safer to log the user out to prevent a broken state.
       await logout();
     }
   };
@@ -101,8 +96,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         ...prevAuthState.user,
         ...newUserData,
       };
-      
-      // Persist the updated user data to storage
+
       AsyncStorage.setItem('userSession', JSON.stringify(updatedUser)).catch(e => {
         console.error("AuthContext: Failed to save updated user session", e);
       });
@@ -122,7 +116,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
-  
+
   return {
     user: context.authState.user,
     token: context.authState.token,

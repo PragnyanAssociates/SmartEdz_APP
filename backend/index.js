@@ -256,11 +256,9 @@ const adsUpload = multer({ storage: adsStorage });
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
     try {
-        // DANGER: Password is now selected from the DB to be compared in plain text.
         const [rows] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
         const user = rows[0];
 
-        // DANGER: Replaced bcrypt.compare with a direct string comparison.
         if (!user || password !== user.password) {
             return res.status(401).json({ message: 'Error: Invalid username or password.' });
         }
@@ -287,7 +285,6 @@ app.post('/api/login', async (req, res) => {
 
 app.get('/api/users', async (req, res) => {
     try {
-        // MODIFIED: Select ALL columns from user_profiles to handle all roles.
         const query = `
             SELECT
                 u.id, u.username, u.password, u.full_name, u.role, u.class_group, u.subjects_taught,
@@ -309,9 +306,7 @@ app.get('/api/users', async (req, res) => {
 app.post('/api/users', async (req, res) => {
     const {
         username, password, full_name, email, role, class_group, subjects_taught,
-        // Student details
         roll_no, admission_no, parent_name, aadhar_no, pen_no, admission_date,
-        // Admin/Teacher/Others details
         joining_date, previous_salary, present_salary, experience
     } = req.body;
     const subjectsJson = (role === 'teacher' && Array.isArray(subjects_taught)) ? JSON.stringify(subjects_taught) : null;
@@ -326,13 +321,12 @@ app.post('/api/users', async (req, res) => {
 
         const newUserId = userResult.insertId;
 
-        // MODIFIED: Insert the correct details based on the role.
         if (role === 'student') {
             await connection.query(
                 'INSERT INTO user_profiles (user_id, email, admission_date, roll_no, admission_no, parent_name, aadhar_no, pen_no) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                 [newUserId, email || null, admission_date || null, roll_no || null, admission_no || null, parent_name || null, aadhar_no || null, pen_no || null]
             );
-        } else { // 'admin', 'teacher', or 'others'
+        } else {
             await connection.query(
                 'INSERT INTO user_profiles (user_id, email, aadhar_no, joining_date, previous_salary, present_salary, experience) VALUES (?, ?, ?, ?, ?, ?, ?)',
                 [newUserId, email || null, aadhar_no || null, joining_date || null, previous_salary || null, present_salary || null, experience || null]
@@ -354,9 +348,7 @@ app.put('/api/users/:id', async (req, res) => {
     const { id } = req.params;
     const {
         username, password, full_name, role, class_group, subjects_taught,
-        // Student details
         roll_no, admission_no, parent_name, aadhar_no, pen_no, admission_date,
-        // Admin/Teacher/Others details
         joining_date, previous_salary, present_salary, experience
     } = req.body;
 
@@ -389,7 +381,6 @@ app.put('/api/users/:id', async (req, res) => {
             await connection.query(userSql, userQueryParams);
         }
 
-        // MODIFIED: Logic to update profiles based on role
         const userRoleToUpdate = role || (await connection.query('SELECT role FROM users WHERE id = ?', [id]))[0][0].role;
 
         if (userRoleToUpdate === 'student') {
@@ -400,7 +391,7 @@ app.put('/api/users/:id', async (req, res) => {
                     parent_name = VALUES(parent_name), aadhar_no = VALUES(aadhar_no),
                     pen_no = VALUES(pen_no), admission_date = VALUES(admission_date)`;
             await connection.query(profileSql, [id, roll_no, admission_no, parent_name, aadhar_no, pen_no, admission_date]);
-        } else { // 'admin', 'teacher', or 'others'
+        } else {
              const profileSql = `
                 INSERT INTO user_profiles (user_id, aadhar_no, joining_date, previous_salary, present_salary, experience)
                 VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE
@@ -425,27 +416,60 @@ app.put('/api/users/:id', async (req, res) => {
 });
 
 
+// ==========================================================
+// --- THIS IS THE CORRECTED ROUTE ---
+// ==========================================================
 app.get('/api/profiles/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        // MODIFIED: Select all profile fields using p.*
-        const sql = `SELECT u.*, p.* FROM users u LEFT JOIN user_profiles p ON u.id = p.user_id WHERE u.id = ?`;
+        // CORRECTED: Explicitly select columns to prevent the 'id' field from being overwritten.
+        // This ensures u.id is the primary id in the response.
+        const sql = `
+            SELECT
+                u.id,
+                u.username,
+                u.full_name,
+                u.role,
+                u.class_group,
+                u.subjects_taught,
+                p.email,
+                p.dob,
+                p.gender,
+                p.phone,
+                p.address,
+                p.profile_image_url,
+                p.admission_date,
+                p.roll_no,
+                p.admission_no,
+                p.parent_name,
+                p.aadhar_no,
+                p.pen_no,
+                p.joining_date,
+                p.previous_salary,
+                p.present_salary,
+                p.experience
+            FROM users u
+            LEFT JOIN user_profiles p ON u.id = p.user_id
+            WHERE u.id = ?`;
         const [rows] = await db.query(sql, [userId]);
-        if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
         res.json(rows[0]);
-    } catch (error) { res.status(500).json({ message: 'Database error fetching profile' }); }
+    } catch (error) {
+        console.error("Get Profile Error:", error);
+        res.status(500).json({ message: 'Database error fetching profile' });
+    }
 });
+// ==========================================================
+// --- END OF CORRECTION ---
+// ==========================================================
 
-// ==========================================================
-// --- MODIFIED PROFILE UPDATE ROUTE ---
-// ==========================================================
 app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res) => {
     const userId = parseInt(req.params.userId, 10);
     const {
         full_name, class_group, email, dob, gender, phone, address,
-        // Student Fields
         admission_date, roll_no, admission_no, parent_name, pen_no,
-        // Admin/Teacher/Others Fields (aadhar_no is shared)
         aadhar_no, joining_date, previous_salary, present_salary, experience
     } = req.body;
     const connection = await db.getConnection();
@@ -482,7 +506,6 @@ app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res)
             newImageUrl = null;
         }
 
-        // MODIFIED: Conditionally update the user_profiles table with the correct set of data
         if (userRole === 'student') {
             const profileSql = `
                 INSERT INTO user_profiles (user_id, email, dob, gender, phone, address, profile_image_url, admission_date, roll_no, admission_no, parent_name, aadhar_no, pen_no)
@@ -495,7 +518,7 @@ app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res)
                     aadhar_no = VALUES(aadhar_no), pen_no = VALUES(pen_no)
             `;
             await connection.query(profileSql, [userId, email, dob, gender, phone, address, newImageUrl, admission_date, roll_no, admission_no, parent_name, aadhar_no, pen_no]);
-        } else { // for 'admin', 'teacher', and 'others'
+        } else {
             const profileSql = `
                 INSERT INTO user_profiles (user_id, email, dob, gender, phone, address, profile_image_url, aadhar_no, joining_date, previous_salary, present_salary, experience)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -528,9 +551,6 @@ app.put('/api/profiles/:userId', upload.single('profileImage'), async (req, res)
         connection.release();
     }
 });
-// ==========================================================
-// --- END OF MODIFIED ROUTE ---
-// ==========================================================
 
 app.patch('/api/users/:id/reset-password', async (req, res) => {
     const { id } = req.params;
@@ -565,7 +585,6 @@ app.post('/api/forgot-password', async (req, res) => {
         const user_id = profileRows[0].user_id;
         const [userRows] = await db.query('SELECT role FROM users WHERE id = ?', [user_id]);
 
-        // MODIFIED: Check for 'others' role instead of 'donor'
         if (userRows.length === 0 || userRows[0].role !== 'others') {
             return res.status(200).json({ message: 'If an Others account with that email exists, a reset code has been sent.' });
         }
