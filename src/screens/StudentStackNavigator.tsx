@@ -10,7 +10,7 @@ const StudentStackNavigator = () => {
         <Stack.Navigator
             screenOptions={{
                 headerStyle: {
-                    backgroundColor: '#008080',
+                    backgroundColor: '#3156bbff',
                 },
                 headerTintColor: '#fff',
                 headerTitleStyle: {
@@ -21,7 +21,7 @@ const StudentStackNavigator = () => {
             <Stack.Screen
                 name="StudentList"
                 component={StudentListScreen}
-                options={{ title: 'Student Directory' }}
+                options={{ headerShown: false, }}
             />
             <Stack.Screen
                 name="StudentDetail"

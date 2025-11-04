@@ -12,7 +12,6 @@ const CLASS_ORDER = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', '
 
 const StudentListScreen = ({ navigation }) => {
     const [students, setStudents] = useState([]);
-    // MODIFIED: State to hold the selected class, defaulting to 'Class 10'
     const [selectedClass, setSelectedClass] = useState('Class 10');
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -43,6 +42,7 @@ const StudentListScreen = ({ navigation }) => {
         loadStudentData();
     };
 
+    // MODIFIED: Added a sorting function inside useMemo
     const groupedStudents = useMemo(() => {
         const groups = {};
         students.forEach(student => {
@@ -52,6 +52,16 @@ const StudentListScreen = ({ navigation }) => {
             }
             groups[groupName].push(student);
         });
+
+        // Sort each class group by roll number
+        for (const groupName in groups) {
+            groups[groupName].sort((a, b) => {
+                const rollA = parseInt(a.roll_no, 10) || 9999; // Treat null/invalid roll numbers as high numbers
+                const rollB = parseInt(b.roll_no, 10) || 9999;
+                return rollA - rollB;
+            });
+        }
+
         return groups;
     }, [students]);
 
@@ -76,7 +86,6 @@ const StudentListScreen = ({ navigation }) => {
                 <Text style={styles.studentName} numberOfLines={2}>
                     {item.full_name}
                 </Text>
-                {/* MODIFIED: Added Roll Number */}
                 {item.roll_no && (
                     <Text style={styles.rollNumber}>
                         Roll: {item.roll_no}

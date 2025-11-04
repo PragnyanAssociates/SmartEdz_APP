@@ -7760,7 +7760,7 @@ app.get('/api/staff/:id', async (req, res) => {
 // --- STUDENT MODULE API ROUTES ---
 // ===============================================================
 
-// MODIFIED: GET all students, now including roll number
+// MODIFIED: Added numerical sorting by roll number
 app.get('/api/students/all', async (req, res) => {
     try {
         const query = `
@@ -7774,7 +7774,7 @@ app.get('/api/students/all', async (req, res) => {
             FROM users AS u
             LEFT JOIN user_profiles AS up ON u.id = up.user_id
             WHERE u.role = 'student'
-            ORDER BY u.class_group ASC, u.full_name ASC;
+            ORDER BY u.class_group ASC, CAST(up.roll_no AS UNSIGNED) ASC, u.full_name ASC;
         `;
         const [students] = await db.query(query);
 
@@ -7796,7 +7796,7 @@ app.get('/api/students/all', async (req, res) => {
     }
 });
 
-// GET detailed information for a single student (this route remains the same and is already correct)
+// GET detailed information for a single student (this route remains the same)
 app.get('/api/students/:id', async (req, res) => {
     try {
         const { id } = req.params;
