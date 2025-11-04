@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, ActivityIndicator, Image,
-    TouchableOpacity, Modal, Pressable // ★★★ STEP 1: Import necessary components
+    TouchableOpacity, Modal, Pressable
 } from 'react-native';
 import apiClient from '../api/client';
-// ★★★ STEP 2: Import your server URL config ★★★
-import { SERVER_URL } from '../../apiConfig'; // Make sure this path is correct
+import { SERVER_URL } from '../../apiConfig';
 
 const StaffDetailScreen = ({ route }) => {
     const { staffId } = route.params;
     const [staffDetails, setStaffDetails] = useState(null);
     const [loading, setLoading] = useState(true);
-    // ★★★ STEP 3: Add state to manage the image viewer modal ★★★
     const [isViewerVisible, setViewerVisible] = useState(false);
 
     useEffect(() => {
@@ -46,14 +44,12 @@ const StaffDetailScreen = ({ route }) => {
         return <View style={styles.loaderContainer}><Text>Could not load staff details.</Text></View>;
     }
 
-    // ★★★ STEP 4: Construct the full, absolute image URL ★★★
     const imageUrl = staffDetails.profile_image_url
         ? `${SERVER_URL}${staffDetails.profile_image_url.startsWith('/') ? '' : '/'}${staffDetails.profile_image_url}`
         : null;
 
     return (
         <View style={{ flex: 1 }}>
-            {/* ★★★ STEP 5: Add the Modal for viewing the enlarged image ★★★ */}
             <Modal
                 visible={isViewerVisible}
                 transparent={true}
@@ -80,10 +76,8 @@ const StaffDetailScreen = ({ route }) => {
 
             <ScrollView style={styles.container}>
                 <View style={styles.profileHeader}>
-                    {/* ★★★ STEP 6: Make the profile image pressable ★★★ */}
                     <TouchableOpacity onPress={() => setViewerVisible(true)}>
                         <Image
-                            // ★★★ STEP 7: Use the new `imageUrl` variable ★★★
                             source={
                                 imageUrl
                                     ? { uri: imageUrl }
@@ -96,21 +90,38 @@ const StaffDetailScreen = ({ route }) => {
                     <Text style={styles.role}>{staffDetails.role.charAt(0).toUpperCase() + staffDetails.role.slice(1)}</Text>
                 </View>
 
-                <View style={styles.detailsContainer}>
+                {/* Personal Details Section */}
+                <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Personal Details</Text>
                     <DetailRow label="Full Name" value={staffDetails.full_name} />
-                    <DetailRow label="Mobile No" value={staffDetails.phone} />
-                    <DetailRow label="Email Address" value={staffDetails.email} />
-                    <DetailRow label="Address" value={staffDetails.address} />
                     <DetailRow label="Username" value={staffDetails.username} />
                     <DetailRow label="Date of Birth" value={staffDetails.dob} />
                     <DetailRow label="Gender" value={staffDetails.gender} />
                 </View>
+
+                {/* Contact Details Section */}
+                <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Contact Details</Text>
+                    <DetailRow label="Mobile No" value={staffDetails.phone} />
+                    <DetailRow label="Email Address" value={staffDetails.email} />
+                    <DetailRow label="Address" value={staffDetails.address} />
+                </View>
+
+                {/* MODIFIED: Professional Details Section */}
+                <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Professional Details</Text>
+                    <DetailRow label="Aadhar No." value={staffDetails.aadhar_no} />
+                    <DetailRow label="Joining Date" value={staffDetails.joining_date} />
+                    <DetailRow label="Previous Salary" value={staffDetails.previous_salary} />
+                    <DetailRow label="Present Salary" value={staffDetails.present_salary} />
+                    <DetailRow label="Experience" value={staffDetails.experience} />
+                </View>
+
             </ScrollView>
         </View>
     );
 };
 
-// ★★★ STEP 8: Add new styles for the modal and its contents ★★★
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -123,7 +134,8 @@ const styles = StyleSheet.create({
     },
     profileHeader: {
         alignItems: 'center',
-        padding: 30,
+        paddingVertical: 30,
+        paddingHorizontal: 15,
         backgroundColor: '#34495e',
     },
     avatar: {
@@ -139,6 +151,7 @@ const styles = StyleSheet.create({
         fontSize: 24,
         fontWeight: 'bold',
         color: '#ffffff',
+        textAlign: 'center'
     },
     role: {
         fontSize: 16,
@@ -149,33 +162,48 @@ const styles = StyleSheet.create({
         paddingVertical: 3,
         borderRadius: 15,
     },
-    detailsContainer: {
+    // MODIFIED: Added Card styles for better section separation
+    card: {
         backgroundColor: '#ffffff',
-        marginTop: -10,
-        borderTopLeftRadius: 10,
-        borderTopRightRadius: 10,
-        padding: 10,
+        borderRadius: 8,
+        marginHorizontal: 15,
+        marginTop: 15,
+        paddingHorizontal: 15,
+        paddingBottom: 5,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    cardTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#2c3e50',
+        paddingVertical: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f2f5',
+        marginBottom: 5,
     },
     detailRow: {
         flexDirection: 'row',
-        paddingVertical: 18,
+        paddingVertical: 15,
         borderBottomWidth: 1,
         borderBottomColor: '#f0f2f5',
         alignItems: 'center',
     },
     detailLabel: {
-        fontSize: 16,
+        fontSize: 15,
         color: '#7f8c8d',
         flex: 2,
     },
     detailValue: {
-        fontSize: 16,
+        fontSize: 15,
         color: '#2c3e50',
         flex: 3,
         fontWeight: '500',
         textAlign: 'right',
     },
-    // Styles for the image viewer modal
     modalBackdrop: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -195,7 +223,7 @@ const styles = StyleSheet.create({
     },
     closeButton: {
         position: 'absolute',
-        bottom: -60, // Position it below the image
+        bottom: -60,
         backgroundColor: '#fff',
         paddingVertical: 12,
         paddingHorizontal: 35,

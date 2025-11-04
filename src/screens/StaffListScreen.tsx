@@ -5,12 +5,13 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import apiClient from '../api/client';
-// ★★★ STEP 1: Import SERVER_URL from your config file ★★★
-import { SERVER_URL } from '../../apiConfig'; // Adjust this path if necessary
+import { SERVER_URL } from '../../apiConfig';
 
 const StaffListScreen = ({ navigation }) => {
     const [admins, setAdmins] = useState([]);
     const [teachers, setTeachers] = useState([]);
+    // MODIFIED: Added state for 'others'
+    const [others, setOthers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -19,6 +20,8 @@ const StaffListScreen = ({ navigation }) => {
             const response = await apiClient.get('/staff/all');
             setAdmins(response.data.admins || []);
             setTeachers(response.data.teachers || []);
+            // MODIFIED: Set state for 'others' from API response
+            setOthers(response.data.others || []);
         } catch (error) {
             console.error('Error fetching staff list:', error);
         } finally {
@@ -29,7 +32,8 @@ const StaffListScreen = ({ navigation }) => {
 
     useFocusEffect(
       useCallback(() => {
-        if (admins.length === 0 && teachers.length === 0) {
+        // MODIFIED: Check all three arrays before setting loading to true
+        if (admins.length === 0 && teachers.length === 0 && others.length === 0) {
             setLoading(true);
         }
         loadStaffData();
@@ -42,7 +46,6 @@ const StaffListScreen = ({ navigation }) => {
     };
 
     const StaffMember = ({ item }) => {
-        // ★★★ STEP 2: Construct the full image URL ★★★
         const imageUrl = item.profile_image_url
             ? `${SERVER_URL}${item.profile_image_url.startsWith('/') ? '' : '/'}${item.profile_image_url}`
             : null;
@@ -53,7 +56,6 @@ const StaffListScreen = ({ navigation }) => {
                 onPress={() => navigation.navigate('StaffDetail', { staffId: item.id })}
             >
                 <Image
-                    // ★★★ STEP 3: Use the constructed URL or the default avatar ★★★
                     source={
                         imageUrl
                             ? { uri: imageUrl }
@@ -94,11 +96,12 @@ const StaffListScreen = ({ navigation }) => {
         >
             <StaffSection title="Admin" data={admins} />
             <StaffSection title="Teachers" data={teachers} />
+            {/* MODIFIED: Added the new "Others" section */}
+            <StaffSection title="Others" data={others} />
         </ScrollView>
     );
 };
 
-// Styles remain the same
 const styles = StyleSheet.create({
     container: {
         flex: 1,

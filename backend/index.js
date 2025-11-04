@@ -7655,8 +7655,7 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
 // --- STAFF MODULE API ROUTES ---
 // ===============================================================
 
-// GET all staff members (Admins and Teachers) for the list screen
-// GET all staff members (Admins and Teachers) for the list screen
+// MODIFIED: GET all staff members (Admins, Teachers, and Others) for the list screen
 app.get('/api/staff/all', async (req, res) => {
     try {
         const query = `
@@ -7667,15 +7666,13 @@ app.get('/api/staff/all', async (req, res) => {
                 up.profile_image_url
             FROM users AS u
             LEFT JOIN user_profiles AS up ON u.id = up.user_id
-            WHERE u.role IN ('admin', 'teacher')
+            WHERE u.role IN ('admin', 'teacher', 'others')
             ORDER BY u.full_name ASC;
         `;
         const [staff] = await db.query(query);
 
-        // ★★★ FIX: Add a unique timestamp to image URLs to break the cache ★★★
         const staffWithCacheBust = staff.map(member => {
             if (member.profile_image_url) {
-                // This appends a parameter like "?t=1678886400000" to the URL
                 return {
                     ...member,
                     profile_image_url: `${member.profile_image_url}?t=${new Date().getTime()}`
@@ -7687,8 +7684,9 @@ app.get('/api/staff/all', async (req, res) => {
         // Use the modified data to create the final lists
         const admins = staffWithCacheBust.filter(member => member.role === 'admin');
         const teachers = staffWithCacheBust.filter(member => member.role === 'teacher');
+        const others = staffWithCacheBust.filter(member => member.role === 'others');
 
-        res.json({ admins, teachers });
+        res.json({ admins, teachers, others }); // Return all three categories
 
     } catch (error) {
         console.error("Error fetching all staff:", error);
@@ -7696,8 +7694,7 @@ app.get('/api/staff/all', async (req, res) => {
     }
 });
 
-// GET detailed information for a single staff member
-// This should also be protected for admin access.
+// MODIFIED: GET detailed information for a single staff member, including professional details
 app.get('/api/staff/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -7712,7 +7709,12 @@ app.get('/api/staff/:id', async (req, res) => {
                 up.gender,
                 up.phone,
                 up.address,
-                up.profile_image_url
+                up.profile_image_url,
+                up.aadhar_no,
+                up.joining_date,
+                up.previous_salary,
+                up.present_salary,
+                up.experience
             FROM users AS u
             LEFT JOIN user_profiles AS up ON u.id = up.user_id
             WHERE u.id = ?;
@@ -7725,7 +7727,8 @@ app.get('/api/staff/:id', async (req, res) => {
 
         res.json(staffDetails);
 
-    } catch (error) {
+    } catch (error)
+    {
         console.error("Error fetching staff details:", error);
         res.status(500).json({ message: "Failed to fetch staff details." });
     }
