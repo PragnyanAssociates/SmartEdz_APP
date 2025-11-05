@@ -7562,9 +7562,7 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
     }
 });
 
-// ==========================================================
 // --- ADD THIS NEW API ROUTE TO YOUR BACKEND SERVER FILE ---
-// ==========================================================
 
 // GET: Get performance summaries for all classes
 app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (req, res) => {
@@ -7670,6 +7668,7 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
 
 
 
+
 // ===============================================================
 // --- STAFF MODULE API ROUTES ---
 // ===============================================================
@@ -7712,16 +7711,19 @@ app.get('/api/staff/all', async (req, res) => {
     }
 });
 
+// --- MODIFICATION IS HERE ---
 app.get('/api/staff/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        // The query is updated to select u.subjects_taught
         const query = `
             SELECT
                 u.id,
                 u.username,
                 u.full_name,
                 u.role,
-                u.class_group, -- This correctly provides the admin type
+                u.class_group,
+                u.subjects_taught, -- ★★★ ADD THIS LINE ★★★
                 up.email,
                 up.dob,
                 up.gender,

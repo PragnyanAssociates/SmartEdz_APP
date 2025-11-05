@@ -100,7 +100,7 @@ const StaffListScreen = ({ navigation }) => {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
             {/* The sections are already in the correct order. This one will appear when data exists. */}
-            <StaffSection title="Management Admins" data={managementAdmins} />
+            <StaffSection title="Management" data={managementAdmins} />
             <StaffSection title="General Admins" data={generalAdmins} />
             <StaffSection title="Teachers" data={teachers} />
             <StaffSection title="Non-Teaching" data={others} />
