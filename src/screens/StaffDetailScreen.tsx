@@ -28,11 +28,18 @@ const StaffDetailScreen = ({ route }) => {
     const [staffDetails, setStaffDetails] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isViewerVisible, setViewerVisible] = useState(false);
+
+    // State for each collapsible section
+    const [isProfessionalExpanded, setIsProfessionalExpanded] = useState(false); // ★★★ NEW STATE ★★★
     const [isTimetableExpanded, setIsTimetableExpanded] = useState(false);
     const [isPerformanceExpanded, setIsPerformanceExpanded] = useState(false);
     const [isAttendanceExpanded, setIsAttendanceExpanded] = useState(false);
+
+    // State for Performance data
     const [performanceDetails, setPerformanceDetails] = useState([]);
     const [performanceLoading, setPerformanceLoading] = useState(false);
+    
+    // State for Attendance data
     const [attendanceReport, setAttendanceReport] = useState(null);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
     const [attendanceViewMode, setAttendanceViewMode] = useState('overall');
@@ -60,6 +67,12 @@ const StaffDetailScreen = ({ route }) => {
     
     const scrollToBottom = () => {
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 150);
+    };
+
+    // ★★★ NEW HANDLER ★★★
+    const handleProfessionalToggle = () => {
+        if (!isProfessionalExpanded) scrollToBottom();
+        setIsProfessionalExpanded(prevState => !prevState);
     };
 
     const handleTimetableToggle = () => {
@@ -150,11 +163,7 @@ const StaffDetailScreen = ({ route }) => {
 
     const imageUrl = staffDetails.profile_image_url ? `${SERVER_URL}${staffDetails.profile_image_url}` : null;
     const displayRole = staffDetails.role === 'admin' ? staffDetails.class_group : staffDetails.role;
-
-    // ★★★ NEW: Helper variable to format subjects for display ★★★
-    const subjectsDisplay = staffDetails.subjects_taught && Array.isArray(staffDetails.subjects_taught) && staffDetails.subjects_taught.length > 0
-        ? staffDetails.subjects_taught.join(', ')
-        : 'Not Provided';
+    const subjectsDisplay = staffDetails.subjects_taught && Array.isArray(staffDetails.subjects_taught) && staffDetails.subjects_taught.length > 0 ? staffDetails.subjects_taught.join(', ') : 'Not Provided';
 
     return (
         <View style={{ flex: 1 }}>
@@ -165,21 +174,28 @@ const StaffDetailScreen = ({ route }) => {
             <ScrollView ref={scrollViewRef} style={styles.container} contentContainerStyle={styles.scrollContentContainer}>
                 <View style={styles.profileHeader}><TouchableOpacity onPress={() => setViewerVisible(true)}><Image source={imageUrl ? { uri: imageUrl } : require('../assets/default_avatar.png')} style={styles.avatar} /></TouchableOpacity><Text style={styles.fullName}>{staffDetails.full_name}</Text><Text style={styles.role}>{displayRole}</Text></View>
                 
-                {/* --- MODIFICATION IS HERE --- */}
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Personal Details</Text>
-                    <DetailRow label="Username" value={staffDetails.username} />
-                    {/* Conditionally render Subjects Taught only for teachers */}
-                    {staffDetails.role === 'teacher' && (
-                        <DetailRow label="Subjects Taught" value={subjectsDisplay} />
+                {/* Static Cards */}
+                <View style={styles.card}><Text style={styles.cardTitle}>Personal Details</Text><DetailRow label="Username" value={staffDetails.username} />{staffDetails.role === 'teacher' && (<DetailRow label="Subjects Taught" value={subjectsDisplay} />)}<DetailRow label="Date of Birth" value={staffDetails.dob} /><DetailRow label="Gender" value={staffDetails.gender} /></View>
+                <View style={styles.card}><Text style={styles.cardTitle}>Contact Details</Text><DetailRow label="Mobile No" value={staffDetails.phone} /><DetailRow label="Email Address" value={staffDetails.email} /><DetailRow label="Address" value={staffDetails.address} /></View>
+
+                {/* --- MODIFICATION IS HERE: Professional Details is now collapsible --- */}
+                <View style={styles.collapsibleCard}>
+                    <TouchableOpacity style={styles.collapsibleHeader} onPress={handleProfessionalToggle} activeOpacity={0.8}>
+                        <Text style={styles.collapsibleTitle}>Professional Details</Text>
+                        <Text style={styles.arrowIcon}>{isProfessionalExpanded ? '▲' : '▼'}</Text>
+                    </TouchableOpacity>
+                    {isProfessionalExpanded && (
+                        <View style={styles.cardContent}>
+                            <DetailRow label="Aadhar No." value={staffDetails.aadhar_no} />
+                            <DetailRow label="Joining Date" value={staffDetails.joining_date} />
+                            <DetailRow label="Previous Salary" value={staffDetails.previous_salary} />
+                            <DetailRow label="Present Salary" value={staffDetails.present_salary} />
+                            <DetailRow label="Experience" value={staffDetails.experience} />
+                        </View>
                     )}
-                    <DetailRow label="Date of Birth" value={staffDetails.dob} />
-                    <DetailRow label="Gender" value={staffDetails.gender} />
                 </View>
 
-                <View style={styles.card}><Text style={styles.cardTitle}>Contact Details</Text><DetailRow label="Mobile No" value={staffDetails.phone} /><DetailRow label="Email Address" value={staffDetails.email} /><DetailRow label="Address" value={staffDetails.address} /></View>
-                <View style={styles.card}><Text style={styles.cardTitle}>Professional Details</Text><DetailRow label="Aadhar No." value={staffDetails.aadhar_no} /><DetailRow label="Joining Date" value={staffDetails.joining_date} /><DetailRow label="Previous Salary" value={staffDetails.previous_salary} /><DetailRow label="Present Salary" value={staffDetails.present_salary} /><DetailRow label="Experience" value={staffDetails.experience} /></View>
-
+                {/* Other Collapsible Cards for Teachers */}
                 {staffDetails.role === 'teacher' && (
                     <>
                         <View style={styles.collapsibleCard}><TouchableOpacity style={styles.collapsibleHeader} onPress={handleTimetableToggle} activeOpacity={0.8} ><Text style={styles.collapsibleTitle}>Timetable</Text><Text style={styles.arrowIcon}>{isTimetableExpanded ? '▲' : '▼'}</Text></TouchableOpacity>{isTimetableExpanded && <TimetableScreen teacherId={staffId} isEmbedded={true} />}</View>
@@ -193,7 +209,6 @@ const StaffDetailScreen = ({ route }) => {
 };
 
 const styles = StyleSheet.create({
-    // --- All other styles remain unchanged ---
     container: { flex: 1, backgroundColor: '#f4f6f8' },
     scrollContentContainer: { paddingBottom: 20 },
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -203,6 +218,7 @@ const styles = StyleSheet.create({
     role: { fontSize: 16, color: '#ecf0f1', marginTop: 5, backgroundColor: 'rgba(255, 255, 255, 0.2)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 15, textTransform: 'capitalize' },
     card: { backgroundColor: '#ffffff', borderRadius: 8, marginHorizontal: 15, marginTop: 15, paddingHorizontal: 15, paddingBottom: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
     cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#008080', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f2f5', marginBottom: 5 },
+    cardContent: { paddingHorizontal: 15, paddingBottom: 5 }, // ★★★ NEW STYLE ★★★ for collapsible content
     detailRow: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f2f5', alignItems: 'center' },
     detailLabel: { fontSize: 15, color: '#7f8c8d', flex: 2 },
     detailValue: { fontSize: 15, color: '#2c3e50', flex: 3, fontWeight: '500', textAlign: 'right' },
