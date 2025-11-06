@@ -42,21 +42,13 @@ const StudentTimetable = ({ classGroup }) => {
     return (<View style={styles.ttContainer}><View style={styles.ttHeaderRow}>{tableHeaders.map(h => (<View key={h.name} style={[styles.ttHeaderCell, { backgroundColor: h.color, width: h.width }]}><Text style={[styles.ttHeaderText, { color: h.textColor }]}>{h.name}</Text></View>))}</View>{scheduleData.map((row, rowIndex) => (<View key={rowIndex} style={styles.ttRow}><View style={[styles.ttCell, styles.ttTimeCell, { width: tableHeaders[0].width }]}><Text style={styles.ttTimeText}>{row.time}</Text></View>{row.periods.map((period, periodIndex) => (<View key={periodIndex} style={[styles.ttCell, period.isBreak ? styles.ttBreakCell : { backgroundColor: getSubjectColor(period.subject) }, { width: tableHeaders[periodIndex + 1].width },]}>{period.isBreak ? (<Text style={styles.ttBreakTextSubject}>{period.subject}</Text>) : (<><Text style={styles.ttSubjectText} numberOfLines={2}>{period.subject || ''}</Text>{period.teacher && <Text style={styles.ttTeacherText} numberOfLines={1}>{period.teacher}</Text>}</>)}</View>))}</View>))}</View>);
 };
 
-// --- ★★★ NEW: Reusable Component for Embedded Report Card ★★★ ---
+// --- Embedded Report Card Component for this screen ---
 const EmbeddedReportCard = ({ studentInfo, academicYear, marksData, attendanceData }) => {
     const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
     const formatMonthForDisplay = (month) => { if (month === 'September') return 'Sept'; return month.substring(0, 3); };
 
     return (
         <View style={rcStyles.card}>
-            {/* School header is removed as requested */}
-            <View style={rcStyles.studentInfoContainer}>
-                <View style={rcStyles.infoRow}><Text style={rcStyles.infoLabel}>Name:</Text><Text style={rcStyles.infoValue}>{studentInfo.full_name}</Text></View>
-                <View style={rcStyles.infoRow}><Text style={rcStyles.infoLabel}>Roll No:</Text><Text style={rcStyles.infoValue}>{studentInfo.roll_no}</Text></View>
-                <View style={rcStyles.infoRow}><Text style={rcStyles.infoLabel}>Class:</Text><Text style={rcStyles.infoValue}>{studentInfo.class_group}</Text></View>
-                <View style={rcStyles.infoRow}><Text style={rcStyles.infoLabel}>Year:</Text><Text style={rcStyles.infoValue}>{academicYear}</Text></View>
-            </View>
-
             <Text style={rcStyles.sectionTitle}>PROGRESS CARD</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={rcStyles.table}>
@@ -98,31 +90,60 @@ const StudentDetailScreen = ({ route }) => {
     const handleAcademicToggle = () => { if (!isAcademicExpanded) scrollToBottom(); setIsAcademicExpanded(prevState => !prevState); };
     const handleTimetableToggle = () => { if (!isTimetableExpanded) scrollToBottom(); setIsTimetableExpanded(prevState => !prevState); };
 
-    // Handler for Consolidated Report Card
+    // This function fetches the consolidated report card data when the user expands the section.
     const handleReportCardToggle = async () => {
-        if (!isReportCardExpanded) {
-            if (!reportCardData) {
-                setReportCardLoading(true);
-                try {
-                    const response = await apiClient.get(`/api/reports/student/${studentId}`);
-                    const { studentInfo, marks, attendance, academicYear } = response.data;
-                    const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
-                    const marksMap = {};
-                    subjects.forEach(subject => { marksMap[subject] = {}; });
-                    marks.forEach(mark => { const displayExamType = EXAM_MAPPING[mark.exam_type]; if (marksMap[mark.subject] && displayExamType) { marksMap[mark.subject][displayExamType] = mark.marks_obtained !== null ? mark.marks_obtained.toString() : '-'; } });
-                    const attendanceMap = {};
-                    attendance.forEach(att => { if (att.month) { attendanceMap[att.month] = { workingDays: att.working_days ?? '-', presentDays: att.present_days ?? '-' }; } });
-                    setReportCardData({ studentInfo, academicYear, marksData: marksMap, attendanceData: attendanceMap });
-                } catch (err) {
-                    console.error('Error fetching report card:', err);
-                    setReportCardData(null);
-                } finally {
-                    setReportCardLoading(false);
+        // Only fetch data the first time the card is opened.
+        if (!isReportCardExpanded && !reportCardData) {
+            setReportCardLoading(true);
+            try {
+                // Fetch the report data from the dedicated endpoint.
+                const response = await apiClient.get(`/api/reports/student/${studentId}`);
+                
+                // If the response is invalid or has no student info, throw an error to be caught.
+                if (!response.data || !response.data.studentInfo) {
+                    throw new Error("Invalid data structure from server.");
                 }
+
+                const { studentInfo, marks, attendance, academicYear } = response.data;
+                
+                // Process the fetched marks into a format suitable for the display component.
+                const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
+                const marksMap = {};
+                subjects.forEach(subject => { marksMap[subject] = {}; });
+                
+                marks.forEach(mark => {
+                    const displayExamType = EXAM_MAPPING[mark.exam_type];
+                    if (marksMap[mark.subject] && displayExamType) {
+                        marksMap[mark.subject][displayExamType] = mark.marks_obtained !== null ? mark.marks_obtained.toString() : '-';
+                    }
+                });
+                
+                // Process attendance data.
+                const attendanceMap = {};
+                attendance.forEach(att => {
+                    if (att.month) {
+                        attendanceMap[att.month] = { workingDays: att.working_days ?? '-', presentDays: att.present_days ?? '-' };
+                    }
+                });
+                
+                // Store the processed data in the component's state.
+                setReportCardData({ studentInfo, academicYear, marksData: marksMap, attendanceData: attendanceMap });
+            } catch (err) {
+                console.error('Error fetching report card:', err);
+                // If an error occurs, set data to null to show the fallback message.
+                setReportCardData(null);
+            } finally {
+                setReportCardLoading(false);
             }
+        }
+        
+        // Toggle the visibility of the report card section.
+        setIsReportCardExpanded(prevState => !prevState);
+
+        // Scroll to the bottom to make the expanded section visible.
+        if (!isReportCardExpanded) {
             scrollToBottom();
         }
-        setIsReportCardExpanded(prevState => !prevState);
     };
 
     const DetailRow = ({ label, value }) => (<View style={styles.detailRow}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value || 'Not Provided'}</Text></View>);
@@ -140,10 +161,21 @@ const StudentDetailScreen = ({ route }) => {
                 <View style={styles.collapsibleCard}><TouchableOpacity style={styles.collapsibleHeader} onPress={handleAcademicToggle} activeOpacity={0.8}><Text style={styles.collapsibleTitle}>Academic Details</Text><Text style={styles.arrowIcon}>{isAcademicExpanded ? '▲' : '▼'}</Text></TouchableOpacity>{isAcademicExpanded && (<View style={styles.cardContent}><DetailRow label="Class" value={studentDetails.class_group} /><DetailRow label="Roll No." value={studentDetails.roll_no} /><DetailRow label="Admission No." value={studentDetails.admission_no} /><DetailRow label="Parent Name" value={studentDetails.parent_name} /><DetailRow label="Aadhar No." value={studentDetails.aadhar_no} /><DetailRow label="PEN No." value={studentDetails.pen_no} /><DetailRow label="Admission Date" value={studentDetails.admission_date} /></View>)}</View>
                 <View style={styles.collapsibleCard}><TouchableOpacity style={styles.collapsibleHeader} onPress={handleTimetableToggle} activeOpacity={0.8}><Text style={styles.collapsibleTitle}>Timetable</Text><Text style={styles.arrowIcon}>{isTimetableExpanded ? '▲' : '▼'}</Text></TouchableOpacity>{isTimetableExpanded && <StudentTimetable classGroup={studentDetails.class_group} />}</View>
 
-                {/* ★★★ CORRECTED PROGRESS REPORT SECTION ★★★ */}
+                {/* This is the Progress Report section */}
                 <View style={styles.collapsibleCard}>
-                    <TouchableOpacity style={styles.collapsibleHeader} onPress={handleReportCardToggle} activeOpacity={0.8}><Text style={styles.collapsibleTitle}>Progress Report</Text><Text style={styles.arrowIcon}>{isReportCardExpanded ? '▲' : '▼'}</Text></TouchableOpacity>
-                    {isReportCardExpanded && ( reportCardLoading ? <ActivityIndicator size="large" color="#008080" style={{ marginVertical: 20 }} /> : reportCardData ? <EmbeddedReportCard {...reportCardData} /> : <Text style={styles.errorText}>No report data available.</Text> )}
+                    <TouchableOpacity style={styles.collapsibleHeader} onPress={handleReportCardToggle} activeOpacity={0.8}>
+                        <Text style={styles.collapsibleTitle}>Progress Report</Text>
+                        <Text style={styles.arrowIcon}>{isReportCardExpanded ? '▲' : '▼'}</Text>
+                    </TouchableOpacity>
+                    {isReportCardExpanded && ( 
+                        reportCardLoading ? (
+                            <ActivityIndicator size="large" color="#008080" style={{ marginVertical: 20 }} /> 
+                        ) : reportCardData ? (
+                            <EmbeddedReportCard {...reportCardData} /> 
+                        ) : (
+                            <Text style={styles.errorText}>No report data available.</Text> 
+                        )
+                    )}
                 </View>
             </ScrollView>
         </View>
@@ -156,13 +188,9 @@ const styles = StyleSheet.create({
     ttContainer: { backgroundColor: '#FFFFFF', overflow: 'hidden' }, ttHeaderRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#CFD8DC' }, ttHeaderCell: { paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: '#ECEFF1' }, ttHeaderText: { fontSize: 12, fontWeight: 'bold', textAlign: 'center', textTransform: 'uppercase' }, ttRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1F3F4' }, ttCell: { paddingVertical: 12, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#F1F3F4', minHeight: 70 }, ttTimeCell: { alignItems: 'center', backgroundColor: '#F8F9FA' }, ttTimeText: { fontSize: 11, color: '#495057', fontWeight: '600' }, ttSubjectText: { fontSize: 13, fontWeight: '800', color: '#37474F', marginBottom: 3, textAlign: 'center' }, ttTeacherText: { fontSize: 10, color: '#78909C', textAlign: 'center', marginTop: 2, fontWeight: '500' }, ttBreakCell: { alignItems: 'center', backgroundColor: '#EAECEE' }, ttBreakTextSubject: { fontSize: 12, fontWeight: '600', color: '#546E7A' },
 });
 
-// --- ★★★ NEW: Styles for the embedded Report Card ★★★ ---
+// --- Styles for the embedded Report Card ---
 const rcStyles = StyleSheet.create({
     card: { backgroundColor: '#ffffff', paddingVertical: 10, paddingHorizontal: 5 },
-    studentInfoContainer: { backgroundColor: '#f8f9fa', borderRadius: 8, padding: 15, margin: 5, marginBottom: 20, borderWidth: 1, borderColor: '#e9ecef' },
-    infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
-    infoLabel: { fontSize: 14, fontWeight: '600', color: '#495057', width: 80 },
-    infoValue: { fontSize: 14, color: '#212529', flex: 1 },
     sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#343a40', textAlign: 'center', marginVertical: 15, marginTop: 10 },
     table: { borderWidth: 1, borderColor: '#dfe4ea', borderRadius: 8, overflow: 'hidden', marginHorizontal: 5 },
     tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#dfe4ea' },

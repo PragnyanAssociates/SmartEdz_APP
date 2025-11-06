@@ -7321,7 +7321,6 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
     const academicYear = getCurrentAcademicYear();
     
     try {
-        // ★★★ FIX: REMOVED a) CRASH-PRONE DESTRUCTURING and b) NON-EXISTENT COLUMNS ★★★
         const [studentRows] = await db.query(
             `SELECT 
                 u.id, 
@@ -7329,23 +7328,17 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
                 u.class_group, 
                 COALESCE(p.roll_no, u.username) as roll_no, 
                 p.profile_image_url
-                -- The columns below did not exist in your user_profiles table, causing the crash.
-                -- p.father_name,
-                -- p.mother_name,
-                -- p.date_of_birth
             FROM users u 
             LEFT JOIN user_profiles p ON u.id = p.user_id 
             WHERE u.id = ?`,
             [studentId]
         );
         
-        // Safely check if we got any results to prevent crashes.
         if (studentRows.length === 0) {
             return res.status(404).json({ message: "Student not found" });
         }
         
         const studentInfo = studentRows[0];
-        // ★★★ END OF FIX ★★★
 
         const [marks] = await db.query(
             "SELECT subject, exam_type, marks_obtained FROM report_student_marks WHERE student_id = ? AND academic_year = ?",
@@ -7364,13 +7357,12 @@ app.get('/api/reports/my-report-card', verifyToken, async (req, res) => {
     }
 });
 
-// --- ADD THIS NEW API ROUTE TO YOUR BACKEND SERVER FILE ---
+// --- NEW API ROUTE ---
 
 // GET: Get performance summaries for all classes
 app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (req, res) => {
     const academicYear = getCurrentAcademicYear();
     try {
-        // Step 1: Get all unique class groups
         const [classes] = await db.query(
             "SELECT DISTINCT class_group FROM users WHERE role = 'student' AND class_group IS NOT NULL AND class_group != '' ORDER BY class_group"
         );
@@ -7378,9 +7370,7 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
 
         const summaries = [];
 
-        // Step 2: Loop through each class to calculate its summary
         for (const classGroup of classGroups) {
-            // Step 3: Fetch all 'Overall' marks for every student in the current class
             const [marks] = await db.query(
                 `SELECT 
                     m.student_id, 
@@ -7400,10 +7390,9 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
                     topStudent: { name: 'N/A', marks: 0 },
                     topSubject: { name: 'N/A', marks: 0 },
                 });
-                continue; // Skip to the next class if no marks are found
+                continue; 
             }
 
-            // Step 4: Calculate stats using the fetched marks
             const studentTotals = {};
             const subjectTotals = {};
             let totalClassMarks = 0;
@@ -7413,23 +7402,19 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
                 const studentName = mark.full_name;
                 const currentMark = mark.marks_obtained || 0;
 
-                // Aggregate student totals
                 if (!studentTotals[studentId]) {
                     studentTotals[studentId] = { name: studentName, total: 0 };
                 }
                 studentTotals[studentId].total += currentMark;
 
-                // Aggregate subject totals
                 if (!subjectTotals[mark.subject]) {
                     subjectTotals[mark.subject] = 0;
                 }
                 subjectTotals[mark.subject] += currentMark;
                 
-                // Add to overall class total
                 totalClassMarks += currentMark;
             });
 
-            // Find top student
             let topStudent = { name: 'N/A', marks: 0 };
             for (const studentId in studentTotals) {
                 if (studentTotals[studentId].total > topStudent.marks) {
@@ -7440,7 +7425,6 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
                 }
             }
 
-            // Find top subject
             let topSubject = { name: 'N/A', marks: 0 };
             for (const subjectName in subjectTotals) {
                 if (subjectTotals[subjectName] > topSubject.marks) {
@@ -7466,10 +7450,23 @@ app.get('/api/reports/class-summaries', [verifyToken, isTeacherOrAdmin], async (
         res.status(500).json({ message: "Failed to fetch class summaries" });
     }
 });
+
+
+// ★★★ CORRECTED AND IMPROVED ROUTE ★★★
 // GET: A specific student's consolidated report card by their ID
 app.get('/api/reports/student/:studentId', [verifyToken], async (req, res) => {
     const { studentId } = req.params;
-    const academicYear = getCurrentAcademicYear(); // This helper function should already be in your file
+
+    // --- NEW: Add logging to see which ID the server is receiving ---
+    console.log(`[Report Card] API request received for studentId: ${studentId}`);
+
+    // --- NEW: Add validation to check if the studentId is valid ---
+    if (!studentId || isNaN(parseInt(studentId, 10))) {
+        console.error(`[Report Card] Invalid studentId received: ${studentId}`);
+        return res.status(400).json({ message: "An invalid student ID was provided." });
+    }
+
+    const academicYear = getCurrentAcademicYear();
 
     try {
         // Step 1: Fetch basic student info
@@ -7485,24 +7482,28 @@ app.get('/api/reports/student/:studentId', [verifyToken], async (req, res) => {
             [studentId]
         );
 
+        // Step 2: If no student is found, log it and return a 404 error
         if (studentRows.length === 0) {
-            return res.status(404).json({ message: "Student not found" });
+            // --- NEW: Improved logging for when a student isn't found ---
+            console.warn(`[Report Card] Student not found in the database for studentId: ${studentId}`);
+            return res.status(404).json({ message: `Student with ID ${studentId} was not found.` });
         }
         const studentInfo = studentRows[0];
+        console.log(`[Report Card] Found student: ${studentInfo.full_name}`);
 
-        // Step 2: Fetch all marks for the student for the current academic year
+        // Step 3: Fetch all marks for the student for the current academic year
         const [marks] = await db.query(
             "SELECT subject, exam_type, marks_obtained FROM report_student_marks WHERE student_id = ? AND academic_year = ?",
             [studentId, academicYear]
         );
 
-        // Step 3: Fetch all attendance for the student for the current academic year
+        // Step 4: Fetch all attendance for the student for the current academic year
         const [attendance] = await db.query(
             "SELECT month, working_days, present_days FROM report_student_attendance WHERE student_id = ? AND academic_year = ?",
             [studentId, academicYear]
         );
 
-        // Step 4: Send the combined data
+        // Step 5: Send the combined data
         res.json({ studentInfo, marks, attendance, academicYear });
 
     } catch (error) {
