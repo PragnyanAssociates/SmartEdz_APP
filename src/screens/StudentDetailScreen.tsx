@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, ActivityIndicator, Image,
-    TouchableOpacity, Modal, Pressable, Dimensions
+    TouchableOpacity, Modal, Pressable, Dimensions, FlatList, Platform, SafeAreaView
 } from 'react-native';
 import apiClient from '../api/client';
 import { SERVER_URL } from '../../apiConfig';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import * as Animatable from 'react-native-animatable';
 
 // --- Timetable Constants ---
 type Day = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
@@ -31,6 +34,13 @@ const EXAM_MAPPING = { 'AT1': 'Assignment-1', 'UT1': 'Unitest-1', 'AT2': 'Assign
 const DISPLAY_EXAM_ORDER = ['AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'AT4', 'UT4','SA1', 'SA2', 'Total'];
 const MONTHS = ['June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March', 'April', 'May'];
 
+// --- ★★★ NEW: Attendance Constants ★★★ ---
+const PRIMARY_COLOR = '#008080'; // Using the existing primary color
+const GREEN = '#43A047';
+const RED = '#E53935';
+const BLUE = '#1E88E5';
+const WHITE = '#FFFFFF';
+const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
 // --- Reusable Component for Timetable Grid ---
 const StudentTimetable = ({ classGroup }) => {
@@ -42,14 +52,11 @@ const StudentTimetable = ({ classGroup }) => {
     return (<View style={styles.ttContainer}><View style={styles.ttHeaderRow}>{tableHeaders.map(h => (<View key={h.name} style={[styles.ttHeaderCell, { backgroundColor: h.color, width: h.width }]}><Text style={[styles.ttHeaderText, { color: h.textColor }]}>{h.name}</Text></View>))}</View>{scheduleData.map((row, rowIndex) => (<View key={rowIndex} style={styles.ttRow}><View style={[styles.ttCell, styles.ttTimeCell, { width: tableHeaders[0].width }]}><Text style={styles.ttTimeText}>{row.time}</Text></View>{row.periods.map((period, periodIndex) => (<View key={periodIndex} style={[styles.ttCell, period.isBreak ? styles.ttBreakCell : { backgroundColor: getSubjectColor(period.subject) }, { width: tableHeaders[periodIndex + 1].width },]}>{period.isBreak ? (<Text style={styles.ttBreakTextSubject}>{period.subject}</Text>) : (<><Text style={styles.ttSubjectText} numberOfLines={2}>{period.subject || ''}</Text>{period.teacher && <Text style={styles.ttTeacherText} numberOfLines={1}>{period.teacher}</Text>}</>)}</View>))}</View>))}</View>);
 };
 
-// --- Embedded Report Card Component for this screen ---
+// --- Embedded Report Card Component ---
 const EmbeddedReportCard = ({ studentInfo, academicYear, marksData, attendanceData }) => {
     const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
-    const formatMonthForDisplay = (month) => { if (month === 'September') return 'Sept'; return month.substring(0, 3); };
-
     return (
         <View style={rcStyles.card}>
-            <Text style={rcStyles.sectionTitle}>PROGRESS CARD</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={rcStyles.table}>
                     <View style={rcStyles.tableRow}><Text style={[rcStyles.tableHeader, rcStyles.subjectCol]}>Subjects</Text>{DISPLAY_EXAM_ORDER.map(exam => <Text key={exam} style={[rcStyles.tableHeader, rcStyles.markCol]}>{exam}</Text>)}</View>
@@ -57,16 +64,106 @@ const EmbeddedReportCard = ({ studentInfo, academicYear, marksData, attendanceDa
                     <View style={[rcStyles.tableRow, rcStyles.totalRow]}><Text style={[rcStyles.tableHeader, rcStyles.subjectCol]}>Total</Text>{DISPLAY_EXAM_ORDER.map(exam => { const total = subjects.reduce((sum, subject) => { const mark = parseFloat(marksData[subject]?.[EXAM_MAPPING[exam]]); return sum + (isNaN(mark) ? 0 : mark); }, 0); return <Text key={exam} style={[rcStyles.tableHeader, rcStyles.markCol]}>{total > 0 ? total : '-'}</Text>; })}</View>
                 </View>
             </ScrollView>
-
-            <Text style={rcStyles.sectionTitle}>ATTENDANCE PARTICULARS</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={rcStyles.table}>
-                    <View style={rcStyles.tableRow}><Text style={[rcStyles.tableHeader, rcStyles.attendanceHeaderCol]}>Month</Text>{MONTHS.map(month => <Text key={month} style={[rcStyles.tableHeader, rcStyles.attendanceDataCol]}>{formatMonthForDisplay(month)}</Text>)}</View>
-                    <View style={rcStyles.tableRow}><Text style={[rcStyles.tableCell, rcStyles.attendanceHeaderCol]}>Working Days</Text>{MONTHS.map(month => <Text key={month} style={[rcStyles.tableCell, rcStyles.attendanceDataCol]}>{attendanceData[month]?.workingDays ?? '-'}</Text>)}</View>
-                    <View style={rcStyles.tableRow}><Text style={[rcStyles.tableCell, rcStyles.attendanceHeaderCol]}>Present Days</Text>{MONTHS.map(month => <Text key={month} style={[rcStyles.tableCell, rcStyles.attendanceDataCol]}>{attendanceData[month]?.presentDays ?? '-'}</Text>)}</View>
-                </View>
-            </ScrollView>
         </View>
+    );
+};
+
+// --- ★★★ NEW: Embedded Attendance Component ★★★ ---
+const SummaryCard = ({ label, value, color, delay }) => (
+    <Animatable.View animation="zoomIn" duration={500} delay={delay} style={attStyles.summaryBox}>
+        <Text style={[attStyles.summaryValue, { color }]}>{value}</Text>
+        <Text style={attStyles.summaryLabel}>{label}</Text>
+    </Animatable.View>
+);
+
+const HistoryDayCard = ({ item, index }) => {
+    const isPresent = item.status === 'Present';
+    const dayStatus = isPresent ? 'Present' : 'Absent';
+    const statusColor = isPresent ? GREEN : RED;
+    return (
+        <Animatable.View animation="fadeInUp" duration={400} delay={index * 100} style={attStyles.historyDayCard}>
+            <View style={attStyles.historyDayHeader}>
+                <Text style={attStyles.historyDate}>{new Date(item.attendance_date).toDateString()}</Text>
+                <Text style={[attStyles.historyStatus, { color: statusColor }]}>{dayStatus}</Text>
+            </View>
+        </Animatable.View>
+    );
+};
+
+const EmbeddedAttendanceView = ({ studentId }) => {
+    const [viewMode, setViewMode] = useState('overall');
+    const [data, setData] = useState({ summary: {}, history: [] });
+    const [isLoading, setIsLoading] = useState(true);
+    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [showDatePicker, setShowDatePicker] = useState(false);
+
+    useEffect(() => {
+        const fetchHistory = async () => {
+            if (!studentId) return;
+            setIsLoading(true);
+            try {
+                // Assuming an admin/teacher is viewing this, we use the admin history endpoint
+                let url = `/attendance/student-history-admin/${studentId}?viewMode=${viewMode}`;
+                if (viewMode === 'daily') {
+                    url += `&date=${selectedDate.toISOString().split('T')[0]}`;
+                }
+                const response = await apiClient.get(url);
+                setData(response.data);
+            } catch (error: any) {
+                console.error("Failed to fetch student attendance:", error.response?.data?.message || error.message);
+                setData({ summary: {}, history: [] }); // Reset data on error
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchHistory();
+    }, [studentId, viewMode, selectedDate]);
+
+    const onDateChange = (event: any, date?: Date) => {
+        setShowDatePicker(Platform.OS === 'ios');
+        if (date) {
+            setSelectedDate(date);
+            if (viewMode !== 'daily') {
+                setViewMode('daily');
+            }
+        }
+    };
+
+    const percentage = useMemo(() => {
+        if (!data.summary?.total_days || data.summary.total_days === 0) return '0.0';
+        return ((data.summary.present_days / data.summary.total_days) * 100).toFixed(1);
+    }, [data.summary]);
+
+    return (
+        <SafeAreaView style={attStyles.container}>
+            <View style={attStyles.toggleContainer}>
+                <TouchableOpacity style={[attStyles.toggleButton, viewMode === 'daily' && attStyles.toggleButtonActive]} onPress={() => setViewMode('daily')}><Text style={[attStyles.toggleButtonText, viewMode === 'daily' && attStyles.toggleButtonTextActive]}>Daily</Text></TouchableOpacity>
+                <TouchableOpacity style={[attStyles.toggleButton, viewMode === 'monthly' && attStyles.toggleButtonActive]} onPress={() => setViewMode('monthly')}><Text style={[attStyles.toggleButtonText, viewMode === 'monthly' && attStyles.toggleButtonTextActive]}>Monthly</Text></TouchableOpacity>
+                <TouchableOpacity style={[attStyles.toggleButton, viewMode === 'overall' && attStyles.toggleButtonActive]} onPress={() => setViewMode('overall')}><Text style={[attStyles.toggleButtonText, viewMode === 'overall' && attStyles.toggleButtonTextActive]}>Overall</Text></TouchableOpacity>
+                <TouchableOpacity style={attStyles.calendarButton} onPress={() => setShowDatePicker(true)}><Icon name="calendar" size={22} color={PRIMARY_COLOR} /></TouchableOpacity>
+            </View>
+
+            {showDatePicker && (<DateTimePicker value={selectedDate} mode="date" display="default" onChange={onDateChange} />)}
+
+            {isLoading ? <ActivityIndicator style={{ marginVertical: 30 }} size="large" color={PRIMARY_COLOR} /> : (
+                <>
+                    <View style={attStyles.summaryContainer}>
+                        <SummaryCard label="Overall %" value={`${percentage}%`} color={BLUE} delay={100} />
+                        <SummaryCard label="Days Present" value={data.summary.present_days || 0} color={GREEN} delay={200} />
+                        <SummaryCard label="Days Absent" value={data.summary.absent_days || 0} color={RED} delay={300} />
+                    </View>
+                    <FlatList
+                        data={data.history}
+                        keyExtractor={(item) => item.attendance_date}
+                        renderItem={({ item, index }) => <HistoryDayCard item={item} index={index} />}
+                        ListHeaderComponent={<Text style={attStyles.historyTitle}>Detailed History ({capitalize(viewMode)})</Text>}
+                        ListEmptyComponent={<Text style={attStyles.noDataText}>No records found for this period.</Text>}
+                        contentContainerStyle={{ paddingBottom: 20 }}
+                        nestedScrollEnabled // Important for FlatList inside ScrollView
+                    />
+                </>
+            )}
+        </SafeAreaView>
     );
 };
 
@@ -79,71 +176,58 @@ const StudentDetailScreen = ({ route }) => {
     const [isAcademicExpanded, setIsAcademicExpanded] = useState(false);
     const [isTimetableExpanded, setIsTimetableExpanded] = useState(false);
     const [isReportCardExpanded, setIsReportCardExpanded] = useState(false);
+    const [isAttendanceExpanded, setIsAttendanceExpanded] = useState(false); // New state
     const [reportCardData, setReportCardData] = useState(null);
     const [reportCardLoading, setReportCardLoading] = useState(false);
     
     const scrollViewRef = useRef(null);
 
-    useEffect(() => { if (studentId) { const fetchDetails = async () => { setLoading(true); try { const response = await apiClient.get(`/students/${studentId}`); setStudentDetails(response.data); } catch (error) { console.error('Error fetching student details:', error); } finally { setLoading(false); } }; fetchDetails(); } }, [studentId]);
+    useEffect(() => {
+        if (studentId) {
+            const fetchDetails = async () => {
+                setLoading(true);
+                try {
+                    const response = await apiClient.get(`/students/${studentId}`);
+                    setStudentDetails(response.data);
+                } catch (error) {
+                    console.error('Error fetching student details:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            fetchDetails();
+        }
+    }, [studentId]);
     
     const scrollToBottom = () => setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 150);
     const handleAcademicToggle = () => { if (!isAcademicExpanded) scrollToBottom(); setIsAcademicExpanded(prevState => !prevState); };
     const handleTimetableToggle = () => { if (!isTimetableExpanded) scrollToBottom(); setIsTimetableExpanded(prevState => !prevState); };
+    const handleAttendanceToggle = () => { if (!isAttendanceExpanded) scrollToBottom(); setIsAttendanceExpanded(prevState => !prevState); }; // New handler
 
-    // This function fetches the consolidated report card data when the user expands the section.
     const handleReportCardToggle = async () => {
-        // Only fetch data the first time the card is opened.
+        if (!studentDetails || !studentDetails.id) return;
         if (!isReportCardExpanded && !reportCardData) {
             setReportCardLoading(true);
             try {
-                // Fetch the report data from the dedicated endpoint.
-                const response = await apiClient.get(`/api/reports/student/${studentId}`);
-                
-                // If the response is invalid or has no student info, throw an error to be caught.
-                if (!response.data || !response.data.studentInfo) {
-                    throw new Error("Invalid data structure from server.");
-                }
-
+                const response = await apiClient.get(`/reports/student/${studentDetails.id}`);
+                if (!response.data || !response.data.studentInfo) throw new Error("Invalid report card data.");
                 const { studentInfo, marks, attendance, academicYear } = response.data;
-                
-                // Process the fetched marks into a format suitable for the display component.
                 const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
                 const marksMap = {};
                 subjects.forEach(subject => { marksMap[subject] = {}; });
-                
-                marks.forEach(mark => {
-                    const displayExamType = EXAM_MAPPING[mark.exam_type];
-                    if (marksMap[mark.subject] && displayExamType) {
-                        marksMap[mark.subject][displayExamType] = mark.marks_obtained !== null ? mark.marks_obtained.toString() : '-';
-                    }
-                });
-                
-                // Process attendance data.
+                marks.forEach(mark => { const displayExamType = EXAM_MAPPING[mark.exam_type]; if (marksMap[mark.subject] && displayExamType) { marksMap[mark.subject][displayExamType] = mark.marks_obtained !== null ? mark.marks_obtained.toString() : '-'; } });
                 const attendanceMap = {};
-                attendance.forEach(att => {
-                    if (att.month) {
-                        attendanceMap[att.month] = { workingDays: att.working_days ?? '-', presentDays: att.present_days ?? '-' };
-                    }
-                });
-                
-                // Store the processed data in the component's state.
+                attendance.forEach(att => { if (att.month) { attendanceMap[att.month] = { workingDays: att.working_days ?? '-', presentDays: att.present_days ?? '-' }; } });
                 setReportCardData({ studentInfo, academicYear, marksData: marksMap, attendanceData: attendanceMap });
             } catch (err) {
-                console.error('Error fetching report card:', err);
-                // If an error occurs, set data to null to show the fallback message.
+                console.error('Error fetching report card:', err.response?.data || err.message);
                 setReportCardData(null);
             } finally {
                 setReportCardLoading(false);
             }
         }
-        
-        // Toggle the visibility of the report card section.
         setIsReportCardExpanded(prevState => !prevState);
-
-        // Scroll to the bottom to make the expanded section visible.
-        if (!isReportCardExpanded) {
-            scrollToBottom();
-        }
+        if (!isReportCardExpanded) scrollToBottom();
     };
 
     const DetailRow = ({ label, value }) => (<View style={styles.detailRow}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value || 'Not Provided'}</Text></View>);
@@ -161,21 +245,18 @@ const StudentDetailScreen = ({ route }) => {
                 <View style={styles.collapsibleCard}><TouchableOpacity style={styles.collapsibleHeader} onPress={handleAcademicToggle} activeOpacity={0.8}><Text style={styles.collapsibleTitle}>Academic Details</Text><Text style={styles.arrowIcon}>{isAcademicExpanded ? '▲' : '▼'}</Text></TouchableOpacity>{isAcademicExpanded && (<View style={styles.cardContent}><DetailRow label="Class" value={studentDetails.class_group} /><DetailRow label="Roll No." value={studentDetails.roll_no} /><DetailRow label="Admission No." value={studentDetails.admission_no} /><DetailRow label="Parent Name" value={studentDetails.parent_name} /><DetailRow label="Aadhar No." value={studentDetails.aadhar_no} /><DetailRow label="PEN No." value={studentDetails.pen_no} /><DetailRow label="Admission Date" value={studentDetails.admission_date} /></View>)}</View>
                 <View style={styles.collapsibleCard}><TouchableOpacity style={styles.collapsibleHeader} onPress={handleTimetableToggle} activeOpacity={0.8}><Text style={styles.collapsibleTitle}>Timetable</Text><Text style={styles.arrowIcon}>{isTimetableExpanded ? '▲' : '▼'}</Text></TouchableOpacity>{isTimetableExpanded && <StudentTimetable classGroup={studentDetails.class_group} />}</View>
 
-                {/* This is the Progress Report section */}
+                {/* ★★★ NEW ATTENDANCE SECTION ★★★ */}
                 <View style={styles.collapsibleCard}>
-                    <TouchableOpacity style={styles.collapsibleHeader} onPress={handleReportCardToggle} activeOpacity={0.8}>
-                        <Text style={styles.collapsibleTitle}>Progress Report</Text>
-                        <Text style={styles.arrowIcon}>{isReportCardExpanded ? '▲' : '▼'}</Text>
+                    <TouchableOpacity style={styles.collapsibleHeader} onPress={handleAttendanceToggle} activeOpacity={0.8}>
+                        <Text style={styles.collapsibleTitle}>Attendance</Text>
+                        <Text style={styles.arrowIcon}>{isAttendanceExpanded ? '▲' : '▼'}</Text>
                     </TouchableOpacity>
-                    {isReportCardExpanded && ( 
-                        reportCardLoading ? (
-                            <ActivityIndicator size="large" color="#008080" style={{ marginVertical: 20 }} /> 
-                        ) : reportCardData ? (
-                            <EmbeddedReportCard {...reportCardData} /> 
-                        ) : (
-                            <Text style={styles.errorText}>No report data available.</Text> 
-                        )
-                    )}
+                    {isAttendanceExpanded && <EmbeddedAttendanceView studentId={studentDetails.id} />}
+                </View>
+
+                <View style={styles.collapsibleCard}>
+                    <TouchableOpacity style={styles.collapsibleHeader} onPress={handleReportCardToggle} activeOpacity={0.8}><Text style={styles.collapsibleTitle}>Progress Report</Text><Text style={styles.arrowIcon}>{isReportCardExpanded ? '▲' : '▼'}</Text></TouchableOpacity>
+                    {isReportCardExpanded && (reportCardLoading ? <ActivityIndicator size="large" color="#008080" style={{ marginVertical: 20 }} /> : reportCardData ? <EmbeddedReportCard {...reportCardData} /> : <Text style={styles.errorText}>No report data available.</Text>)}
                 </View>
             </ScrollView>
         </View>
@@ -188,10 +269,9 @@ const styles = StyleSheet.create({
     ttContainer: { backgroundColor: '#FFFFFF', overflow: 'hidden' }, ttHeaderRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#CFD8DC' }, ttHeaderCell: { paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: '#ECEFF1' }, ttHeaderText: { fontSize: 12, fontWeight: 'bold', textAlign: 'center', textTransform: 'uppercase' }, ttRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1F3F4' }, ttCell: { paddingVertical: 12, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#F1F3F4', minHeight: 70 }, ttTimeCell: { alignItems: 'center', backgroundColor: '#F8F9FA' }, ttTimeText: { fontSize: 11, color: '#495057', fontWeight: '600' }, ttSubjectText: { fontSize: 13, fontWeight: '800', color: '#37474F', marginBottom: 3, textAlign: 'center' }, ttTeacherText: { fontSize: 10, color: '#78909C', textAlign: 'center', marginTop: 2, fontWeight: '500' }, ttBreakCell: { alignItems: 'center', backgroundColor: '#EAECEE' }, ttBreakTextSubject: { fontSize: 12, fontWeight: '600', color: '#546E7A' },
 });
 
-// --- Styles for the embedded Report Card ---
+// --- Report Card Styles ---
 const rcStyles = StyleSheet.create({
-    card: { backgroundColor: '#ffffff', paddingVertical: 10, paddingHorizontal: 5 },
-    sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#343a40', textAlign: 'center', marginVertical: 15, marginTop: 10 },
+    card: { backgroundColor: '#ffffff', paddingVertical: 15, paddingHorizontal: 5 },
     table: { borderWidth: 1, borderColor: '#dfe4ea', borderRadius: 8, overflow: 'hidden', marginHorizontal: 5 },
     tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#dfe4ea' },
     tableHeader: { padding: 10, fontWeight: 'bold', textAlign: 'center', backgroundColor: '#f8f9fa', color: '#495057', fontSize: 12, borderRightWidth: 1, borderRightColor: '#dfe4ea' },
@@ -199,8 +279,27 @@ const rcStyles = StyleSheet.create({
     subjectCol: { width: 90, textAlign: 'left', fontWeight: '600' },
     markCol: { width: 55 },
     totalRow: { backgroundColor: '#f1f3f5' },
-    attendanceHeaderCol: { width: 110, textAlign: 'left', fontWeight: '600'},
-    attendanceDataCol: { width: 60 },
+});
+
+// --- ★★★ NEW: Attendance Styles ★★★ ---
+const attStyles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: WHITE },
+    noDataText: { textAlign: 'center', marginTop: 20, color: '#566573', fontSize: 16 },
+    toggleContainer: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 5, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: '#E0E0E0', alignItems: 'center' },
+    toggleButton: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 20, marginHorizontal: 5, backgroundColor: '#E0E0E0' },
+    toggleButtonActive: { backgroundColor: PRIMARY_COLOR },
+    toggleButtonText: { color: '#37474F', fontWeight: '600' },
+    toggleButtonTextActive: { color: WHITE },
+    calendarButton: { padding: 8, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
+    summaryContainer: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 15, backgroundColor: WHITE },
+    summaryBox: { alignItems: 'center', flex: 1, paddingVertical: 10, paddingHorizontal: 5 },
+    summaryValue: { fontSize: 24, fontWeight: 'bold' },
+    summaryLabel: { fontSize: 13, color: '#566573', marginTop: 5, fontWeight: '500', textAlign: 'center' },
+    historyTitle: { fontSize: 18, fontWeight: 'bold', paddingHorizontal: 15, marginTop: 15, marginBottom: 10, color: '#37474F' },
+    historyDayCard: { backgroundColor: WHITE, marginHorizontal: 15, marginVertical: 8, borderRadius: 8, elevation: 2, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 5 },
+    historyDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
+    historyDate: { fontSize: 16, fontWeight: '600', color: '#37474F' },
+    historyStatus: { fontSize: 14, fontWeight: 'bold' },
 });
 
 export default StudentDetailScreen;

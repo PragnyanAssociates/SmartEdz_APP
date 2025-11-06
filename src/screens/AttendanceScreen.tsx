@@ -98,14 +98,14 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
             if (!studentId) return;
             setIsLoading(true);
             try {
-                let url = onBack 
+                let url = onBack
                     ? `/attendance/student-history-admin/${studentId}?viewMode=${viewMode}`
                     : `/attendance/my-history/${studentId}?viewMode=${viewMode}`;
-                
+
                 if (viewMode === 'daily') {
                     url += `&date=${selectedDate.toISOString().split('T')[0]}`;
                 }
-                
+
                 const response = await apiClient.get(url);
                 setData(response.data);
             } catch (error: any) {
@@ -118,11 +118,11 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     }, [studentId, viewMode, selectedDate]);
 
     const onDateChange = (event: any, date?: Date) => {
-        setShowDatePicker(Platform.OS === 'ios'); 
+        setShowDatePicker(Platform.OS === 'ios');
         if (date) {
             setSelectedDate(date);
             if (viewMode !== 'daily') {
-                setViewMode('daily'); 
+                setViewMode('daily');
             }
         }
     };
@@ -131,7 +131,7 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
         if (!data.summary?.total_days || data.summary.total_days === 0) return '0.0';
         return ((data.summary.present_days / data.summary.total_days) * 100).toFixed(1);
     }, [data.summary]);
-    
+
     return (
         <SafeAreaView style={styles.container}>
             <Animatable.View animation="fadeInDown" duration={500}>
@@ -240,10 +240,10 @@ const GenericSummaryView = ({
     const handleDateChange = (event: any, date?: Date) => {
         setShowDatePicker(Platform.OS === 'ios');
         if (date) {
-            onDateChange(date); 
+            onDateChange(date);
         }
     };
-    
+
     const handleSearch = (text: string) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setSearchQuery(text);
@@ -285,7 +285,7 @@ const GenericSummaryView = ({
                     <View style={styles.pickerWrapper}>{picker2}</View>
                 </View>
             </Animatable.View>
-            
+
             {viewMode === 'daily' && (
                 <Text style={styles.dateHeader}>
                     Showing for: {selectedDate.toDateString()}
@@ -414,11 +414,11 @@ const TeacherSummaryView = ({ teacher }) => {
             }
         };
         fetchSummary();
-    }, [selectedClass, selectedSubject, viewMode, selectedDate]); 
+    }, [selectedClass, selectedSubject, viewMode, selectedDate]);
 
     const uniqueClasses = useMemo(() => [...new Set(assignments.map(a => a.class_group))], [assignments]);
     const subjectsForSelectedClass = useMemo(() => assignments.filter(a => a.class_group === selectedClass).map(a => a.subject_name), [assignments, selectedClass]);
-    
+
     const handleClassChange = (newClass) => {
         setSelectedClass(newClass);
         const newSubjects = assignments.filter(a => a.class_group === newClass).map(a => a.subject_name);
@@ -434,7 +434,7 @@ const TeacherSummaryView = ({ teacher }) => {
 
     const picker1 = (
         <Picker selectedValue={selectedClass} onValueChange={handleClassChange} enabled={uniqueClasses.length > 0}>
-            {uniqueClasses.length > 0 ? 
+            {uniqueClasses.length > 0 ?
                 uniqueClasses.map(c => <Picker.Item key={c} label={c} value={c} />) :
                 <Picker.Item label="No classes..." value="" enabled={false} />
             }
@@ -523,7 +523,7 @@ const AdminAttendanceView = () => {
     if (selectedSubject) {
         fetchSummary();
     }
-  }, [selectedSubject, viewMode, selectedDate]); 
+  }, [selectedSubject, viewMode, selectedDate]);
 
   const handleDateChange = (date: Date) => {
     setSelectedDate(date);
@@ -567,14 +567,17 @@ const AdminAttendanceView = () => {
   );
 };
 
+// ==========================================================
+// --- TeacherLiveAttendanceView: MODIFIED FOR SUCCESS SCREEN ---
+// ==========================================================
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
   const { class_group, subject_name, date } = route?.params || {};
   const [students, setStudents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAttendanceMarked, setIsAttendanceMarked] = useState(false); // New state for success screen
   const periodInfo = PERIOD_DEFINITIONS.find(p => p.period === 1);
   const periodTime = periodInfo ? periodInfo.time : `Period 1`;
-  const navigation = useNavigation();
 
   useEffect(() => {
     const fetchAttendanceSheet = async () => {
@@ -587,7 +590,7 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
         const response = await apiClient.get(`/attendance/sheet?class_group=${class_group}&date=${date}&period_number=1`);
         const studentsWithStatus = response.data.map(s => ({ ...s, status: s.status || 'Present' }));
         setStudents(studentsWithStatus);
-      } catch (error: any) { Alert.alert('Error', 'Failed to load students.'); } 
+      } catch (error: any) { Alert.alert('Error', 'Failed to load students.'); }
       finally { setIsLoading(false); }
     };
     fetchAttendanceSheet();
@@ -603,8 +606,9 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
     setIsSaving(true);
     try {
       await apiClient.post('/attendance', { class_group, subject_name, period_number: 1, date, teacher_id: teacher.id, attendanceData });
-      Alert.alert( 'Success', 'Attendance saved successfully!', [{ text: 'OK', onPress: () => navigation.goBack() }]);
-    } catch (error: any) { 
+      // On success, show the confirmation screen instead of an alert
+      setIsAttendanceMarked(true);
+    } catch (error: any) {
       console.error("Failed to save attendance:", JSON.stringify(error.response?.data || error.message, null, 2));
       const errorMessage = error.response?.data?.message || 'Failed to save attendance. Please contact support.';
       Alert.alert('Error', errorMessage);
@@ -612,8 +616,35 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
     finally { setIsSaving(false); }
   };
 
+  // Fuction to return to the attendance list
+  const handleEditAttendance = () => {
+    setIsAttendanceMarked(false);
+  };
+
   if (isLoading) return <ActivityIndicator style={styles.loaderContainer} size="large" color={PRIMARY_COLOR} />;
 
+  // Conditionally render the success screen if attendance has been marked
+  if (isAttendanceMarked) {
+    const formattedDate = new Date(date).toLocaleDateString('en-US');
+    return (
+        <SafeAreaView style={styles.container}>
+            <View style={styles.successContainer}>
+                <Animatable.View animation="bounceIn" duration={800}>
+                    <Icon name="check-circle" size={80} color={GREEN} />
+                </Animatable.View>
+                <Text style={styles.successTitle}>Attendance Marked!</Text>
+                <Text style={styles.successSubtitle}>
+                    {`Attendance for ${formattedDate} has been saved successfully. You can click "Edit Attendance" to make any changes.`}
+                </Text>
+                <TouchableOpacity style={styles.editButton} onPress={handleEditAttendance}>
+                    <Text style={styles.editButtonText}>Edit Attendance</Text>
+                </TouchableOpacity>
+            </View>
+        </SafeAreaView>
+    );
+  }
+
+  // Default view for taking attendance
   return (
     <SafeAreaView style={styles.container}>
       <Animatable.View animation="fadeInDown" duration={500}>
@@ -625,7 +656,7 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
       </Animatable.View>
       <FlatList
         data={students}
-        renderItem={({ item, index }) => ( 
+        renderItem={({ item, index }) => (
             <Animatable.View animation="fadeInUp" duration={400} delay={index * 75} style={styles.liveStudentRow}>
                 <View style={styles.studentInfoContainer}>
                     <Icon name="account-circle-outline" size={32} color={TEXT_COLOR_DARK} />
@@ -698,6 +729,12 @@ const styles = StyleSheet.create({
   historyStatus: { fontSize: 14, fontWeight: 'bold' },
   calendarButton: { padding: 8, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
   dateHeader: { textAlign: 'center', paddingVertical: 8, backgroundColor: '#F0F4F8', color: TEXT_COLOR_MEDIUM, fontSize: 14, fontWeight: '500' },
+  // Styles for the new success screen
+  successContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 },
+  successTitle: { fontSize: 24, fontWeight: 'bold', color: TEXT_COLOR_DARK, marginTop: 20 },
+  successSubtitle: { fontSize: 16, color: TEXT_COLOR_MEDIUM, textAlign: 'center', marginTop: 10, marginBottom: 30, lineHeight: 24, },
+  editButton: { backgroundColor: PRIMARY_COLOR, paddingVertical: 14, paddingHorizontal: 40, borderRadius: 8 },
+  editButtonText: { color: WHITE, fontSize: 16, fontWeight: 'bold' },
 });
 
 export default AttendanceScreen;

@@ -837,30 +837,30 @@ app.post('/api/timetable', async (req, res) => { const { class_group, day_of_wee
 // ==========================================================
 
 // GET subjects for a specific class group (No changes needed, this is correct)
-app.get('/api/subjects/:class_group', async (req, res) => { 
-    try { 
-        const { class_group } = req.params; 
-        if (!class_group) { return res.status(400).json({ message: 'Class group is required.' }); } 
-        const query = `SELECT DISTINCT subject_name FROM timetables WHERE class_group = ? ORDER BY subject_name;`; 
-        const [subjects] = await db.query(query, [class_group]); 
-        res.status(200).json(subjects.map(s => s.subject_name)); 
-    } catch (error) { 
-        console.error("GET /api/subjects/:class_group Error:", error); 
-        res.status(500).json({ message: 'Could not fetch subjects for the class.' }); 
+app.get('/api/subjects/:class_group', async (req, res) => {
+    try {
+        const { class_group } = req.params;
+        if (!class_group) { return res.status(400).json({ message: 'Class group is required.' }); }
+        const query = `SELECT DISTINCT subject_name FROM timetables WHERE class_group = ? ORDER BY subject_name;`;
+        const [subjects] = await db.query(query, [class_group]);
+        res.status(200).json(subjects.map(s => s.subject_name));
+    } catch (error) {
+        console.error("GET /api/subjects/:class_group Error:", error);
+        res.status(500).json({ message: 'Could not fetch subjects for the class.' });
     }
 });
 
 // GET assignments for a specific teacher (No changes needed, this is correct)
-app.get('/api/teacher-assignments/:teacherId', async (req, res) => { 
-    try { 
-        const { teacherId } = req.params; 
-        if (!teacherId) { return res.status(400).json({ message: 'Teacher ID is required.' }); } 
-        const query = `SELECT DISTINCT class_group, subject_name FROM timetables WHERE teacher_id = ? ORDER BY class_group, subject_name;`; 
-        const [assignments] = await db.query(query, [teacherId]); 
-        res.status(200).json(assignments); 
-    } catch (error) { 
-        console.error("GET /api/teacher-assignments/:teacherId Error:", error); 
-        res.status(500).json({ message: 'Could not fetch teacher assignments.' }); 
+app.get('/api/teacher-assignments/:teacherId', async (req, res) => {
+    try {
+        const { teacherId } = req.params;
+        if (!teacherId) { return res.status(400).json({ message: 'Teacher ID is required.' }); }
+        const query = `SELECT DISTINCT class_group, subject_name FROM timetables WHERE teacher_id = ? ORDER BY class_group, subject_name;`;
+        const [assignments] = await db.query(query, [teacherId]);
+        res.status(200).json(assignments);
+    } catch (error) {
+        console.error("GET /api/teacher-assignments/:teacherId Error:", error);
+        res.status(500).json({ message: 'Could not fetch teacher assignments.' });
     }
 });
 
@@ -885,7 +885,7 @@ const getAttendanceSummary = async (filters) => {
 
     let whereClause = 'ar.class_group = ?';
     let queryParams = [filters.classGroup];
-    
+
     if (filters.subjectName) {
         whereClause += ' AND ar.subject_name = ?';
         queryParams.push(filters.subjectName);
@@ -911,7 +911,7 @@ const getAttendanceSummary = async (filters) => {
     } else {
         const summaryQuery = `
             WITH StudentStats AS (
-                SELECT 
+                SELECT
                     student_id,
                     (SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) * 100.0 / COUNT(id)) as percentage
                 ${baseQuery}
@@ -924,16 +924,16 @@ const getAttendanceSummary = async (filters) => {
         `;
          [[overallSummary]] = await db.query(summaryQuery, [...fullQueryParams, ...fullQueryParams]);
     }
-    
+
     // ★★★ MODIFIED QUERY: Joins user_profiles to get roll_no and orders by it ★★★
     const studentDetailsQuery = `
-        SELECT 
-            u.id AS student_id, 
-            u.full_name, 
+        SELECT
+            u.id AS student_id,
+            u.full_name,
             up.roll_no,
-            COALESCE(SUM(CASE WHEN ar.status = 'Present' THEN 1 ELSE 0 END), 0) as present_days, 
+            COALESCE(SUM(CASE WHEN ar.status = 'Present' THEN 1 ELSE 0 END), 0) as present_days,
             COUNT(ar.id) as total_days
-        FROM users u 
+        FROM users u
         LEFT JOIN user_profiles up ON u.id = up.user_id
         LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ${whereClause} ${dateFilter}
         WHERE u.role = 'student' AND u.class_group = ?
@@ -980,27 +980,27 @@ app.get('/api/attendance/admin-summary', async (req, res) => {
 });
 
 // GET attendance sheet for a specific period
-app.get('/api/attendance/sheet', async (req, res) => { 
-    const { class_group, date, period_number } = req.query; 
-    try { 
-        if (!class_group || !date || !period_number) { 
-            return res.status(400).json({ message: 'Class group, date, and period number are required.' }); 
-        } 
-        
+app.get('/api/attendance/sheet', async (req, res) => {
+    const { class_group, date, period_number } = req.query;
+    try {
+        if (!class_group || !date || !period_number) {
+            return res.status(400).json({ message: 'Class group, date, and period number are required.' });
+        }
+
         const query = `
-            SELECT u.id, u.full_name, up.roll_no, ar.status 
-            FROM users u 
+            SELECT u.id, u.full_name, up.roll_no, ar.status
+            FROM users u
             LEFT JOIN user_profiles up ON u.id = up.user_id
-            LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ar.attendance_date = ? AND ar.period_number = ? 
-            WHERE u.role = 'student' AND u.class_group = ? 
+            LEFT JOIN attendance_records ar ON u.id = ar.student_id AND ar.attendance_date = ? AND ar.period_number = ?
+            WHERE u.role = 'student' AND u.class_group = ?
             ORDER BY CAST(up.roll_no AS UNSIGNED), u.full_name;
-        `; 
-        
-        const [students] = await db.query(query, [date, period_number, class_group]); 
-        res.status(200).json(students); 
-    } catch (error) { 
-        console.error("GET /api/attendance/sheet Error:", error); 
-        res.status(500).json({ message: 'Error fetching attendance sheet.' }); 
+        `;
+
+        const [students] = await db.query(query, [date, period_number, class_group]);
+        res.status(200).json(students);
+    } catch (error) {
+        console.error("GET /api/attendance/sheet Error:", error);
+        res.status(500).json({ message: 'Error fetching attendance sheet.' });
     }
 });
 
@@ -1012,10 +1012,10 @@ app.post('/api/attendance', async (req, res) => {
         if (!class_group || !subject_name || !period_number || !date || !teacher_id || !Array.isArray(attendanceData)) {
             return res.status(400).json({ message: 'All fields are required, and attendanceData must be an array.' });
         }
-        
+
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const dayOfWeek = days[new Date(date).getDay()];
-        
+
         const [timetableSlot] = await connection.query(
             'SELECT teacher_id FROM timetables WHERE class_group = ? AND day_of_week = ? AND period_number = ?',
             [class_group, dayOfWeek, period_number]
@@ -1024,7 +1024,7 @@ app.post('/api/attendance', async (req, res) => {
         if (!timetableSlot.length || timetableSlot[0].teacher_id !== parseInt(teacher_id, 10)) {
             return res.status(403).json({ message: `You are not assigned to this period for this class on ${dayOfWeek}.` });
         }
-        
+
         if (attendanceData.length === 0) {
             return res.status(200).json({ message: 'No attendance data to save.' });
         }
@@ -1033,25 +1033,25 @@ app.post('/api/attendance', async (req, res) => {
 
         // Step 1: Save the attendance records (this is your existing, correct code)
         const query = `
-            INSERT INTO attendance_records 
-                (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status) 
-            VALUES ? 
-            ON DUPLICATE KEY UPDATE 
-                status = VALUES(status), 
-                teacher_id = VALUES(teacher_id), 
+            INSERT INTO attendance_records
+                (student_id, teacher_id, class_group, subject_name, attendance_date, period_number, status)
+            VALUES ?
+            ON DUPLICATE KEY UPDATE
+                status = VALUES(status),
+                teacher_id = VALUES(teacher_id),
                 subject_name = VALUES(subject_name);
         `;
         const valuesToInsert = attendanceData.map(record => [
             record.student_id, teacher_id, class_group, subject_name, date, period_number, record.status
         ]);
         await connection.query(query, [valuesToInsert]);
-        
+
         // ★★★★★ START: NEW NOTIFICATION LOGIC FOR ABSENT STUDENTS ★★★★★
 
         // 2. Find the name of the teacher who took the attendance.
         const [[teacher]] = await connection.query("SELECT full_name FROM users WHERE id = ?", [teacher_id]);
         const senderName = teacher.full_name || "School Staff";
-        
+
         // 3. Filter the submitted data to find only the students marked 'Absent'.
         const absentStudents = attendanceData.filter(record => record.status === 'Absent');
 
@@ -1064,7 +1064,7 @@ app.post('/api/attendance', async (req, res) => {
             const formattedDate = new Date(date).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
             const notificationMessage = `You were marked absent for Period ${period_number} on ${formattedDate}.`;
             const notificationLink = '/my-attendance'; // A link to the student's history screen.
-            
+
             // 6. Send notifications to all absent students in a single, efficient database call.
             await createBulkNotifications(
                 connection, // Use the transaction connection
@@ -1075,9 +1075,9 @@ app.post('/api/attendance', async (req, res) => {
                 notificationLink
             );
         }
-        
+
         // ★★★★★ END: NEW NOTIFICATION LOGIC ★★★★★
-        
+
         await connection.commit();
         // Updated success message
         res.status(201).json({ message: 'Attendance saved and notifications sent successfully!' });
@@ -1095,7 +1095,7 @@ app.post('/api/attendance', async (req, res) => {
 const getStudentHistory = async (studentId, viewMode, date) => {
     let dateFilter = '';
     let queryDateParams = [];
-    
+
     if (date) {
         dateFilter = 'AND attendance_date = ?';
         queryDateParams.push(date);
@@ -1104,20 +1104,20 @@ const getStudentHistory = async (studentId, viewMode, date) => {
     } else if (viewMode === 'monthly') {
         dateFilter = 'AND MONTH(attendance_date) = MONTH(CURDATE()) AND YEAR(attendance_date) = YEAR(CURDATE())';
     }
-    
+
     const queryBase = `FROM attendance_records WHERE student_id = ? ${dateFilter}`;
     const fullQueryParams = [studentId, ...queryDateParams];
-    
+
     const summaryQuery = `
-        SELECT 
-            COALESCE(SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END), 0) as present_days, 
-            COUNT(*) as total_days 
+        SELECT
+            COALESCE(SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END), 0) as present_days,
+            COUNT(*) as total_days
         ${queryBase}`;
     const [[summary]] = await db.query(summaryQuery, fullQueryParams);
-    
+
     const historyQuery = `SELECT attendance_date, status, subject_name, period_number ${queryBase} ORDER BY attendance_date DESC`;
     const [history] = await db.query(historyQuery, fullQueryParams);
-    
+
     return {
         summary: {
             present_days: summary.present_days || 0,
