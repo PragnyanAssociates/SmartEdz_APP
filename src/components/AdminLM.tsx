@@ -6,7 +6,6 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Animatable from 'react-native-animatable';
-import CheckBox from '@react-native-community/checkbox';
 import apiClient from '../api/client';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -44,6 +43,20 @@ interface User {
   experience?: string;
 }
 
+// --- NEW CUSTOM CHECKBOX COMPONENT (Prevents native crash) ---
+const CustomCheckBox = ({ value, onValueChange, label }: { value: boolean, onValueChange: (newValue: boolean) => void, label: string }) => {
+  return (
+    <TouchableOpacity onPress={() => onValueChange(!value)} style={styles.confirmationContainer}>
+      <Icon
+        name={value ? 'check-box' : 'check-box-outline-blank'}
+        size={26}
+        color={value ? '#27AE60' : '#555'}
+      />
+      <Text style={styles.confirmationText}>{label}</Text>
+    </TouchableOpacity>
+  );
+};
+
 const AdminLM = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -61,7 +74,6 @@ const AdminLM = () => {
   const [degradeMap, setDegradeMap] = useState<{ [key: string]: string }>({});
   const [isActionConfirmed, setIsActionConfirmed] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-
 
   const fetchUsers = async () => {
     try {
@@ -148,15 +160,13 @@ const AdminLM = () => {
   const handleAddSubject = () => {
       const subjectToAdd = currentSubjectInput.trim();
       if (subjectToAdd && !formData.subjects_taught?.includes(subjectToAdd)) {
-          const updatedSubjects = [...(formData.subjects_taught || []), subjectToAdd];
-          setFormData({ ...formData, subjects_taught: updatedSubjects });
+          setFormData({ ...formData, subjects_taught: [...(formData.subjects_taught || []), subjectToAdd] });
           setCurrentSubjectInput('');
       }
   };
 
   const handleRemoveSubject = (subjectToRemove: string) => {
-      const updatedSubjects = formData.subjects_taught.filter((sub: string) => sub !== subjectToRemove);
-      setFormData({ ...formData, subjects_taught: updatedSubjects });
+      setFormData({ ...formData, subjects_taught: formData.subjects_taught.filter((sub: string) => sub !== subjectToRemove) });
   };
 
   // --- PROMOTION & DEGRADE FUNCTIONS ---
@@ -183,13 +193,13 @@ const AdminLM = () => {
   const handleAction = async (action: 'promote' | 'degrade') => {
     if (!isActionConfirmed) return Alert.alert('Confirmation Required', 'Please check the box to confirm you have reviewed the changes.');
     
-    const actionTitle = action === 'promote' ? 'Promote' : 'Degrade';
+    const actionTitle = action.charAt(0).toUpperCase() + action.slice(1);
     Alert.alert('Final Confirmation', `This action will ${action} all students as configured. This cannot be easily undone. Are you sure you want to proceed?`, [
         { text: 'Cancel', style: 'cancel' },
         { text: `Yes, ${actionTitle} All`, style: 'destructive', onPress: async () => {
           setIsProcessing(true);
           try {
-            const endpoint = action === 'promote' ? '/users/promote' : '/users/degrade';
+            const endpoint = `/users/${action}`;
             const payload = action === 'promote' ? { promotionMap } : { degradeMap };
             await apiClient.post(endpoint, payload);
             Alert.alert('Success', `Students have been ${action}d successfully!`);
@@ -214,7 +224,7 @@ const AdminLM = () => {
         <Text style={styles.userUsername}>Username: {item.username} {item.role === 'admin' ? `| Type: ${item.class_group}` : ''}</Text>
         {item.roll_no && (<Text style={styles.userSubjects}>Roll: {item.roll_no}</Text>)}
         {item.admission_no && (<Text style={styles.userSubjects}>Admission No: {item.admission_no}</Text>)}
-        {item.role === 'teacher' && item.subjects_taught && item.subjects_taught.length > 0 && (<Text style={styles.userSubjects}>Subjects: {item.subjects_taught.join(', ')}</Text>)}
+        {item.role === 'teacher' && item.subjects_taught?.length > 0 && (<Text style={styles.userSubjects}>Subjects: {item.subjects_taught.join(', ')}</Text>)}
       </View>
       <TouchableOpacity onPress={() => handleShowPassword(item)} style={styles.actionButton}><Icon name="vpn-key" size={22} color="#F39C12" /></TouchableOpacity>
       <TouchableOpacity onPress={() => openEditModal(item)} style={styles.actionButton}><Icon name="edit" size={24} color="#3498DB" /></TouchableOpacity>
@@ -231,11 +241,22 @@ const AdminLM = () => {
       <Animatable.View animation="fadeInDown" duration={500}>
         <View style={styles.header}>
             <Text style={styles.headerTitle}>User Management</Text>
-            <View style={styles.headerActions}>
-                <TouchableOpacity style={styles.degradeButton} onPress={openDegradeModal}><Icon name="history" size={20} color="#fff" /><Text style={styles.addButtonText}>Degrade</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.promoteButton} onPress={openPromotionModal}><Icon name="school" size={20} color="#fff" /><Text style={styles.addButtonText}>Promote</Text></TouchableOpacity>
-                <TouchableOpacity style={styles.addButton} onPress={openAddModal}><Icon name="add" size={20} color="#fff" /><Text style={styles.addButtonText}>Add User</Text></TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
+                <Icon name="add" size={20} color="#fff" />
+                <Text style={styles.addButtonText}>Add User</Text>
+            </TouchableOpacity>
+        </View>
+        
+        {/* --- NEW, IMPROVED LAYOUT FOR ACTION BUTTONS --- */}
+        <View style={styles.actionsContainer}>
+            <TouchableOpacity style={[styles.actionChip, styles.promoteChip]} onPress={openPromotionModal}>
+                <Icon name="school" size={20} color="#fff" />
+                <Text style={styles.actionChipText}>Promote Students</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionChip, styles.degradeChip]} onPress={openDegradeModal}>
+                <Icon name="history" size={20} color="#fff" />
+                <Text style={styles.actionChipText}>Degrade Students</Text>
+            </TouchableOpacity>
         </View>
       </Animatable.View>
 
@@ -337,12 +358,12 @@ const AdminLM = () => {
 
       {/* --- PROMOTION MODAL --- */}
       <Modal animationType="fade" transparent={true} visible={isPromotionModalVisible} onRequestClose={() => setIsPromotionModalVisible(false)}>
-        <View style={styles.modalOverlay}><Animatable.View animation="zoomIn" duration={400} style={styles.modalContainer}><View style={{ flex: 1 }}><View style={styles.modalHeader}><Text style={styles.modalTitle}>Promote Students</Text><View style={styles.modalTitleSeparator} /></View><ScrollView contentContainerStyle={styles.modalContent}><Text style={styles.promotionInstruction}>Review the class promotions. This action will update the class for all students in each group.</Text>{STUDENT_CLASSES.map((fromClass) => (<View key={fromClass} style={styles.promotionRow}><View style={styles.promotionFrom}><Text style={styles.promotionLabel}>FROM</Text><Text style={styles.promotionClass}>{fromClass} ({groupedUsers[fromClass]?.length || 0})</Text></View><Icon name="arrow-forward" size={24} color="#B0BEC5" style={styles.promotionArrow}/><View style={styles.promotionTo}><Text style={styles.promotionLabel}>TO</Text><View style={styles.pickerWrapper}><Picker selectedValue={promotionMap[fromClass]} onValueChange={(val) => setPromotionMap(prev => ({ ...prev, [fromClass]: val }))} style={styles.modalPicker}>{[...STUDENT_CLASSES, 'Graduate/Archive'].map(toClass => (<Picker.Item key={toClass} label={toClass} value={toClass} />))}</Picker></View></View></View>))}<View style={styles.confirmationContainer}><CheckBox value={isActionConfirmed} onValueChange={setIsActionConfirmed} tintColors={{ true: '#27AE60', false: '#7F8C8D' }} /><Text style={styles.confirmationText}>I have reviewed the promotions and confirm this action.</Text></View></ScrollView><View style={styles.modalFooter}><TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setIsPromotionModalVisible(false)}><Text style={styles.modalButtonText}>Cancel</Text></TouchableOpacity><TouchableOpacity style={[styles.modalButton, styles.submitButton, (!isActionConfirmed || isProcessing) && styles.disabledButton]} onPress={() => handleAction('promote')} disabled={!isActionConfirmed || isProcessing}>{isProcessing ? (<ActivityIndicator size="small" color="#fff" />) : (<Text style={styles.modalButtonText}>Confirm & Promote</Text>)}</TouchableOpacity></View></View></Animatable.View></View>
+        <View style={styles.modalOverlay}><Animatable.View animation="zoomIn" duration={400} style={styles.modalContainer}><View style={{ flex: 1 }}><View style={styles.modalHeader}><Text style={styles.modalTitle}>Promote Students</Text><View style={styles.modalTitleSeparator} /></View><ScrollView contentContainerStyle={styles.modalContent}><Text style={styles.promotionInstruction}>Review the class promotions. This action will update the class for all students in each group.</Text>{STUDENT_CLASSES.map((fromClass) => (<View key={fromClass} style={styles.promotionRow}><View style={styles.promotionFrom}><Text style={styles.promotionLabel}>FROM</Text><Text style={styles.promotionClass}>{fromClass} ({groupedUsers[fromClass]?.length || 0})</Text></View><Icon name="arrow-forward" size={24} color="#B0BEC5" style={styles.promotionArrow}/><View style={styles.promotionTo}><Text style={styles.promotionLabel}>TO</Text><View style={styles.pickerWrapper}><Picker selectedValue={promotionMap[fromClass]} onValueChange={(val) => setPromotionMap(prev => ({ ...prev, [fromClass]: val }))} style={styles.modalPicker}>{[...STUDENT_CLASSES, 'Graduate/Archive'].map(toClass => (<Picker.Item key={toClass} label={toClass} value={toClass} />))}</Picker></View></View></View>))}<CustomCheckBox value={isActionConfirmed} onValueChange={setIsActionConfirmed} label="I have reviewed the promotions and confirm this action." /></ScrollView><View style={styles.modalFooter}><TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setIsPromotionModalVisible(false)}><Text style={styles.modalButtonText}>Cancel</Text></TouchableOpacity><TouchableOpacity style={[styles.modalButton, styles.submitButton, (!isActionConfirmed || isProcessing) && styles.disabledButton]} onPress={() => handleAction('promote')} disabled={!isActionConfirmed || isProcessing}>{isProcessing ? (<ActivityIndicator size="small" color="#fff" />) : (<Text style={styles.modalButtonText}>Confirm & Promote</Text>)}</TouchableOpacity></View></View></Animatable.View></View>
       </Modal>
 
       {/* --- DEGRADE MODAL --- */}
       <Modal animationType="fade" transparent={true} visible={isDegradeModalVisible} onRequestClose={() => setIsDegradeModalVisible(false)}>
-        <View style={styles.modalOverlay}><Animatable.View animation="zoomIn" duration={400} style={styles.modalContainer}><View style={{ flex: 1 }}><View style={styles.modalHeader}><Text style={styles.modalTitle}>Degrade Students</Text><View style={styles.modalTitleSeparator} /></View><ScrollView contentContainerStyle={styles.modalContent}><Text style={styles.promotionInstruction}>Review the class degradations. This action is for correction or testing purposes.</Text>{STUDENT_CLASSES.map((fromClass) => (<View key={fromClass} style={styles.promotionRow}><View style={styles.promotionFrom}><Text style={styles.promotionLabel}>FROM</Text><Text style={styles.promotionClass}>{fromClass} ({groupedUsers[fromClass]?.length || 0})</Text></View><Icon name="arrow-forward" size={24} color="#B0BEC5" style={styles.promotionArrow}/><View style={styles.promotionTo}><Text style={styles.promotionLabel}>TO</Text><View style={styles.pickerWrapper}><Picker selectedValue={degradeMap[fromClass]} onValueChange={(val) => setDegradeMap(prev => ({ ...prev, [fromClass]: val }))} style={styles.modalPicker}>{[...STUDENT_CLASSES, 'No Action'].map(toClass => (<Picker.Item key={toClass} label={toClass} value={toClass} />))}</Picker></View></View></View>))}<View style={styles.confirmationContainer}><CheckBox value={isActionConfirmed} onValueChange={setIsActionConfirmed} tintColors={{ true: '#27AE60', false: '#7F8C8D' }} /><Text style={styles.confirmationText}>I have reviewed the degradations and confirm this action.</Text></View></ScrollView><View style={styles.modalFooter}><TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setIsDegradeModalVisible(false)}><Text style={styles.modalButtonText}>Cancel</Text></TouchableOpacity><TouchableOpacity style={[styles.modalButton, styles.degradeSubmitButton, (!isActionConfirmed || isProcessing) && styles.disabledButton]} onPress={() => handleAction('degrade')} disabled={!isActionConfirmed || isProcessing}>{isProcessing ? (<ActivityIndicator size="small" color="#fff" />) : (<Text style={styles.modalButtonText}>Confirm & Degrade</Text>)}</TouchableOpacity></View></View></Animatable.View></View>
+        <View style={styles.modalOverlay}><Animatable.View animation="zoomIn" duration={400} style={styles.modalContainer}><View style={{ flex: 1 }}><View style={styles.modalHeader}><Text style={styles.modalTitle}>Degrade Students</Text><View style={styles.modalTitleSeparator} /></View><ScrollView contentContainerStyle={styles.modalContent}><Text style={styles.promotionInstruction}>Review the class degradations. This action is for correction or testing purposes.</Text>{STUDENT_CLASSES.map((fromClass) => (<View key={fromClass} style={styles.promotionRow}><View style={styles.promotionFrom}><Text style={styles.promotionLabel}>FROM</Text><Text style={styles.promotionClass}>{fromClass} ({groupedUsers[fromClass]?.length || 0})</Text></View><Icon name="arrow-forward" size={24} color="#B0BEC5" style={styles.promotionArrow}/><View style={styles.promotionTo}><Text style={styles.promotionLabel}>TO</Text><View style={styles.pickerWrapper}><Picker selectedValue={degradeMap[fromClass]} onValueChange={(val) => setDegradeMap(prev => ({ ...prev, [fromClass]: val }))} style={styles.modalPicker}>{[...STUDENT_CLASSES, 'No Action'].map(toClass => (<Picker.Item key={toClass} label={toClass} value={toClass} />))}</Picker></View></View></View>))}<CustomCheckBox value={isActionConfirmed} onValueChange={setIsActionConfirmed} label="I have reviewed the degradations and confirm this action." /></ScrollView><View style={styles.modalFooter}><TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setIsDegradeModalVisible(false)}><Text style={styles.modalButtonText}>Cancel</Text></TouchableOpacity><TouchableOpacity style={[styles.modalButton, styles.degradeSubmitButton, (!isActionConfirmed || isProcessing) && styles.disabledButton]} onPress={() => handleAction('degrade')} disabled={!isActionConfirmed || isProcessing}>{isProcessing ? (<ActivityIndicator size="small" color="#fff" />) : (<Text style={styles.modalButtonText}>Confirm & Degrade</Text>)}</TouchableOpacity></View></View></Animatable.View></View>
       </Modal>
     </SafeAreaView>
   );
@@ -353,12 +374,15 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F7F9FC' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E0E0E0', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 2, },
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#008080' },
-  headerActions: { flexDirection: 'row' },
-  promoteButton: { flexDirection: 'row', backgroundColor: '#3498DB', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, alignItems: 'center', elevation: 2, marginRight: 10, },
-  degradeButton: { flexDirection: 'row', backgroundColor: '#E67E22', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, alignItems: 'center', elevation: 2, marginRight: 10, },
   addButton: { flexDirection: 'row', backgroundColor: '#27AE60', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, alignItems: 'center', elevation: 2, },
   addButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', marginLeft: 5 },
-  container: { padding: 10 },
+  // --- NEW STYLES for the improved action button layout ---
+  actionsContainer: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10, paddingHorizontal: 15, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#EAEAEA' },
+  actionChip: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2 },
+  promoteChip: { backgroundColor: '#3498DB' },
+  degradeChip: { backgroundColor: '#E67E22' },
+  actionChipText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600', marginLeft: 8 },
+  container: { paddingTop: 10, paddingHorizontal: 10 },
   accordionSection: { backgroundColor: '#FFFFFF', borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, },
   accordionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 18, paddingHorizontal: 15 },
   accordionTitle: { fontSize: 18, fontWeight: '600', color: '#2C3E50' },
@@ -374,7 +398,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   modalContainer: { width: '90%', maxHeight: '85%', backgroundColor: '#FFFFFF', borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, overflow: 'hidden' },
   modalHeader: { paddingHorizontal: 25, paddingTop: 25 },
-  modalContent: { padding: 25, paddingTop: 15 },
+  modalContent: { paddingHorizontal: 25, paddingBottom: 25, paddingTop: 15 },
   modalFooter: { flexDirection: 'row', justifyContent: 'space-between', padding: 25, borderTopWidth: 1, borderTopColor: '#E0E0E0' },
   modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#2C3E50', textAlign: 'center' },
   modalTitleSeparator: { height: 3, width: 40, backgroundColor: '#008080', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 15 },
@@ -407,8 +431,8 @@ const styles = StyleSheet.create({
   promotionLabel: { fontSize: 13, color: '#7F8C8D', marginBottom: 4, fontWeight: '600' },
   promotionClass: { fontSize: 16, fontWeight: 'bold', color: '#2C3E50' },
   promotionArrow: { marginHorizontal: 10 },
-  confirmationContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 20, },
-  confirmationText: { flex: 1, marginLeft: 10, fontSize: 15, color: '#34495E' },
+  confirmationContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 20, backgroundColor: '#F7F9FC', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 10 },
+  confirmationText: { flex: 1, marginLeft: 12, fontSize: 15, color: '#34495E', lineHeight: 20 },
 });
 
 export default AdminLM;
