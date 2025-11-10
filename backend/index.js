@@ -6764,7 +6764,7 @@ app.delete('/api/preadmissions/:id', async (req, res) => {
 
 
 // ==========================================================
-// --- ★ REVISED AND UNIFIED ACADEMIC RESOURCES API ROUTES ★ ---
+// --- ★ Textbooks & Syllabus API ROUTES ★ ---
 // ==========================================================
 
 // --- ★ NO CHANGE ★ Get all unique classes that have resources for the student view ---
