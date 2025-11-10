@@ -395,18 +395,26 @@ app.get('/api/profiles/:userId', async (req, res) => {
     }
 });
 
+// ==========================================================
+// --- MODIFIED & CORRECTED PROMOTE/DEGRADE ROUTES ---
+// ==========================================================
 app.post('/api/users/promote', async (req, res) => {
     const { promotionMap } = req.body;
     if (!promotionMap || Object.keys(promotionMap).length === 0) return res.status(400).json({ message: 'Error: Promotion mapping data is missing.' });
+    
     const promotionOrder = [ 'Class 10', 'Class 9', 'Class 8', 'Class 7', 'Class 6', 'Class 5', 'Class 4', 'Class 3', 'Class 2', 'Class 1', 'UKG', 'LKG' ];
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
+
+        // --- NEW LOGIC: First, permanently delete all students currently in the "Passed Out Students" group ---
+        await connection.query("DELETE FROM users WHERE role = 'student' AND class_group = 'Passed Out Students'");
+
         for (const fromClass of promotionOrder) {
             const toClass = promotionMap[fromClass];
             if (toClass) {
-                const newClassGroup = toClass === 'Graduate/Archive' ? 'Graduated' : toClass;
-                await connection.query( "UPDATE users SET class_group = ? WHERE role = 'student' AND class_group = ?", [newClassGroup, fromClass] );
+                // The new toClass value from the frontend will be 'Passed Out Students'
+                await connection.query( "UPDATE users SET class_group = ? WHERE role = 'student' AND class_group = ?", [toClass, fromClass] );
             }
         }
         await connection.commit();
@@ -423,7 +431,7 @@ app.post('/api/users/promote', async (req, res) => {
 app.post('/api/users/degrade', async (req, res) => {
     const { degradeMap } = req.body;
     if (!degradeMap || Object.keys(degradeMap).length === 0) return res.status(400).json({ message: 'Error: Degrade mapping data is missing.' });
-    const degradeOrder = [ 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10' ];
+    const degradeOrder = [ 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Passed Out Students' ];
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
