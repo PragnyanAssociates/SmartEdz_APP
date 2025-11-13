@@ -15,21 +15,11 @@ const { sendPasswordResetCode } = require('./mailer');
 const fs = require('fs'); // Import the file system module at the top of your file
 const { Client } = require("@googlemaps/google-maps-services-js");
 const googleMapsClient = new Client({});
-// const db = require('../db'); // Adjust path to your db connection
-// const { galleryUpload, createBulkNotifications } = require('../middleware'); // Adjust path to your middleware
-// // const { OpenAI } = require('openai');
 
 // ★★★ NEW IMPORTS FOR REAL-TIME CHAT ★★★
 const http = require('http');
 const { Server } = require("socket.io");
 // ★★★ END NEW IMPORTS ★★★
-
-// Initialize the OpenAI client with your API key from the .env file
-// const openai = new OpenAI({
-//     apiKey: process.env.OPENAI_API_KEY,
-// });
-
-
 
 const app = express();
 
@@ -7682,6 +7672,119 @@ app.get('/api/students/:id', async (req, res) => {
 });
 
 
+
+// ==========================================================
+// ---  VOUCHER SYSTEM API ROUTES ---
+// ==========================================================
+
+// 1. Multer Storage Configuration for Voucher Attachments
+// This keeps voucher proofs separate and organized.
+const voucherStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        // We use the same central uploads directory for consistency
+        const uploadPath = '/data/uploads'; 
+        
+        // Ensure the directory exists
+        if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        // Create a unique filename for the proof
+        cb(null, `voucher-proof-${Date.now()}${path.extname(file.originalname)}`);
+    }
+});
+
+const voucherUpload = multer({ 
+    storage: voucherStorage,
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB file size limit
+});
+
+
+// 2. API Endpoint to Create a New Voucher
+// This route is protected and requires an admin user.
+// It uses multer to handle a single file upload with the field name 'attachment'.
+app.post('/api/vouchers/create', [verifyToken, isAdmin, voucherUpload.single('attachment')], async (req, res) => {
+    
+    const {
+        voucherType,
+        voucherNo,
+        voucherDate,
+        headOfAccount,
+        subHead,
+        accountType,
+        totalAmount,
+        amountInWords,
+        particulars // This will be a JSON string from the frontend
+    } = req.body;
+
+    // --- Validation ---
+    if (!voucherType || !voucherNo || !voucherDate || !headOfAccount || !accountType || !totalAmount || !particulars) {
+        return res.status(400).json({ message: 'Missing required fields to create a voucher.' });
+    }
+
+    // --- Prepare Data ---
+    // The URL stored in the DB must use the public virtual path '/uploads/'
+    const attachment_url = req.file ? `/uploads/${req.file.filename}` : null;
+    let parsedParticulars;
+    try {
+        parsedParticulars = JSON.parse(particulars);
+    } catch (e) {
+        return res.status(400).json({ message: 'Invalid format for particulars data.' });
+    }
+
+    const connection = await db.getConnection();
+    try {
+        // Start a transaction to ensure data integrity
+        await connection.beginTransaction();
+
+        // Step 1: Insert the main voucher data into the 'vouchers' table
+        const voucherQuery = `
+            INSERT INTO vouchers (
+                voucher_type, voucher_no, voucher_date, head_of_account, sub_head, 
+                account_type, total_amount, amount_in_words, attachment_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const [voucherResult] = await connection.query(voucherQuery, [
+            voucherType, voucherNo, voucherDate, headOfAccount, subHead || null, 
+            accountType, totalAmount, amountInWords, attachment_url
+        ]);
+        const newVoucherId = voucherResult.insertId;
+
+        // Step 2: Insert the line items from the particulars table
+        if (parsedParticulars && parsedParticulars.length > 0) {
+            const itemsQuery = 'INSERT INTO voucher_items (voucher_id, description, amount) VALUES ?';
+            const itemValues = parsedParticulars.map(item => [
+                newVoucherId, 
+                item.description, 
+                item.amount
+            ]);
+            await connection.query(itemsQuery, [itemValues]);
+        }
+
+        // If everything is successful, commit the transaction
+        await connection.commit();
+        res.status(201).json({ 
+            message: 'Voucher created successfully!', 
+            voucherId: newVoucherId 
+        });
+
+    } catch (error) {
+        // If any step fails, roll back the entire transaction
+        await connection.rollback();
+        console.error("Error creating voucher:", error);
+        
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({ message: `A voucher with number '${voucherNo}' already exists.` });
+        }
+        
+        res.status(500).json({ message: 'An internal server error occurred while creating the voucher.' });
+    } finally {
+        // Always release the connection back to the pool
+        connection.release();
+    }
+});
 
 
 

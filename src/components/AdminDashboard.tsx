@@ -56,6 +56,7 @@ import TeacherAttendanceMarkingScreen from '../screens/teacher_attendence/Teache
 import TeacherPerformanceScreen from '../screens/Performance/TeacherPerformanceScreen';
 import StudentStackNavigator from '../screens/StudentStackNavigator';
 import StaffNavigator from '../screens/StaffNavigator';
+import AccountsScreen from '../screens/Accounts/AccountsScreen';
 
 const { width: windowWidth } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -109,6 +110,7 @@ const AdminDashboard = ({ navigation }) => {
 
   const allQuickAccessItems = [
     { id: 'qa0', title: 'Manage Login', imageSource: 'https://cdn-icons-png.flaticon.com/128/15096/15096966.png', navigateToTab: 'AdminLM' },
+    { id: 'qa0', title: 'Accounts', imageSource: 'https://cdn-icons-png.flaticon.com/128/1552/1552545.png', navigateToTab: 'AccountsScreen' },
     { id: 'qa25', title: 'Staff', imageSource: 'https://cdn-icons-png.flaticon.com/128/12105/12105197.png', navigateToTab: 'StaffNavigator' },
     { id: 'qa25', title: 'Students', imageSource: 'https://cdn-icons-png.flaticon.com/128/16405/16405976.png', navigateToTab: 'StudentStackNavigator' },
     { id: 'qa23', title: 'Teacher Attendence', imageSource: 'https://cdn-icons-png.flaticon.com/128/12404/12404284.png', navigateToTab: 'TeacherAttendanceMarkingScreen' },
@@ -215,6 +217,7 @@ const AdminDashboard = ({ navigation }) => {
         case 'TeacherPerformanceScreen': return ( <><ContentScreenHeader title="Teacher Performance" onBack={handleBack} /><TeacherPerformanceScreen /></> );
         case 'StudentStackNavigator': return ( <><ContentScreenHeader title="Students" onBack={handleBack} /><StudentStackNavigator /></> );
         case 'StaffNavigator': return ( <><ContentScreenHeader title="Staff" onBack={handleBack} /><StaffNavigator /></> );
+        case 'AccountsScreen': return ( <><ContentScreenHeader title="Accounts" onBack={handleBack} /><AccountsScreen /></> );
 
         default: return ( <View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content for '{activeTab}' is not available.</Text><TouchableOpacity onPress={handleBack}><Text style={styles.fallbackLink}>Go to Home</Text></TouchableOpacity></View> );
       }
