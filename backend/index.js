@@ -7891,6 +7891,79 @@ app.get('/api/vouchers/details/:id', [verifyToken, isAdmin], async (req, res) =>
     }
 });
 
+// ==========================================================
+// --- TRANSACTION SCREEN API ROUTE ---
+// ==========================================================
+
+// FETCH TRANSACTION SUMMARY AND HISTORY
+app.get('/api/transactions/summary', [verifyToken, isAdmin], async (req, res) => {
+    const { period, startDate, endDate } = req.query;
+    const connection = await db.getConnection();
+    try {
+        // --- 1. Calculate Overall Account Balance (not affected by period filters) ---
+        const balanceQuery = `
+            SELECT 
+                SUM(CASE 
+                    WHEN voucher_type = 'Debit' THEN -total_amount 
+                    ELSE total_amount 
+                END) AS account_balance
+            FROM vouchers;
+        `;
+        const [balanceResult] = await connection.query(balanceQuery);
+        const account_balance = balanceResult[0].account_balance || 0;
+
+        // --- 2. Calculate Period-based Summaries (Deposit, Credit, Debit) ---
+        let summaryWhereClause = '';
+        const summaryParams = [];
+        if (period === 'daily') {
+            summaryWhereClause = 'WHERE voucher_date = CURDATE()';
+        } else if (period === 'monthly') {
+            summaryWhereClause = 'WHERE MONTH(voucher_date) = MONTH(CURDATE()) AND YEAR(voucher_date) = YEAR(CURDATE())';
+        } else if (startDate && endDate) {
+            summaryWhereClause = 'WHERE voucher_date BETWEEN ? AND ?';
+            summaryParams.push(startDate, endDate);
+        }
+
+        const summaryQuery = `
+            SELECT
+                SUM(CASE WHEN voucher_type = 'Deposit' THEN total_amount ELSE 0 END) AS total_deposit,
+                SUM(CASE WHEN voucher_type = 'Credit' THEN total_amount ELSE 0 END) AS total_credit,
+                SUM(CASE WHEN voucher_type = 'Debit' THEN total_amount ELSE 0 END) AS total_debit
+            FROM vouchers
+            ${summaryWhereClause};
+        `;
+        const [summaryResult] = await connection.query(summaryQuery, summaryParams);
+        const period_summary = {
+            deposit: summaryResult[0].total_deposit || 0,
+            credit: summaryResult[0].total_credit || 0,
+            debit: summaryResult[0].total_debit || 0,
+        };
+
+        // --- 3. Fetch Transaction History for the period ---
+        const transactionsQuery = `
+            SELECT id, voucher_no, voucher_type, head_of_account, total_amount, voucher_date 
+            FROM vouchers
+            ${summaryWhereClause}
+            ORDER BY voucher_date DESC, id DESC;
+        `;
+        const [transactions] = await connection.query(transactionsQuery, summaryParams);
+
+        // --- 4. Combine and send the response ---
+        res.status(200).json({
+            account_balance,
+            period_summary,
+            transactions
+        });
+
+    } catch (error) {
+        console.error('Error fetching transaction summary:', error);
+        res.status(500).json({ message: 'Failed to fetch transaction data.' });
+    } finally {
+        connection.release();
+    }
+});
+
+
 
 
 // By using "server.listen", you enable both your API routes and the real-time chat.

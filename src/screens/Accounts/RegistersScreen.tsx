@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity,
     ActivityIndicator, Alert, Modal, ScrollView, Platform, PermissionsAndroid,
-    Linking // --- NEW: Import Linking to open URLs ---
+    Linking
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -68,7 +68,6 @@ const RegistersScreen = () => {
     const showDatePicker = (mode) => {
         setDatePickerMode(mode);
         setDatePickerVisibility(true);
-        setActivePeriod('custom');
     };
 
     const hideDatePicker = () => setDatePickerVisibility(false);
@@ -80,6 +79,7 @@ const RegistersScreen = () => {
         } else {
             setDateRange(prev => ({ ...prev, end: formattedDate }));
         }
+        setActivePeriod('custom');
         hideDatePicker();
     };
     
@@ -104,11 +104,7 @@ const RegistersScreen = () => {
         try {
             const granted = await PermissionsAndroid.request(
                 PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-                {
-                    title: "Storage Permission Required",
-                    message: "This app needs access to your storage to download PDFs.",
-                    buttonPositive: "OK"
-                }
+                { title: "Storage Permission Required", message: "This app needs access to your storage to download PDFs.", buttonPositive: "OK" }
             );
             return granted === PermissionsAndroid.RESULTS.GRANTED;
         } catch (err) {
@@ -123,143 +119,88 @@ const RegistersScreen = () => {
             Alert.alert("Permission Denied", "Cannot download file without storage permission.");
             return;
         }
-
         try {
             const response = await apiClient.get(`/vouchers/details/${voucherId}`);
             const details = response.data;
-
-            const particularsHtml = details.particulars.map(p => `
-                <tr class="item">
-                    <td>${p.description}</td>
-                    <td>₹${parseFloat(p.amount).toFixed(2)}</td>
-                </tr>
-            `).join('');
-
+            let imageHtml = '';
+            if (details.attachment_url) {
+                const baseUrl = apiClient.defaults.baseURL.replace('/api', '');
+                const fullImageUrl = `${baseUrl}${details.attachment_url}`;
+                const tempImagePath = `${RNFS.CachesDirectoryPath}/voucher_proof_${Date.now()}.jpg`;
+                const downloadResult = await RNFS.downloadFile({ fromUrl: fullImageUrl, toFile: tempImagePath }).promise;
+                if (downloadResult.statusCode === 200) {
+                    imageHtml = `<div class="section-title">Proof Attachment</div><div class="image-container"><img src="file://${tempImagePath}" alt="Proof Attachment" /></div>`;
+                }
+            }
+            const particularsHtml = details.particulars.map(p => `<tr class="item-row"><td>${p.description}</td><td class="align-right">₹${parseFloat(p.amount).toFixed(2)}</td></tr>`).join('');
             const htmlContent = `
-                <html>
-                <head>
-                    <style>
-                        body { font-family: 'Helvetica Neue', 'Helvetica', Helvetica, Arial, sans-serif; font-size: 14px; line-height: 24px; color: #555; }
-                        .invoice-box { max-width: 800px; margin: auto; padding: 30px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, 0.15); font-size: 16px; line-height: 24px; }
-                        .invoice-box table { width: 100%; line-height: inherit; text-align: left; border-collapse: collapse; }
-                        .invoice-box table td { padding: 5px; vertical-align: top; }
-                        .invoice-box table tr.top table td { padding-bottom: 20px; }
-                        .invoice-box table tr.information table td { padding-bottom: 40px; }
-                        .invoice-box table tr.heading td { background: #eee; border-bottom: 1px solid #ddd; font-weight: bold; }
-                        .invoice-box table tr.item td { border-bottom: 1px solid #eee; }
-                        .invoice-box table tr.item.last td { border-bottom: none; }
-                        .invoice-box table tr.total td:nth-child(2) { border-top: 2px solid #eee; font-weight: bold; }
-                        .school-title { text-align: center; font-size: 20px; font-weight: bold; }
-                        .managed-by { text-align: center; font-size: 12px; color: #666; }
-                        .voucher-title { text-align: center; font-size: 18px; font-weight: bold; text-transform: uppercase; margin: 10px 0; }
-                    </style>
-                </head>
-                <body>
-                    <div class="invoice-box">
-                        <div class="school-title">Vivekananda Public School</div>
-                        <div class="managed-by">Managed By Vivekananda Education Center</div>
-                        <div class="voucher-title">${details.voucher_type} Voucher</div>
-                        <table>
-                            <tr class="top">
-                                <td colspan="2">
-                                    <table>
-                                        <tr>
-                                            <td>
-                                                Voucher #: ${details.voucher_no}<br>
-                                                Date: ${new Date(details.voucher_date).toLocaleDateString('en-GB')}
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </td>
-                            </tr>
-                            <tr class="information">
-                                <td colspan="2">
-                                    <table>
-                                        <tr>
-                                            <td>
-                                                ${details.name ? `<strong>Name:</strong> ${details.name}<br>` : ''}
-                                                ${details.phone_no ? `<strong>Phone No:</strong> ${details.phone_no}<br>` : ''}
-                                                <strong>Head of A/C:</strong> ${details.head_of_account}<br>
-                                                ${details.sub_head ? `<strong>Sub Head:</strong> ${details.sub_head}<br>` : ''}
-                                                <strong>Account Type:</strong> ${details.account_type}
-                                            </td>
-                                        </tr>
-                                    </table>
-                                </td>
-                            </tr>
-                            <tr class="heading">
-                                <td>Description</td>
-                                <td>Amount</td>
-                            </tr>
-                            ${particularsHtml}
-                            <tr class="total">
-                                <td></td>
-                                <td>Total: ₹${parseFloat(details.total_amount).toFixed(2)}</td>
-                            </tr>
-                        </table>
-                        <div style="margin-top: 20px;">
-                            <strong>In Words:</strong> ${details.amount_in_words}
-                        </div>
-                    </div>
-                </body>
-                </html>
+                <!DOCTYPE html><html><head><meta charset="utf-8"><title>Voucher</title><style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; color: #333; } .voucher-box { max-width: 800px; margin: auto; padding: 25px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, 0.15); } .header { text-align: center; margin-bottom: 15px; } .school-name { font-size: 22px; font-weight: bold; } .managed-by { font-size: 9px; color: #666; } .voucher-title { font-size: 18px; font-weight: bold; text-transform: uppercase; margin: 15px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee; padding: 8px 0; } .details-table { width: 100%; margin-bottom: 20px; } .details-table td { padding: 4px 0; } .details-table .label { font-weight: bold; width: 110px; } .particulars-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; } .particulars-table th, .particulars-table td { border-bottom: 1px solid #eee; padding: 6px; } .particulars-table th { background-color: #f8f8f8; text-align: left; } .total-row td { border-top: 2px solid #333; font-weight: bold; } .align-right { text-align: right; } .in-words { margin-bottom: 20px; } .section-title { font-size: 13px; font-weight: bold; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px; } .image-container { text-align: center; margin-bottom: 15px; } .image-container img { max-width: 100%; max-height: 280px; height: auto; border: 1px solid #ddd; } .footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #eee; font-size: 9px; color: #777; text-align: center; }
+                </style></head><body><div class="voucher-box"><div class="header"><div class="school-name">Vivekananda Public School</div><div class="managed-by">Managed By Vivekananda Education Center</div><div class="voucher-title">${details.voucher_type} Voucher</div></div><table class="details-table">
+                <tr><td class="label">Voucher #:</td><td>${details.voucher_no}</td></tr><tr><td class="label">Date:</td><td>${new Date(details.voucher_date).toLocaleDateString('en-GB')}</td></tr>
+                ${details.name ? `<tr><td class="label">Name:</td><td>${details.name}</td></tr>` : ''} ${details.phone_no ? `<tr><td class="label">Phone No:</td><td>${details.phone_no}</td></tr>` : ''}
+                <tr><td class="label">Head of A/C:</td><td>${details.head_of_account}</td></tr> ${details.sub_head ? `<tr><td class="label">Sub Head:</td><td>${details.sub_head}</td></tr>` : ''}
+                <tr><td class="label">Account Type:</td><td>${details.account_type}</td></tr></table><table class="particulars-table"><thead><tr><th>Description</th><th class="align-right">Amount</th></tr></thead><tbody>
+                ${particularsHtml}<tr class="total-row"><td><strong>Total:</strong></td><td class="align-right"><strong>₹${parseFloat(details.total_amount).toFixed(2)}</strong></td></tr></tbody></table>
+                <div class="in-words"><strong>In Words:</strong> ${details.amount_in_words}</div> ${imageHtml}
+                <div class="footer"><div>Created by: ${details.creator_name || 'N/A'} on ${new Date(details.created_at).toLocaleString('en-GB')}</div>
+                ${details.updater_name ? `<div>Last updated by: ${details.updater_name} on ${new Date(details.updated_at).toLocaleString('en-GB')}</div>` : ''}</div></div></body></html>
             `;
-            
-            const options = {
-                html: htmlContent,
-                fileName: `Voucher-${details.voucher_no}`,
-            };
-
+            const options = { html: htmlContent, fileName: `Voucher-${details.voucher_no}`, directory: 'Documents', width: 595, height: 842 };
             const file = await RNHTMLtoPDF.convert(options);
-            const sourcePath = file.filePath;
-            const fileName = `Voucher-${details.voucher_no}.pdf`;
-            const destinationPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
-
-            await RNFS.moveFile(sourcePath, destinationPath);
-            
-            Alert.alert(
-                "Success",
-                `PDF saved to your Downloads folder as ${fileName}`
-            );
-
+            const destinationPath = `${RNFS.DownloadDirectoryPath}/${file.fileName}.pdf`;
+            await RNFS.moveFile(file.filePath, destinationPath);
+            Alert.alert("Success", `PDF saved to your Downloads folder as ${file.fileName}.pdf`);
         } catch (error) {
             console.error("Download error:", error);
             Alert.alert("Error", "Failed to download voucher. Please try again.");
         }
     };
     
-    // --- NEW: Function to open the attachment URL ---
     const handleViewProof = (attachmentUrl) => {
         if (!attachmentUrl) return;
-        // Construct the full URL to the image file
-        const baseUrl = apiClient.defaults.baseURL.replace('/api', ''); // Remove /api if it exists
+        const baseUrl = apiClient.defaults.baseURL.replace('/api', '');
         const fullUrl = `${baseUrl}${attachmentUrl}`;
-        Linking.canOpenURL(fullUrl).then(supported => {
-            if (supported) {
-                Linking.openURL(fullUrl);
-            } else {
-                Alert.alert("Error", `Cannot open this URL: ${fullUrl}`);
-            }
-        });
+        Linking.openURL(fullUrl).catch(() => Alert.alert("Error", `Cannot open this URL: ${fullUrl}`));
     };
 
-    const renderVoucherItem = ({ item, index }: { item: any, index: number }) => (
-        <View style={styles.tableRow}>
-            <Text style={[styles.tableCell, {width: 40}]}>{index + 1}</Text>
-            <Text style={[styles.tableCell, {width: 90}]}>{item.voucher_no}</Text>
-            <Text style={[styles.tableCell, {flex: 1}]} numberOfLines={1}>{item.head_of_account}</Text>
-            <Text style={[styles.tableCell, {width: 90, textAlign: 'right'}]}>₹{item.total_amount}</Text>
-            <View style={[styles.tableCell, {width: 100, flexDirection: 'row', justifyContent: 'space-around'}]}>
-                <TouchableOpacity onPress={() => viewVoucherDetails(item.id)}>
-                    <MaterialIcons name="visibility" size={22} color="#0275d8" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => editVoucher(item.id)}>
-                    <MaterialIcons name="edit" size={22} color="#f0ad4e" />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => downloadVoucher(item.id)}>
-                    <MaterialIcons name="download" size={22} color="#5cb85c" />
-                </TouchableOpacity>
+    const renderVoucherItem = ({ item, index }: { item: any, index: number }) => {
+        let amountStyle = styles.amountDefault;
+        let amountPrefix = '₹';
+
+        if (activeVoucherType === 'Debit') {
+            amountStyle = styles.amountDebit;
+            amountPrefix = '- ';
+        } else if (activeVoucherType === 'Credit') {
+            amountStyle = styles.amountCredit;
+            amountPrefix = '+ ';
+        } else if (activeVoucherType === 'Deposit') {
+            amountStyle = styles.amountDeposit;
+            amountPrefix = '+ ';
+        }
+
+        return (
+            <View style={styles.tableRow}>
+                <Text style={styles.snoCell}>{index + 1}</Text>
+                <Text style={styles.vchCell}>{item.voucher_no}</Text>
+                <Text style={styles.headCell}>{item.head_of_account}</Text>
+                <Text style={[styles.amountCell, amountStyle]}>{`${amountPrefix}₹${parseFloat(item.total_amount).toFixed(2)}`}</Text>
+                <View style={styles.actionCell}>
+                    <TouchableOpacity style={styles.iconButton} onPress={() => viewVoucherDetails(item.id)}><MaterialIcons name="visibility" size={22} color="#3498db" /></TouchableOpacity>
+                    <TouchableOpacity style={styles.iconButton} onPress={() => editVoucher(item.id)}><MaterialIcons name="edit" size={20} color="#f1c40f" /></TouchableOpacity>
+                    <TouchableOpacity style={styles.iconButton} onPress={() => downloadVoucher(item.id)}><MaterialIcons name="download" size={22} color="#27ae60" /></TouchableOpacity>
+                </View>
             </View>
+        );
+    };
+
+    const TableHeader = () => (
+        <View style={styles.tableHeader}>
+            <Text style={[styles.headerText, { width: 50, textAlign: 'center' }]}>S.NO</Text>
+            <Text style={[styles.headerText, { width: 110 }]}>VCH NO</Text>
+            <Text style={[styles.headerText, { width: 150 }]}>HEAD</Text>
+            <Text style={[styles.headerText, { width: 120, textAlign: 'right' }]}>AMOUNT</Text>
+            <Text style={[styles.headerText, { width: 110, textAlign: 'center' }]}>ACTIONS</Text>
         </View>
     );
 
@@ -270,28 +211,28 @@ const RegistersScreen = () => {
                 <Text style={styles.headerTitle}>Registers</Text>
             </View>
 
-            <View style={styles.filterContainer}>
-                <View style={styles.tabContainer}>
+            <View style={styles.filterCard}>
+                <View style={styles.segmentControl}>
                     {['Debit', 'Credit', 'Deposit'].map(type => (
-                        <TouchableOpacity key={type} style={[styles.tab, activeVoucherType === type && styles.activeTab]} onPress={() => handleVoucherTypeChange(type)}>
-                            <Text style={[styles.tabText, activeVoucherType === type && styles.activeTabText]}>{type}</Text>
+                        <TouchableOpacity key={type} style={[styles.segmentButton, activeVoucherType === type && styles.segmentActive]} onPress={() => handleVoucherTypeChange(type)}>
+                            <Text style={[styles.segmentText, activeVoucherType === type && styles.segmentTextActive]}>{type}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
-                <View style={styles.tabContainer}>
+                <View style={styles.segmentControl}>
                     {['Daily', 'Monthly', 'Overall'].map(p => (
-                        <TouchableOpacity key={p} style={[styles.tab, activePeriod === p.toLowerCase() && styles.activeTab]} onPress={() => handlePeriodChange(p.toLowerCase())}>
-                            <Text style={[styles.tabText, activePeriod === p.toLowerCase() && styles.activeTabText]}>{p}</Text>
+                        <TouchableOpacity key={p} style={[styles.segmentButton, activePeriod === p.toLowerCase() && styles.segmentActive]} onPress={() => handlePeriodChange(p.toLowerCase())}>
+                            <Text style={[styles.segmentText, activePeriod === p.toLowerCase() && styles.segmentTextActive]}>{p}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
                  <View style={styles.dateRangeContainer}>
                     <TouchableOpacity style={styles.dateButton} onPress={() => showDatePicker('start')}>
-                        <MaterialIcons name="calendar-today" size={16} color="#333" />
+                        <MaterialIcons name="calendar-today" size={16} color="#546E7A" />
                         <Text style={styles.dateText}>{dateRange.start || 'From Date'}</Text>
                     </TouchableOpacity>
                      <TouchableOpacity style={styles.dateButton} onPress={() => showDatePicker('end')}>
-                        <MaterialIcons name="calendar-today" size={16} color="#333" />
+                        <MaterialIcons name="calendar-today" size={16} color="#546E7A" />
                         <Text style={styles.dateText}>{dateRange.end || 'To Date'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.goButton} onPress={fetchVouchers}>
@@ -300,40 +241,31 @@ const RegistersScreen = () => {
                 </View>
             </View>
             
-            <View style={styles.table}>
-                <View style={[styles.tableRow, styles.tableHeader]}>
-                    <Text style={[styles.tableHeaderText, {width: 40}]}>S.No</Text>
-                    <Text style={[styles.tableHeaderText, {width: 90}]}>VCH No</Text>
-                    <Text style={[styles.tableHeaderText, {flex: 1}]}>Head</Text>
-                    <Text style={[styles.tableHeaderText, {width: 90, textAlign: 'right'}]}>Amount</Text>
-                    <Text style={[styles.tableHeaderText, {width: 100, textAlign: 'center'}]}>Actions</Text>
-                </View>
+            <View style={styles.tableContainer}>
                 {isLoading ? (
-                    <ActivityIndicator size="large" color="#0275d8" style={{ marginTop: 50 }}/>
+                    <ActivityIndicator size="large" color="#007AFF" style={{ flex: 1 }}/>
+                ) : vouchers.length > 0 ? (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View>
+                            <TableHeader />
+                            <FlatList
+                                data={vouchers}
+                                renderItem={renderVoucherItem}
+                                keyExtractor={item => item.id.toString()}
+                            />
+                        </View>
+                    </ScrollView>
                 ) : (
-                    <FlatList
-                        data={vouchers}
-                        renderItem={renderVoucherItem}
-                        keyExtractor={item => item.id.toString()}
-                        ListEmptyComponent={<Text style={styles.noDataText}>No vouchers found for the selected filters.</Text>}
-                    />
+                    <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyText}>No vouchers found.</Text>
+                    </View>
                 )}
             </View>
             
-            <DateTimePickerModal
-                isVisible={isDatePickerVisible}
-                mode="date"
-                onConfirm={handleConfirmDate}
-                onCancel={hideDatePicker}
-            />
+            <DateTimePickerModal isVisible={isDatePickerVisible} mode="date" onConfirm={handleConfirmDate} onCancel={hideDatePicker} />
 
             {selectedVoucher && (
-                 <Modal
-                    animationType="slide"
-                    transparent={true}
-                    visible={isDetailModalVisible}
-                    onRequestClose={() => setDetailModalVisible(false)}
-                 >
+                 <Modal animationType="slide" transparent={true} visible={isDetailModalVisible} onRequestClose={() => setDetailModalVisible(false)}>
                      <View style={styles.modalContainer}>
                          <View style={styles.modalContent}>
                             <Text style={styles.modalTitle}>{selectedVoucher.voucher_type} Voucher</Text>
@@ -347,38 +279,16 @@ const RegistersScreen = () => {
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Account Type:</Text> {selectedVoucher.account_type}</Text>
                                 <Text style={styles.modalSectionTitle}>Particulars</Text>
                                 {selectedVoucher.particulars.map((p, i) => (
-                                    <View key={i} style={styles.particularRow}>
-                                        <Text style={styles.particularDesc}>{p.description}</Text>
-                                        <Text style={styles.particularAmt}>₹{p.amount}</Text>
-                                    </View>
+                                    <View key={i} style={styles.particularRow}><Text style={styles.particularDesc}>{p.description}</Text><Text style={styles.particularAmt}>₹{p.amount}</Text></View>
                                 ))}
-                                <View style={styles.totalRow}>
-                                    <Text style={styles.totalText}>Total Amount:</Text>
-                                    <Text style={styles.totalAmount}>₹{selectedVoucher.total_amount}</Text>
-                                </View>
-                                
-                                {/* --- MODIFIED: Added View Proof Button --- */}
-                                {selectedVoucher.attachment_url && (
-                                    <TouchableOpacity style={styles.viewProofButton} onPress={() => handleViewProof(selectedVoucher.attachment_url)}>
-                                        <MaterialIcons name="image" size={20} color="#FFF" />
-                                        <Text style={styles.viewProofButtonText}>View Proof</Text>
-                                    </TouchableOpacity>
-                                )}
-
+                                <View style={styles.totalRow}><Text style={styles.totalText}>Total Amount:</Text><Text style={styles.totalAmount}>₹{selectedVoucher.total_amount}</Text></View>
+                                {selectedVoucher.attachment_url && <TouchableOpacity style={styles.viewProofButton} onPress={() => handleViewProof(selectedVoucher.attachment_url)}><MaterialIcons name="image" size={20} color="#FFF" /><Text style={styles.viewProofButtonText}>View Proof</Text></TouchableOpacity>}
                                 <View style={styles.userInfoContainer}>
-                                    <Text style={styles.userInfoText}>
-                                        Created by: {selectedVoucher.creator_name || 'N/A'}
-                                    </Text>
-                                    {selectedVoucher.updater_name && selectedVoucher.updated_at && (
-                                        <Text style={styles.userInfoText}>
-                                            Last updated by: {selectedVoucher.updater_name} on {new Date(selectedVoucher.updated_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
-                                        </Text>
-                                    )}
+                                    <Text style={styles.userInfoText}>Created by: {selectedVoucher.creator_name || 'N/A'}</Text>
+                                    {selectedVoucher.updater_name && selectedVoucher.updated_at && <Text style={styles.userInfoText}>Last updated by: {selectedVoucher.updater_name} on {new Date(selectedVoucher.updated_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}</Text>}
                                 </View>
                             </ScrollView>
-                            <TouchableOpacity style={styles.closeButton} onPress={() => setDetailModalVisible(false)}>
-                                <Text style={styles.closeButtonText}>Close</Text>
-                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.closeButton} onPress={() => setDetailModalVisible(false)}><Text style={styles.closeButtonText}>Close</Text></TouchableOpacity>
                          </View>
                      </View>
                  </Modal>
@@ -387,29 +297,49 @@ const RegistersScreen = () => {
     );
 };
 
-// Styles updated to include the new "View Proof" button style
+// --- ★★★ REFINED STYLESHEET FOR DYNAMIC FILTERS & SCROLLABLE GRID ★★★ ---
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F7FAFC' },
-    header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#DDD', elevation: 2 },
-    backButton: { padding: 5 },
-    headerTitle: { fontSize: 20, fontWeight: 'bold', marginLeft: 10 },
-    filterContainer: { padding: 12, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0'},
-    tabContainer: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 },
-    tab: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#F0F0F0', borderWidth: 1, borderColor: '#DDD' },
-    activeTab: { backgroundColor: '#0275d8', borderColor: '#0275d8' },
-    tabText: { fontWeight: 'bold', color: '#555' },
-    activeTabText: { color: '#FFF' },
-    dateRangeContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    dateButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E9ECEF', padding: 10, borderRadius: 6, flex: 1, marginHorizontal: 4 },
-    dateText: { marginLeft: 8, color: '#495057' },
-    goButton: { backgroundColor: '#5cb85c', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 6, marginLeft: 4, elevation: 2},
-    goButtonText: { color: '#FFF', fontWeight: 'bold'},
-    table: { flex: 1, margin: 12, backgroundColor: '#FFF', borderRadius: 8, borderWidth: 1, borderColor: '#DEE2E6', overflow: 'hidden' },
-    tableHeader: { backgroundColor: '#F8F9FA', borderBottomWidth: 2, borderColor: '#DEE2E6' },
-    tableRow: { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#EEE', alignItems: 'center' },
-    tableHeaderText: { fontWeight: 'bold', color: '#495057' },
-    tableCell: { paddingHorizontal: 4, color: '#333' },
-    noDataText: { textAlign: 'center', marginTop: 50, color: '#6c757d', fontSize: 16 },
+    container: { flex: 1, backgroundColor: '#F0F4F8' },
+    header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', paddingVertical: 12, paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#CFD8DC' },
+    backButton: { padding: 5, marginRight: 15 },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#263238' },
+    
+    // Dynamic Filter Card Styles
+    filterCard: { backgroundColor: '#FFFFFF', margin: 10, borderRadius: 12, padding: 15, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+    segmentControl: { flexDirection: 'row', backgroundColor: '#ECEFF1', borderRadius: 8, marginBottom: 12 },
+    segmentButton: { flex: 1, paddingVertical: 10, borderRadius: 7 },
+    segmentActive: { backgroundColor: '#007AFF' },
+    segmentText: { textAlign: 'center', fontWeight: '600', color: '#37474F', fontSize: 13 },
+    segmentTextActive: { color: '#FFFFFF' },
+    dateRangeContainer: { flexDirection: 'row', alignItems: 'center' },
+    dateButton: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECEFF1', paddingHorizontal: 10, paddingVertical: 10, borderRadius: 8, marginRight: 10 },
+    dateText: { marginLeft: 8, color: '#37474F', fontWeight: '500' },
+    goButton: { backgroundColor: '#27ae60', paddingVertical: 10, paddingHorizontal: 25, borderRadius: 8, justifyContent: 'center' },
+    goButtonText: { color: '#FFF', fontWeight: 'bold' },
+
+    // --- SCROLLABLE GRID TABLE STYLES ---
+    tableContainer: { flex: 1, marginHorizontal: 10, marginBottom: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CFD8DC', borderRadius: 8 },
+    tableHeader: { flexDirection: 'row', backgroundColor: '#F5F5F5', borderBottomWidth: 2, borderBottomColor: '#B0BEC5' },
+    headerText: { fontSize: 11, fontWeight: 'bold', color: '#546E7A', textTransform: 'uppercase', paddingVertical: 12, paddingHorizontal: 8 },
+    tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#ECEFF1', alignItems: 'center' },
+    
+    // Cell Styles with fixed widths for horizontal scroll
+    snoCell: { width: 50, padding: 10, textAlign: 'center', borderRightWidth: 1, borderRightColor: '#ECEFF1', color: '#546E7A' },
+    vchCell: { width: 110, padding: 10, borderRightWidth: 1, borderRightColor: '#ECEFF1', color: '#37474F', fontWeight: '500' },
+    headCell: { width: 150, padding: 10, borderRightWidth: 1, borderRightColor: '#ECEFF1', color: '#37474F' }, // Width reduced
+    amountCell: { width: 120, padding: 10, borderRightWidth: 1, borderRightColor: '#ECEFF1', fontWeight: 'bold', fontSize: 14, textAlign: 'right' },
+    actionCell: { width: 110, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 10 },
+    iconButton: { padding: 4 },
+
+    // Amount Color Styles
+    amountDebit: { color: '#d9534f' },
+    amountCredit: { color: '#5cb85c' },
+    amountDeposit: { color: '#0275d8' },
+    amountDefault: { color: '#37474F' },
+    emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    emptyText: { fontSize: 16, color: '#78909C' },
+
+    // Modal Styles
     modalContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContent: { width: '90%', maxHeight: '80%', backgroundColor: 'white', borderRadius: 10, padding: 20, elevation: 10 },
     modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, textAlign: 'center', color: '#1A202C' },
@@ -417,7 +347,7 @@ const styles = StyleSheet.create({
     detailRow: { fontSize: 16, marginBottom: 8 },
     detailLabel: { fontWeight: 'bold', color: '#4A5568' },
     modalSectionTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15, marginBottom: 5, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 10 },
-    particularRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5},
+    particularRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
     particularDesc: { flex: 1, color: '#4A5568' },
     particularAmt: { fontWeight: 'bold', color: '#1A202C' },
     totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15, paddingTop: 10, borderTopWidth: 2, borderTopColor: '#333' },
