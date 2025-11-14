@@ -7677,10 +7677,11 @@ app.get('/api/students/:id', async (req, res) => {
 // ---  VOUCHER SYSTEM API ROUTES ---
 // ==========================================================
 
-// This is the CORRECT code that matches the rest of your application
+// 1. Multer Configuration for Voucher Proofs
 const voucherStorage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadPath = '/data/uploads'; // This is CORRECT for your setup
+        // Use the same destination as your other uploads for consistency
+        const uploadPath = '/data/uploads';
         if (!fs.existsSync(uploadPath)) {
             fs.mkdirSync(uploadPath, { recursive: true });
         }
@@ -7693,9 +7694,10 @@ const voucherStorage = multer.diskStorage({
 
 const voucherUpload = multer({ 
     storage: voucherStorage,
-    limits: { fileSize: 10 * 1024 * 1024 } 
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for proof images
 });
 
+// 2. API Routes
 
 // GET the next available voucher number
 app.get('/api/vouchers/next-number', [verifyToken, isAdmin], async (req, res) => {
@@ -7719,12 +7721,14 @@ app.get('/api/vouchers/next-number', [verifyToken, isAdmin], async (req, res) =>
 
 // CREATE a New Voucher
 app.post('/api/vouchers/create', [verifyToken, isAdmin, voucherUpload.single('attachment')], async (req, res) => {
-    // MODIFIED: Added name and phoneNo
     const { voucherType, voucherNo, voucherDate, headOfAccount, subHead, accountType, name, phoneNo, totalAmount, amountInWords, particulars } = req.body;
-    const { userId } = req;
+    
+    // CORRECTED: Get the user ID from req.user.id, which is set by your existing verifyToken middleware.
+    // This is the key fix for the "Created by: N/A" issue.
+    const userId = req.user.id;
 
-    if (!voucherType || !voucherNo || !voucherDate || !headOfAccount || !accountType || totalAmount == null || !particulars) {
-        return res.status(400).json({ message: 'Missing required fields.' });
+    if (!voucherType || !voucherNo || !voucherDate || !headOfAccount || !accountType || totalAmount == null || !particulars || !userId) {
+        return res.status(400).json({ message: 'Missing required fields or user authentication.' });
     }
 
     const attachment_url = req.file ? `/uploads/${req.file.filename}` : null;
@@ -7738,9 +7742,8 @@ app.post('/api/vouchers/create', [verifyToken, isAdmin, voucherUpload.single('at
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        // MODIFIED: Updated INSERT query to include name and phone_no
         const voucherQuery = `INSERT INTO vouchers (voucher_type, voucher_no, voucher_date, head_of_account, sub_head, account_type, name, phone_no, total_amount, amount_in_words, attachment_url, created_by_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        const [voucherResult] = await connection.query(voucherQuery, [voucherType, voucherNo, voucherDate, headOfAccount, subHead || null, accountType, name || null, phoneNo || null, totalAmount, amountInWords, attachment_url, userId || null]);
+        const [voucherResult] = await connection.query(voucherQuery, [voucherType, voucherNo, voucherDate, headOfAccount, subHead || null, accountType, name || null, phoneNo || null, totalAmount, amountInWords, attachment_url, userId]);
         const newVoucherId = voucherResult.insertId;
 
         if (parsedParticulars && parsedParticulars.length > 0) {
@@ -7766,11 +7769,12 @@ app.post('/api/vouchers/create', [verifyToken, isAdmin, voucherUpload.single('at
 // UPDATE an Existing Voucher
 app.put('/api/vouchers/update/:id', [verifyToken, isAdmin, voucherUpload.single('attachment')], async (req, res) => {
     const { id } = req.params;
-    const { userId } = req;
-    // MODIFIED: Added name and phoneNo
+    
+    // CORRECTED: Get the user ID from req.user.id for tracking the updater.
+    const userId = req.user.id;
     const { voucherType, voucherDate, headOfAccount, subHead, accountType, name, phoneNo, totalAmount, amountInWords, particulars } = req.body;
     
-    if (!voucherType || !voucherDate || !headOfAccount || !accountType || totalAmount == null || !particulars) {
+    if (!voucherType || !voucherDate || !headOfAccount || !accountType || totalAmount == null || !particulars || !userId) {
         return res.status(400).json({ message: 'Missing required fields for update.' });
     }
     
@@ -7778,14 +7782,13 @@ app.put('/api/vouchers/update/:id', [verifyToken, isAdmin, voucherUpload.single(
     try {
         await connection.beginTransaction();
 
-        let attachment_url = req.body.attachment_url || null; // Keep existing if not updated
+        let attachment_url = req.body.attachment_url || null;
         if (req.file) {
             attachment_url = `/uploads/${req.file.filename}`;
         }
 
-        // MODIFIED: Updated UPDATE query to include name and phone_no
         const voucherQuery = `UPDATE vouchers SET voucher_type = ?, voucher_date = ?, head_of_account = ?, sub_head = ?, account_type = ?, name = ?, phone_no = ?, total_amount = ?, amount_in_words = ?, updated_by_id = ?, attachment_url = ? WHERE id = ?`;
-        await connection.query(voucherQuery, [voucherType, voucherDate, headOfAccount, subHead || null, accountType, name || null, phoneNo || null, totalAmount, amountInWords, userId || null, attachment_url, id]);
+        await connection.query(voucherQuery, [voucherType, voucherDate, headOfAccount, subHead || null, accountType, name || null, phoneNo || null, totalAmount, amountInWords, userId, attachment_url, id]);
 
         await connection.query('DELETE FROM voucher_items WHERE voucher_id = ?', [id]);
 

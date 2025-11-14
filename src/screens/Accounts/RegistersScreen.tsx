@@ -331,10 +331,8 @@ const RegistersScreen = () => {
                             <Text style={styles.modalVoucherNo}>{selectedVoucher.voucher_no}</Text>
                             <ScrollView>
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Date:</Text> {new Date(selectedVoucher.voucher_date).toLocaleDateString('en-GB')}</Text>
-                                {/* --- MODIFIED: Added Name and Phone No --- */}
                                 {selectedVoucher.name && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Name:</Text> {selectedVoucher.name}</Text>}
                                 {selectedVoucher.phone_no && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Phone No:</Text> {selectedVoucher.phone_no}</Text>}
-                                {/* --- End of modification --- */}
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Head of A/C:</Text> {selectedVoucher.head_of_account}</Text>
                                 {selectedVoucher.sub_head && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Sub Head:</Text> {selectedVoucher.sub_head}</Text>}
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Account Type:</Text> {selectedVoucher.account_type}</Text>
@@ -349,16 +347,20 @@ const RegistersScreen = () => {
                                     <Text style={styles.totalText}>Total Amount:</Text>
                                     <Text style={styles.totalAmount}>₹{selectedVoucher.total_amount}</Text>
                                 </View>
+
+                                {/* --- CORRECTED: User Info Container Updated --- */}
                                 <View style={styles.userInfoContainer}>
                                     <Text style={styles.userInfoText}>
                                         Created by: {selectedVoucher.creator_name || 'N/A'}
                                     </Text>
-                                    {selectedVoucher.updater_name && (
+                                    {selectedVoucher.updater_name && selectedVoucher.updated_at && (
                                         <Text style={styles.userInfoText}>
-                                            Last updated by: {selectedVoucher.updater_name} on {new Date(selectedVoucher.updated_at).toLocaleDateString('en-GB')}
+                                            Last updated by: {selectedVoucher.updater_name} on {new Date(selectedVoucher.updated_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
                                         </Text>
                                     )}
                                 </View>
+                                {/* --- End of correction --- */}
+
                             </ScrollView>
                             <TouchableOpacity style={styles.closeButton} onPress={() => setDetailModalVisible(false)}>
                                 <Text style={styles.closeButtonText}>Close</Text>
@@ -417,6 +419,7 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
         color: '#6c757d',
         textAlign: 'center',
+        paddingBottom: 2, // Added small padding for better spacing
     },
     closeButton: { backgroundColor: '#d9534f', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 20 },
     closeButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
