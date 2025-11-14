@@ -91,14 +91,12 @@ const TransactionsScreen = () => {
         }
     };
     
-    // Note: The downloadVoucher logic is identical to RegistersScreen and is included for completeness.
     const requestStoragePermission = async () => {
         if (Platform.OS !== 'android' || Platform.Version >= 33) return true;
         try {
             const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
             return granted === PermissionsAndroid.RESULTS.GRANTED;
         } catch (err) {
-            console.warn(err);
             return false;
         }
     };
@@ -116,8 +114,8 @@ const TransactionsScreen = () => {
                 const baseUrl = apiClient.defaults.baseURL.replace('/api', '');
                 const fullImageUrl = `${baseUrl}${details.attachment_url}`;
                 const tempImagePath = `${RNFS.CachesDirectoryPath}/voucher_proof_${Date.now()}.jpg`;
-                const downloadResult = await RNFS.downloadFile({ fromUrl: fullImageUrl, toFile: tempImagePath }).promise;
-                if (downloadResult.statusCode === 200) {
+                const { statusCode } = await RNFS.downloadFile({ fromUrl: fullImageUrl, toFile: tempImagePath }).promise;
+                if (statusCode === 200) {
                     imageHtml = `<div class="section-title">Proof Attachment</div><div class="image-container"><img src="file://${tempImagePath}" alt="Proof Attachment" /></div>`;
                 }
             }
@@ -155,14 +153,64 @@ const TransactionsScreen = () => {
         );
     };
 
-    const TableHeader = () => (
-        <View style={styles.tableHeader}>
-            <Text style={[styles.headerText, { width: 40 }]}>S.NO</Text>
-            <Text style={[styles.headerText, { width: 100 }]}>VCH NO</Text>
-            <Text style={[styles.headerText, { flex: 1 }]}>HEAD</Text>
-            <Text style={[styles.headerText, { width: 110, textAlign: 'right' }]}>AMOUNT</Text>
-            <Text style={[styles.headerText, { width: 70, textAlign: 'center' }]}>VIEW</Text>
-        </View>
+    const ListHeader = () => (
+        <>
+            <View style={styles.balanceCard}>
+                <Text style={styles.balanceLabel}>ACCOUNT BALANCE</Text>
+                <Text style={styles.balanceAmount}>₹{Number(summaryData.account_balance).toFixed(2)}</Text>
+            </View>
+
+            <View style={styles.filterCard}>
+                <View style={styles.segmentControl}>
+                    {['Daily', 'Monthly', 'Overall'].map(p => (
+                        <TouchableOpacity key={p} style={[styles.segmentButton, activePeriod === p.toLowerCase() && styles.segmentActive]} onPress={() => handlePeriodChange(p.toLowerCase())}>
+                            <Text style={[styles.segmentText, activePeriod === p.toLowerCase() && styles.segmentTextActive]}>{p}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+                <View style={styles.dateRangeContainer}>
+                    <TouchableOpacity style={styles.dateButton} onPress={() => showDatePicker('start')}>
+                        <MaterialIcons name="calendar-today" size={16} color="#546E7A" />
+                        <Text style={styles.dateText}>{dateRange.start || 'From Date'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.dateButton} onPress={() => showDatePicker('end')}>
+                        <MaterialIcons name="calendar-today" size={16} color="#546E7A" />
+                        <Text style={styles.dateText}>{dateRange.end || 'To Date'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.goButton} onPress={fetchTransactionData}>
+                        <Text style={styles.goButtonText}>Go</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {isLoading ? <ActivityIndicator size="large" color="#007AFF" style={{marginVertical: 20}} /> : (
+                <View style={styles.summaryContainer}>
+                    <View style={[styles.summaryBox, { borderColor: '#0275d8' }]}>
+                        <Text style={styles.summaryLabel}>Deposit</Text>
+                        <Text style={[styles.summaryAmount, styles.amountDeposit]}>+ ₹{Number(summaryData.period_summary.deposit).toFixed(2)}</Text>
+                    </View>
+                    <View style={[styles.summaryBox, { borderColor: '#5cb85c' }]}>
+                        <Text style={styles.summaryLabel}>Credit</Text>
+                        <Text style={[styles.summaryAmount, styles.amountCredit]}>+ ₹{Number(summaryData.period_summary.credit).toFixed(2)}</Text>
+                    </View>
+                    <View style={[styles.summaryBox, { borderColor: '#d9534f' }]}>
+                        <Text style={styles.summaryLabel}>Debit</Text>
+                        <Text style={[styles.summaryAmount, styles.amountDebit]}>- ₹{Number(summaryData.period_summary.debit).toFixed(2)}</Text>
+                    </View>
+                </View>
+            )}
+
+            <View style={styles.historyContainer}>
+                <Text style={styles.historyTitle}>Transaction History</Text>
+                <View style={styles.tableHeader}>
+                    <Text style={[styles.headerText, { width: 40 }]}>S.NO</Text>
+                    <Text style={[styles.headerText, { width: 100 }]}>VCH NO</Text>
+                    <Text style={[styles.headerText, { flex: 1 }]}>HEAD</Text>
+                    <Text style={[styles.headerText, { width: 110, textAlign: 'right' }]}>AMOUNT</Text>
+                    <Text style={[styles.headerText, { width: 70, textAlign: 'center' }]}>ACTIONS</Text>
+                </View>
+            </View>
+        </>
     );
 
     return (
@@ -172,67 +220,20 @@ const TransactionsScreen = () => {
                 <Text style={styles.headerTitle}>Transactions</Text>
             </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                <View style={styles.balanceCard}>
-                    <Text style={styles.balanceLabel}>ACCOUNT BALANCE</Text>
-                    <Text style={styles.balanceAmount}>₹{summaryData.account_balance.toFixed(2)}</Text>
-                </View>
-
-                <View style={styles.filterCard}>
-                    <View style={styles.segmentControl}>
-                        {['Daily', 'Monthly', 'Overall'].map(p => (
-                            <TouchableOpacity key={p} style={[styles.segmentButton, activePeriod === p.toLowerCase() && styles.segmentActive]} onPress={() => handlePeriodChange(p.toLowerCase())}>
-                                <Text style={[styles.segmentText, activePeriod === p.toLowerCase() && styles.segmentTextActive]}>{p}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                    <View style={styles.dateRangeContainer}>
-                        <TouchableOpacity style={styles.dateButton} onPress={() => showDatePicker('start')}>
-                            <MaterialIcons name="calendar-today" size={16} color="#546E7A" />
-                            <Text style={styles.dateText}>{dateRange.start || 'From Date'}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.dateButton} onPress={() => showDatePicker('end')}>
-                            <MaterialIcons name="calendar-today" size={16} color="#546E7A" />
-                            <Text style={styles.dateText}>{dateRange.end || 'To Date'}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.goButton} onPress={fetchTransactionData}>
-                            <Text style={styles.goButtonText}>Go</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                {isLoading ? <ActivityIndicator size="large" color="#007AFF" /> : (
-                    <View style={styles.summaryContainer}>
-                        <View style={[styles.summaryBox, { borderColor: '#0275d8' }]}>
-                            <Text style={styles.summaryLabel}>Deposit</Text>
-                            <Text style={[styles.summaryAmount, styles.amountDeposit]}>+ ₹{summaryData.period_summary.deposit.toFixed(2)}</Text>
-                        </View>
-                        <View style={[styles.summaryBox, { borderColor: '#5cb85c' }]}>
-                            <Text style={styles.summaryLabel}>Credit</Text>
-                            <Text style={[styles.summaryAmount, styles.amountCredit]}>+ ₹{summaryData.period_summary.credit.toFixed(2)}</Text>
-                        </View>
-                        <View style={[styles.summaryBox, { borderColor: '#d9534f' }]}>
-                            <Text style={styles.summaryLabel}>Debit</Text>
-                            <Text style={[styles.summaryAmount, styles.amountDebit]}>- ₹{summaryData.period_summary.debit.toFixed(2)}</Text>
-                        </View>
-                    </View>
+            <View style={styles.listContainer}>
+                {isLoading && transactions.length === 0 ? (
+                    <ActivityIndicator size="large" color="#007AFF" style={{flex: 1}}/>
+                ) : (
+                    <FlatList
+                        ListHeaderComponent={ListHeader}
+                        data={transactions}
+                        renderItem={renderTransactionItem}
+                        keyExtractor={item => item.id.toString()}
+                        ListEmptyComponent={<View style={styles.emptyContainer}><Text style={styles.emptyText}>No transactions found for this period.</Text></View>}
+                        contentContainerStyle={styles.scrollContent}
+                    />
                 )}
-
-                <View style={styles.historyContainer}>
-                    <Text style={styles.historyTitle}>Transaction History</Text>
-                    <View style={styles.tableContainer}>
-                        <TableHeader />
-                        {isLoading ? <ActivityIndicator style={{ marginTop: 20 }} /> : (
-                            <FlatList
-                                data={transactions}
-                                renderItem={renderTransactionItem}
-                                keyExtractor={item => item.id.toString()}
-                                ListEmptyComponent={<View style={styles.emptyContainer}><Text style={styles.emptyText}>No transactions found for this period.</Text></View>}
-                            />
-                        )}
-                    </View>
-                </View>
-            </ScrollView>
+            </View>
 
             <DateTimePickerModal isVisible={isDatePickerVisible} mode="date" onConfirm={handleConfirmDate} onCancel={hideDatePicker} />
             
@@ -241,16 +242,27 @@ const TransactionsScreen = () => {
                      <View style={styles.modalContainer}>
                          <View style={styles.modalContent}>
                             <Text style={styles.modalTitle}>{selectedVoucher.voucher_type} Voucher</Text>
+                            <Text style={styles.modalVoucherNo}>{selectedVoucher.voucher_no}</Text>
                             <ScrollView>
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Date:</Text> {new Date(selectedVoucher.voucher_date).toLocaleDateString('en-GB')}</Text>
+                                {selectedVoucher.name && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Name:</Text> {selectedVoucher.name}</Text>}
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Head of A/C:</Text> {selectedVoucher.head_of_account}</Text>
+                                {selectedVoucher.sub_head && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Sub Head:</Text> {selectedVoucher.sub_head}</Text>}
                                 <Text style={styles.modalSectionTitle}>Particulars</Text>
                                 {selectedVoucher.particulars.map((p, i) => (
-                                    <View key={i} style={styles.particularRow}><Text>{p.description}</Text><Text>₹{p.amount}</Text></View>
+                                    <View key={i} style={styles.particularRow}>
+                                        <Text style={styles.particularDesc}>{p.description}</Text>
+                                        <Text style={styles.particularAmt}>₹{Number(p.amount).toFixed(2)}</Text>
+                                    </View>
                                 ))}
-                                <View style={styles.totalRow}><Text style={styles.totalText}>Total:</Text><Text style={styles.totalAmount}>₹{selectedVoucher.total_amount}</Text></View>
+                                <View style={styles.totalRow}>
+                                    <Text style={styles.totalText}>Total Amount:</Text>
+                                    <Text style={styles.totalAmount}>₹{Number(selectedVoucher.total_amount).toFixed(2)}</Text>
+                                </View>
                             </ScrollView>
-                            <TouchableOpacity style={styles.closeButton} onPress={() => setDetailModalVisible(false)}><Text style={styles.closeButtonText}>Close</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.closeButton} onPress={() => setDetailModalVisible(false)}>
+                                <Text style={styles.closeButtonText}>Close</Text>
+                            </TouchableOpacity>
                          </View>
                      </View>
                  </Modal>
@@ -264,10 +276,11 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', paddingVertical: 12, paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#CFD8DC' },
     backButton: { padding: 5, marginRight: 15 },
     headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#263238' },
-    scrollContent: { padding: 10 },
+    listContainer: { flex: 1 },
+    scrollContent: { padding: 10, paddingBottom: 20 },
     balanceCard: { backgroundColor: '#263238', borderRadius: 12, padding: 20, alignItems: 'center', elevation: 4, marginBottom: 10 },
-    balanceLabel: { color: '#B0BEC5', fontSize: 14, textTransform: 'uppercase' },
-    balanceAmount: { color: '#FFFFFF', fontSize: 36, fontWeight: 'bold', marginTop: 5 },
+    balanceLabel: { color: '#B0BEC5', fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.5 },
+    balanceAmount: { color: '#FFFFFF', fontSize: 32, fontWeight: '700', marginTop: 5 },
     filterCard: { backgroundColor: '#FFFFFF', marginVertical: 5, borderRadius: 12, padding: 15, elevation: 3 },
     segmentControl: { flexDirection: 'row', backgroundColor: '#ECEFF1', borderRadius: 8, marginBottom: 12 },
     segmentButton: { flex: 1, paddingVertical: 10, borderRadius: 7 },
@@ -277,39 +290,41 @@ const styles = StyleSheet.create({
     dateRangeContainer: { flexDirection: 'row', alignItems: 'center' },
     dateButton: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECEFF1', padding: 10, borderRadius: 8, marginRight: 10 },
     dateText: { marginLeft: 8, color: '#37474F' },
-    goButton: { backgroundColor: '#27ae60', padding: 10, borderRadius: 8 },
+    goButton: { backgroundColor: '#27ae60', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8 },
     goButtonText: { color: '#FFF', fontWeight: 'bold' },
     summaryContainer: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 15 },
-    summaryBox: { flex: 1, backgroundColor: '#FFF', borderRadius: 10, padding: 15, alignItems: 'center', marginHorizontal: 5, elevation: 2, borderLeftWidth: 5 },
-    summaryLabel: { fontSize: 14, color: '#546E7A' },
-    summaryAmount: { fontSize: 18, fontWeight: 'bold', marginTop: 5 },
-    historyContainer: { flex: 1, marginTop: 10 },
+    summaryBox: { flex: 1, backgroundColor: '#FFF', borderRadius: 10, padding: 12, alignItems: 'center', marginHorizontal: 5, elevation: 2, borderLeftWidth: 4 },
+    summaryLabel: { fontSize: 13, color: '#546E7A', fontWeight: '500' },
+    summaryAmount: { fontSize: 16, fontWeight: 'bold', marginTop: 4 },
+    historyContainer: { marginTop: 10 },
     historyTitle: { fontSize: 18, fontWeight: 'bold', color: '#263238', marginBottom: 10, paddingHorizontal: 5 },
-    tableContainer: { flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#CFD8DC', borderRadius: 8, overflow: 'hidden' },
-    tableHeader: { flexDirection: 'row', backgroundColor: '#F5F5F5', borderBottomWidth: 1, borderBottomColor: '#B0BEC5' },
-    headerText: { fontSize: 11, fontWeight: 'bold', color: '#546E7A', textTransform: 'uppercase', padding: 12 },
-    tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#ECEFF1', alignItems: 'center' },
-    snoCell: { width: 40, padding: 10, textAlign: 'center', color: '#546E7A' },
-    vchCell: { width: 100, padding: 10, color: '#37474F', fontWeight: '500' },
-    headCell: { flex: 1, padding: 10, color: '#37474F' },
-    amountCell: { width: 110, padding: 10, fontWeight: 'bold', fontSize: 14, textAlign: 'right' },
+    tableHeader: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderBottomWidth: 2, borderBottomColor: '#B0BEC5', borderTopLeftRadius: 8, borderTopRightRadius: 8, paddingHorizontal: 5 },
+    headerText: { fontSize: 11, fontWeight: 'bold', color: '#546E7A', textTransform: 'uppercase', paddingVertical: 12, paddingHorizontal: 5 },
+    tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#ECEFF1', alignItems: 'center', backgroundColor: '#FFFFFF', paddingHorizontal: 5 },
+    snoCell: { width: 40, paddingVertical: 10, textAlign: 'center', color: '#546E7A' },
+    vchCell: { width: 100, paddingVertical: 10, color: '#37474F', fontWeight: '500' },
+    headCell: { flex: 1, paddingVertical: 10, color: '#37474F' },
+    amountCell: { width: 110, paddingVertical: 10, fontWeight: 'bold', fontSize: 14, textAlign: 'right' },
     actionCell: { width: 70, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 10 },
     amountDebit: { color: '#d9534f' },
     amountCredit: { color: '#5cb85c' },
     amountDeposit: { color: '#0275d8' },
     amountDefault: { color: '#37474F' },
-    emptyContainer: { alignItems: 'center', padding: 20 },
+    emptyContainer: { alignItems: 'center', padding: 20, backgroundColor: '#FFFFFF', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
     emptyText: { color: '#78909C' },
     modalContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContent: { width: '90%', maxHeight: '80%', backgroundColor: 'white', borderRadius: 10, padding: 20 },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, textAlign: 'center', color: '#1A202C' },
+    modalVoucherNo: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 15 },
     detailRow: { fontSize: 16, marginBottom: 8 },
-    detailLabel: { fontWeight: 'bold' },
-    modalSectionTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15, borderTopWidth: 1, paddingTop: 10 },
+    detailLabel: { fontWeight: 'bold', color: '#4A5568' },
+    modalSectionTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 15, marginBottom: 5, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 10 },
     particularRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
-    totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, borderTopWidth: 2, paddingTop: 10 },
-    totalText: { fontSize: 16, fontWeight: 'bold' },
-    totalAmount: { fontSize: 16, fontWeight: 'bold' },
+    particularDesc: { flex: 1, color: '#4A5568' },
+    particularAmt: { fontWeight: 'bold', color: '#1A202C' },
+    totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15, paddingTop: 10, borderTopWidth: 2, borderTopColor: '#333' },
+    totalText: { fontSize: 16, fontWeight: 'bold', color: '#1A202C' },
+    totalAmount: { fontSize: 16, fontWeight: 'bold', color: '#1A202C' },
     closeButton: { backgroundColor: '#d9534f', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 20 },
     closeButtonText: { color: 'white', fontWeight: 'bold' },
 });

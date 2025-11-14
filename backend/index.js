@@ -7963,6 +7963,49 @@ app.get('/api/transactions/summary', [verifyToken, isAdmin], async (req, res) =>
     }
 });
 
+// ==========================================================
+// --- REPORTS SCREEN API ROUTE ---
+// ==========================================================
+
+// FETCH FINANCIAL REPORT SUMMARY
+app.get('/api/reports/summary', [verifyToken, isAdmin], async (req, res) => {
+    const { period, startDate, endDate } = req.query;
+    let whereClause = '';
+    const queryParams = [];
+
+    if (period === 'daily') {
+        whereClause = 'WHERE voucher_date = CURDATE()';
+    } else if (period === 'monthly') {
+        whereClause = 'WHERE MONTH(voucher_date) = MONTH(CURDATE()) AND YEAR(voucher_date) = YEAR(CURDATE())';
+    } else if (startDate && endDate) {
+        whereClause = 'WHERE voucher_date BETWEEN ? AND ?';
+        queryParams.push(startDate, endDate);
+    }
+    // For 'overall', whereClause remains empty to select all records.
+
+    const summaryQuery = `
+        SELECT
+            SUM(CASE WHEN voucher_type = 'Debit' THEN total_amount ELSE 0 END) AS debit,
+            SUM(CASE WHEN voucher_type = 'Credit' THEN total_amount ELSE 0 END) AS credit,
+            SUM(CASE WHEN voucher_type = 'Deposit' THEN total_amount ELSE 0 END) AS deposit
+        FROM vouchers
+        ${whereClause};
+    `;
+
+    try {
+        const [summaryResult] = await db.query(summaryQuery, queryParams);
+        const reportData = {
+            debit: summaryResult[0].debit || 0,
+            credit: summaryResult[0].credit || 0,
+            deposit: summaryResult[0].deposit || 0,
+        };
+        res.status(200).json(reportData);
+    } catch (error) {
+        console.error('Error fetching report summary:', error);
+        res.status(500).json({ message: 'Failed to fetch report data.' });
+    }
+});
+
 
 
 
