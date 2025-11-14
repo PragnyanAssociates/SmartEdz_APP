@@ -1,5 +1,3 @@
-// Filename: screens/RegistersScreen.js
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity,
@@ -95,11 +93,13 @@ const RegistersScreen = () => {
     };
 
     const editVoucher = (voucherId) => {
+        setDetailModalVisible(false); // Close the modal before navigating
         navigation.navigate('VouchersScreen', { voucherId: voucherId });
     };
     
     const requestStoragePermission = async () => {
         if (Platform.OS !== 'android') return true;
+        // For Android 13+ (API 33+), WRITE_EXTERNAL_STORAGE is not needed for non-media files.
         if (Platform.Version >= 33) return true;
         try {
             const granted = await PermissionsAndroid.request(
@@ -135,6 +135,7 @@ const RegistersScreen = () => {
                 </tr>
             `).join('');
 
+            // MODIFIED: Added Name and Phone No to the HTML template
             const htmlContent = `
                 <html>
                 <head>
@@ -177,6 +178,8 @@ const RegistersScreen = () => {
                                     <table>
                                         <tr>
                                             <td>
+                                                ${details.name ? `<strong>Name:</strong> ${details.name}<br>` : ''}
+                                                ${details.phone_no ? `<strong>Phone No:</strong> ${details.phone_no}<br>` : ''}
                                                 <strong>Head of A/C:</strong> ${details.head_of_account}<br>
                                                 ${details.sub_head ? `<strong>Sub Head:</strong> ${details.sub_head}<br>` : ''}
                                                 <strong>Account Type:</strong> ${details.account_type}
@@ -206,6 +209,7 @@ const RegistersScreen = () => {
             const options = {
                 html: htmlContent,
                 fileName: `Voucher-${details.voucher_no}`,
+                directory: 'Documents', // Use a common directory
             };
 
             const file = await RNHTMLtoPDF.convert(options);
@@ -213,12 +217,16 @@ const RegistersScreen = () => {
             const fileName = `Voucher-${details.voucher_no}.pdf`;
             const destinationPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
 
-            await RNFS.moveFile(sourcePath, destinationPath);
-            
-            Alert.alert(
-                "Success",
-                `PDF saved to your Downloads folder as ${fileName}`
-            );
+            // Check if file exists at source path before moving
+            if (await RNFS.exists(sourcePath)) {
+                await RNFS.moveFile(sourcePath, destinationPath);
+                Alert.alert(
+                    "Success",
+                    `PDF saved to your Downloads folder as ${fileName}`
+                );
+            } else {
+                 throw new Error("Converted PDF file not found at source path.");
+            }
 
         } catch (error) {
             console.error("Download error:", error);
@@ -323,6 +331,10 @@ const RegistersScreen = () => {
                             <Text style={styles.modalVoucherNo}>{selectedVoucher.voucher_no}</Text>
                             <ScrollView>
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Date:</Text> {new Date(selectedVoucher.voucher_date).toLocaleDateString('en-GB')}</Text>
+                                {/* --- MODIFIED: Added Name and Phone No --- */}
+                                {selectedVoucher.name && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Name:</Text> {selectedVoucher.name}</Text>}
+                                {selectedVoucher.phone_no && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Phone No:</Text> {selectedVoucher.phone_no}</Text>}
+                                {/* --- End of modification --- */}
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Head of A/C:</Text> {selectedVoucher.head_of_account}</Text>
                                 {selectedVoucher.sub_head && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Sub Head:</Text> {selectedVoucher.sub_head}</Text>}
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Account Type:</Text> {selectedVoucher.account_type}</Text>

@@ -60,6 +60,9 @@ const VouchersScreen = () => {
     const [voucherType, setVoucherType] = useState<VoucherType>('Debit');
     const [voucherNo, setVoucherNo] = useState<string>('Loading...');
     const [voucherDate, setVoucherDate] = useState<string>(new Date().toLocaleDateString('en-GB'));
+    // MODIFIED: Added state for new fields
+    const [name, setName] = useState('');
+    const [phoneNo, setPhoneNo] = useState('');
     const [headOfAccount, setHeadOfAccount] = useState<string>('');
     const [subHead, setSubHead] = useState('');
     const [accountType, setAccountType] = useState<string>('UPI');
@@ -79,6 +82,9 @@ const VouchersScreen = () => {
             setVoucherType(data.voucher_type);
             setVoucherNo(data.voucher_no);
             setVoucherDate(new Date(data.voucher_date).toLocaleDateString('en-GB'));
+            // MODIFIED: Set state for new fields from fetched data
+            setName(data.name || '');
+            setPhoneNo(data.phone_no || '');
             setHeadOfAccount(data.head_of_account);
             setSubHead(data.sub_head || '');
             setAccountType(data.account_type);
@@ -118,6 +124,9 @@ const VouchersScreen = () => {
         setMode('create');
         setVoucherType('Debit');
         setVoucherDate(new Date().toLocaleDateString('en-GB'));
+        // MODIFIED: Reset new fields
+        setName('');
+        setPhoneNo('');
         setHeadOfAccount('');
         setSubHead('');
         setAccountType('UPI');
@@ -173,6 +182,9 @@ const VouchersScreen = () => {
         setIsSaving(true);
         const formData = new FormData();
         formData.append('voucherType', voucherType);
+        // MODIFIED: Append new fields to form data
+        formData.append('name', name);
+        formData.append('phoneNo', phoneNo);
         formData.append('headOfAccount', headOfAccount);
         formData.append('subHead', subHead);
         formData.append('accountType', accountType);
@@ -255,6 +267,22 @@ const VouchersScreen = () => {
                         <Text style={styles.infoText}>No: {voucherNo}</Text>
                         <Text style={styles.infoText}>Date: {voucherDate}</Text>
                     </View>
+                    
+                    {/* --- MODIFIED: Added Name and Phone No inputs --- */}
+                    <TextInput 
+                        style={styles.input} 
+                        placeholder="Name" 
+                        value={name} 
+                        onChangeText={setName} 
+                    />
+                    <TextInput 
+                        style={styles.input} 
+                        placeholder="Phone No" 
+                        value={phoneNo} 
+                        onChangeText={setPhoneNo} 
+                        keyboardType="phone-pad"
+                    />
+                    {/* --- End of modification --- */}
 
                     <View style={styles.pickerContainer}>
                         <Picker selectedValue={headOfAccount} onValueChange={(itemValue) => setHeadOfAccount(itemValue)}>
