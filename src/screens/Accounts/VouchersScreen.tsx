@@ -1,6 +1,8 @@
+// Filename: screens/VouchersScreen.js
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
+    View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, FlatList,
     SafeAreaView, Alert, ActivityIndicator, Platform
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
@@ -14,8 +16,16 @@ interface ParticularRow {
     description: string;
     amount: string;
 }
+interface RecentVoucher {
+    id: number;
+    voucher_no: string;
+    head_of_account: string;
+    sub_head: string | null;
+    account_type: string;
+    total_amount: number;
+}
 
-// --- Data for the new dropdowns ---
+// --- Data for the dropdowns ---
 const headOfAccountOptions = [
     'Fee', 'Salaries', 'Donations', 'Utilities/Bills', 'Transport', 'Assets',
     'Government Grants/Aids', 'Investments', 'Staff Welfare', 'Student Welfare',
@@ -49,7 +59,7 @@ const VouchersScreen = () => {
     // --- State Management ---
     const [voucherType, setVoucherType] = useState<VoucherType>('Debit');
     const [voucherNo, setVoucherNo] = useState<string>('Loading...');
-    const [voucherDate, setVoucherDate] = useState<string>(new Date().toLocaleDateString('en-GB')); // DD/MM/YYYY
+    const [voucherDate, setVoucherDate] = useState<string>(new Date().toLocaleDateString('en-GB'));
     const [headOfAccount, setHeadOfAccount] = useState<string>('');
     const [subHead, setSubHead] = useState('');
     const [accountType, setAccountType] = useState<string>('UPI');
@@ -58,7 +68,9 @@ const VouchersScreen = () => {
     const [amountInWords, setAmountInWords] = useState('Zero Rupees Only');
     const [attachment, setAttachment] = useState<ImagePickerResponse | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    
+    const [recentVouchers, setRecentVouchers] = useState<RecentVoucher[]>([]);
+    const [isLoadingRecent, setIsLoadingRecent] = useState(false);
+
     const fetchNextVoucherNumber = useCallback(async () => {
         try {
             const response = await apiClient.get('/vouchers/next-number');
@@ -69,6 +81,18 @@ const VouchersScreen = () => {
             Alert.alert('Error', 'Could not fetch the next voucher number.');
         }
     }, []);
+    
+    const fetchRecentVouchers = useCallback(async () => {
+        setIsLoadingRecent(true);
+        try {
+            const response = await apiClient.get('/vouchers/list?limit=5');
+            setRecentVouchers(response.data);
+        } catch (error) {
+            console.error("Failed to fetch recent vouchers:", error);
+        } finally {
+            setIsLoadingRecent(false);
+        }
+    }, []);
 
     const resetForm = useCallback(() => {
         setVoucherType('Debit');
@@ -77,15 +101,16 @@ const VouchersScreen = () => {
         setAccountType('UPI');
         setParticulars([{ description: '', amount: '' }]);
         setAttachment(null);
-        fetchNextVoucherNumber(); // Fetch a new number after resetting
-    }, [fetchNextVoucherNumber]);
+        fetchNextVoucherNumber();
+        fetchRecentVouchers(); 
+    }, [fetchNextVoucherNumber, fetchRecentVouchers]);
     
-    // Fetch new voucher number when the screen is focused
     useEffect(() => {
         if (isFocused) {
             fetchNextVoucherNumber();
+            fetchRecentVouchers();
         }
-    }, [isFocused, fetchNextVoucherNumber]);
+    }, [isFocused, fetchNextVoucherNumber, fetchRecentVouchers]);
 
     useEffect(() => {
         const total = particulars.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
@@ -112,7 +137,6 @@ const VouchersScreen = () => {
     };
     
     const handleCancel = () => Alert.alert("Confirm Cancel", "Are you sure you want to clear the form?", [{ text: "No", style: "cancel" }, { text: "Yes", style: "destructive", onPress: resetForm }]);
-    const handleDownload = () => Alert.alert("Info", "Download functionality will be implemented soon.");
 
     const handleSave = async () => {
         const validParticulars = particulars.filter(p => p.description.trim() !== '' && !isNaN(parseFloat(p.amount)) && parseFloat(p.amount) > 0);
@@ -123,7 +147,7 @@ const VouchersScreen = () => {
         const formData = new FormData();
         formData.append('voucherType', voucherType);
         formData.append('voucherNo', voucherNo);
-        formData.append('voucherDate', new Date().toISOString().split('T')[0]); // YYYY-MM-DD for backend
+        formData.append('voucherDate', new Date().toISOString().split('T')[0]);
         formData.append('headOfAccount', headOfAccount);
         formData.append('subHead', subHead);
         formData.append('accountType', accountType);
@@ -137,8 +161,11 @@ const VouchersScreen = () => {
         
         try {
             const response = await apiClient.post('/vouchers/create', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-            Alert.alert('Success', response.data.message || 'Voucher saved successfully!');
-            resetForm();
+            Alert.alert(
+                'Success', 
+                response.data.message || 'Voucher saved & moved to the register successfully!',
+                [{ text: 'OK', onPress: () => resetForm() }]
+            );
         } catch (error: any) {
             console.error(error);
             const errorMessage = error.response?.data?.message || 'An error occurred while saving.';
@@ -148,6 +175,15 @@ const VouchersScreen = () => {
         }
     };
     
+    const renderRecentVoucherItem = ({ item, index }: { item: RecentVoucher, index: number }) => (
+        <View style={styles.recentVoucherRow}>
+            <Text style={styles.recentVoucherCellSNo}>{index + 1}</Text>
+            <Text style={styles.recentVoucherCell}>{item.voucher_no}</Text>
+            <Text style={styles.recentVoucherCell} numberOfLines={1}>{item.head_of_account}</Text>
+            <Text style={styles.recentVoucherCellAmount}>₹{item.total_amount}</Text>
+        </View>
+    );
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -168,13 +204,11 @@ const VouchersScreen = () => {
                     <Text style={styles.managedBy}>Managed By Vivekananda Education Center</Text>
                     <Text style={styles.voucherTitle}>{voucherType} Voucher</Text>
 
-                    {/* --- Voucher Info Row --- */}
                     <View style={styles.infoRow}>
                         <Text style={styles.infoText}>No: {voucherNo}</Text>
                         <Text style={styles.infoText}>Date: {voucherDate}</Text>
                     </View>
 
-                    {/* --- Head of Account Picker --- */}
                     <View style={styles.pickerContainer}>
                         <Picker selectedValue={headOfAccount} onValueChange={(itemValue) => setHeadOfAccount(itemValue)}>
                             <Picker.Item label="Select Head of A/C*" value="" />
@@ -184,7 +218,6 @@ const VouchersScreen = () => {
 
                     <TextInput style={styles.input} placeholder="Sub Head" value={subHead} onChangeText={setSubHead} />
                     
-                    {/* --- Account Type Picker --- */}
                     <View style={styles.pickerContainer}>
                         <Picker selectedValue={accountType} onValueChange={(itemValue) => setAccountType(itemValue)}>
                             {accountTypeOptions.map(opt => <Picker.Item key={opt} label={opt} value={opt} />)}
@@ -215,7 +248,32 @@ const VouchersScreen = () => {
                     <TouchableOpacity style={[styles.actionButton, styles.saveButton]} onPress={handleSave} disabled={isSaving}>{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save</Text>}</TouchableOpacity>
                     <TouchableOpacity style={[styles.actionButton, styles.cancelButton]} onPress={handleCancel}><Text style={styles.buttonText}>Cancel</Text></TouchableOpacity>
                 </View>
-                <TouchableOpacity style={[styles.actionButton, styles.downloadButton]} onPress={handleDownload}><Text style={styles.buttonText}>Download</Text></TouchableOpacity>
+
+                <View style={styles.recentVouchersContainer}>
+                    <Text style={styles.recentVouchersTitle}>Recent Vouchers</Text>
+                    <View style={styles.recentVouchersTable}>
+                        <View style={[styles.recentVoucherRow, styles.recentVoucherHeader]}>
+                            <Text style={[styles.recentVoucherCellSNo, styles.recentVoucherHeaderText]}>S.No</Text>
+                            <Text style={[styles.recentVoucherCell, styles.recentVoucherHeaderText]}>VCH No</Text>
+                            <Text style={[styles.recentVoucherCell, styles.recentVoucherHeaderText]}>Head</Text>
+                            <Text style={[styles.recentVoucherCellAmount, styles.recentVoucherHeaderText]}>Amount</Text>
+                        </View>
+                        {isLoadingRecent ? (
+                            <ActivityIndicator size="large" color="#0275d8" style={{ marginVertical: 20 }} />
+                        ) : (
+                            <FlatList
+                                data={recentVouchers}
+                                renderItem={renderRecentVoucherItem}
+                                keyExtractor={(item) => item.id.toString()}
+                                ListEmptyComponent={<Text style={styles.noDataText}>No recent vouchers found.</Text>}
+                            />
+                        )}
+                    </View>
+                    <TouchableOpacity style={styles.viewMoreButton} onPress={() => navigation.navigate('RegistersScreen')}>
+                        <Text style={styles.viewMoreText}>View Full Register</Text>
+                        <MaterialIcons name="arrow-forward" size={16} color="#FFF" />
+                    </TouchableOpacity>
+                </View>
             </ScrollView>
         </SafeAreaView>
     );
@@ -258,12 +316,77 @@ const styles = StyleSheet.create({
     wordsText: { fontSize: 14 },
     uploadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderWidth: 1, borderColor: '#5bc0de', borderStyle: 'dashed', borderRadius: 8, marginTop: 16 },
     uploadText: { marginLeft: 10, color: '#5bc0de', flex: 1 },
-    buttonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24, marginBottom: 12 },
+    buttonRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
     actionButton: { flex: 1, padding: 15, borderRadius: 8, alignItems: 'center' },
     saveButton: { backgroundColor: '#5cb85c', marginRight: 8 },
     cancelButton: { backgroundColor: '#f0ad4e', marginLeft: 8 },
-    downloadButton: { backgroundColor: '#0275d8', marginTop: 12 },
     buttonText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+    recentVouchersContainer: {
+        marginTop: 24,
+        backgroundColor: '#FFF',
+        borderRadius: 8,
+        padding: 16,
+        elevation: 3,
+    },
+    recentVouchersTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 12,
+        color: '#333',
+    },
+    recentVouchersTable: {
+        borderWidth: 1,
+        borderColor: '#DEE2E6',
+        borderRadius: 4,
+    },
+    recentVoucherRow: {
+        flexDirection: 'row',
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#EEE',
+        alignItems: 'center',
+    },
+    recentVoucherHeader: {
+        backgroundColor: '#F8F9FA',
+        borderBottomWidth: 2,
+        borderColor: '#DEE2E6',
+    },
+    recentVoucherHeaderText: {
+        fontWeight: 'bold',
+        color: '#495057',
+    },
+    recentVoucherCellSNo: {
+        width: 40,
+    },
+    recentVoucherCell: {
+        flex: 1,
+        paddingHorizontal: 4,
+    },
+    recentVoucherCellAmount: {
+        width: 90,
+        textAlign: 'right',
+        fontWeight: 'bold',
+    },
+    noDataText: {
+        textAlign: 'center',
+        padding: 20,
+        color: '#6c757d',
+    },
+    viewMoreButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#0275d8',
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginTop: 16,
+    },
+    viewMoreText: {
+        color: '#FFF',
+        fontWeight: 'bold',
+        marginRight: 8,
+    },
 });
 
 export default VouchersScreen;

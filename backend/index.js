@@ -7697,54 +7697,34 @@ const voucherUpload = multer({
 });
 
 
-// ★★★★★ START: NEW VOUCHER NUMBER ENDPOINT ★★★★★
-// GET the next available voucher number
+// ★★★★★ START: GET NEXT VOUCHER NUMBER ENDPOINT (No Changes) ★★★★★
 app.get('/api/vouchers/next-number', [verifyToken, isAdmin], async (req, res) => {
     try {
-        // Find the voucher with the highest ID, as this was the last one inserted.
         const query = "SELECT voucher_no FROM vouchers ORDER BY id DESC LIMIT 1";
         const [rows] = await db.query(query);
-
-        let nextVoucherNumber = 1; // Default if no vouchers exist yet
+        let nextVoucherNumber = 1;
         if (rows.length > 0) {
-            const lastVoucherNo = rows[0].voucher_no;
-            // Extract the numeric part of the last voucher number and increment it
-            const lastNumber = parseInt(lastVoucherNo.split('-')[1]);
+            const lastNumber = parseInt(rows[0].voucher_no.split('-')[1]);
             if (!isNaN(lastNumber)) {
                 nextVoucherNumber = lastNumber + 1;
             }
         }
-        
-        // Format the number with leading zeros (e.g., VCH-00001)
         const formattedVoucherNo = `VCH-${nextVoucherNumber.toString().padStart(5, '0')}`;
-        
         res.status(200).json({ nextVoucherNo: formattedVoucherNo });
-
     } catch (error) {
         console.error("Error fetching next voucher number:", error);
         res.status(500).json({ message: 'Failed to fetch the next voucher number.' });
     }
 });
-// ★★★★★ END: NEW VOUCHER NUMBER ENDPOINT ★★★★★
+// ★★★★★ END: GET NEXT VOUCHER NUMBER ENDPOINT ★★★★★
 
 
-// 2. API Endpoint to Create a New Voucher
+// ★★★★★ START: CREATE VOUCHER ENDPOINT (Message Updated) ★★★★★
 app.post('/api/vouchers/create', [verifyToken, isAdmin, voucherUpload.single('attachment')], async (req, res) => {
-    
-    const {
-        voucherType,
-        voucherNo,
-        voucherDate,
-        headOfAccount,
-        subHead,
-        accountType,
-        totalAmount,
-        amountInWords,
-        particulars
-    } = req.body;
+    const { voucherType, voucherNo, voucherDate, headOfAccount, subHead, accountType, totalAmount, amountInWords, particulars } = req.body;
 
     if (!voucherType || !voucherNo || !voucherDate || !headOfAccount || !accountType || !totalAmount || !particulars) {
-        return res.status(400).json({ message: 'Missing required fields to create a voucher.' });
+        return res.status(400).json({ message: 'Missing required fields.' });
     }
 
     const attachment_url = req.file ? `/uploads/${req.file.filename}` : null;
@@ -7752,7 +7732,7 @@ app.post('/api/vouchers/create', [verifyToken, isAdmin, voucherUpload.single('at
     try {
         parsedParticulars = JSON.parse(particulars);
     } catch (e) {
-        return res.status(400).json({ message: 'Invalid format for particulars data.' });
+        return res.status(400).json({ message: 'Invalid particulars format.' });
     }
 
     const connection = await db.getConnection();
@@ -7760,44 +7740,112 @@ app.post('/api/vouchers/create', [verifyToken, isAdmin, voucherUpload.single('at
         await connection.beginTransaction();
 
         const voucherQuery = `
-            INSERT INTO vouchers (
-                voucher_type, voucher_no, voucher_date, head_of_account, sub_head, 
-                account_type, total_amount, amount_in_words, attachment_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO vouchers (voucher_type, voucher_no, voucher_date, head_of_account, sub_head, account_type, total_amount, amount_in_words, attachment_url) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        const [voucherResult] = await connection.query(voucherQuery, [
-            voucherType, voucherNo, voucherDate, headOfAccount, subHead || null, 
-            accountType, totalAmount, amountInWords, attachment_url
-        ]);
+        const [voucherResult] = await connection.query(voucherQuery, [voucherType, voucherNo, voucherDate, headOfAccount, subHead || null, accountType, totalAmount, amountInWords, attachment_url]);
         const newVoucherId = voucherResult.insertId;
 
         if (parsedParticulars && parsedParticulars.length > 0) {
             const itemsQuery = 'INSERT INTO voucher_items (voucher_id, description, amount) VALUES ?';
-            const itemValues = parsedParticulars.map(item => [
-                newVoucherId, 
-                item.description, 
-                item.amount
-            ]);
+            const itemValues = parsedParticulars.map(item => [newVoucherId, item.description, item.amount]);
             await connection.query(itemsQuery, [itemValues]);
         }
 
         await connection.commit();
+        // ★★★ MODIFIED SUCCESS MESSAGE ★★★
         res.status(201).json({ 
-            message: 'Voucher created successfully!', 
+            message: 'Voucher saved & moved to the register successfully!', 
             voucherId: newVoucherId 
         });
 
     } catch (error) {
         await connection.rollback();
         console.error("Error creating voucher:", error);
-        
         if (error.code === 'ER_DUP_ENTRY') {
-            return res.status(409).json({ message: `A voucher with number '${voucherNo}' already exists.` });
+            return res.status(409).json({ message: `Voucher '${voucherNo}' already exists.` });
         }
-        
-        res.status(500).json({ message: 'An internal server error occurred while creating the voucher.' });
+        res.status(500).json({ message: 'Server error while creating voucher.' });
     } finally {
         connection.release();
+    }
+});
+// ★★★★★ END: CREATE VOUCHER ENDPOINT ★★★★★
+
+
+// ★★★★★ START: NEW! FETCH VOUCHERS LIST FOR REGISTERS ★★★★★
+app.get('/api/vouchers/list', [verifyToken, isAdmin], async (req, res) => {
+    try {
+        let query = 'SELECT id, voucher_no, head_of_account, sub_head, account_type, total_amount, voucher_date FROM vouchers WHERE 1=1';
+        const queryParams = [];
+
+        // Filter by voucher type (Debit, Credit, Deposit)
+        if (req.query.voucher_type) {
+            query += ' AND voucher_type = ?';
+            queryParams.push(req.query.voucher_type);
+        }
+
+        // Filter by period
+        const period = req.query.period;
+        if (period === 'daily') {
+            query += ' AND voucher_date = CURDATE()';
+        } else if (period === 'monthly') {
+            query += ' AND MONTH(voucher_date) = MONTH(CURDATE()) AND YEAR(voucher_date) = YEAR(CURDATE())';
+        }
+        
+        // Filter by specific date or date range
+        if (req.query.date) {
+             query += ' AND voucher_date = ?';
+             queryParams.push(req.query.date);
+        } else if (req.query.startDate && req.query.endDate) {
+            query += ' AND voucher_date BETWEEN ? AND ?';
+            queryParams.push(req.query.startDate, req.query.endDate);
+        }
+        
+        query += ' ORDER BY id DESC';
+
+        // Limit for the VouchersScreen preview
+        if (req.query.limit) {
+            query += ' LIMIT ?';
+            queryParams.push(parseInt(req.query.limit, 10));
+        }
+
+        const [vouchers] = await db.query(query, queryParams);
+        res.status(200).json(vouchers);
+
+    } catch (error) {
+        console.error('Error fetching vouchers list:', error);
+        res.status(500).json({ message: 'Failed to fetch voucher records.' });
+    }
+});
+// ★★★★★ END: NEW! FETCH VOUCHERS LIST FOR REGISTERS ★★★★★
+
+
+// ★★★★★ START: NEW! FETCH FULL VOUCHER DETAILS ★★★★★
+app.get('/api/vouchers/details/:id', [verifyToken, isAdmin], async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const voucherQuery = 'SELECT * FROM vouchers WHERE id = ?';
+        const [voucherRows] = await db.query(voucherQuery, [id]);
+
+        if (voucherRows.length === 0) {
+            return res.status(404).json({ message: 'Voucher not found.' });
+        }
+
+        const itemsQuery = 'SELECT description, amount FROM voucher_items WHERE voucher_id = ?';
+        const [itemRows] = await db.query(itemsQuery, [id]);
+
+        const voucherDetails = {
+            ...voucherRows[0],
+            particulars: itemRows
+        };
+
+        res.status(200).json(voucherDetails);
+
+    } catch (error) {
+        console.error('Error fetching voucher details:', error);
+        res.status(500).json({ message: 'Failed to fetch voucher details.' });
     }
 });
 
