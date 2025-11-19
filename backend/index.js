@@ -861,25 +861,38 @@ app.get('/api/teacher-assignments/:teacherId', async (req, res) => {
 // Helper function for attendance summaries
 const getAttendanceSummary = async (filters) => {
     let dateFilter = '';
-    const { viewMode, date } = filters;
     let queryDateParams = [];
+    const { viewMode, date, startDate, endDate, targetYear } = filters;
 
-    if (date) {
+    // --- DATE FILTER LOGIC ---
+    if (viewMode === 'daily' && date) {
         dateFilter = 'AND ar.attendance_date = ?';
         queryDateParams.push(date);
-    } else if (viewMode === 'daily') {
-        dateFilter = 'AND ar.attendance_date = CURDATE()';
-    } else if (viewMode === 'monthly') {
-        dateFilter = 'AND MONTH(ar.attendance_date) = MONTH(CURDATE()) AND YEAR(ar.attendance_date) = YEAR(CURDATE())';
+    } else if (viewMode === 'monthly' && date) {
+        // Expecting date format YYYY-MM-DD or YYYY-MM, we extract Month/Year
+        dateFilter = 'AND DATE_FORMAT(ar.attendance_date, "%Y-%m") = ?';
+        queryDateParams.push(date.slice(0, 7)); // Ensure YYYY-MM
+    } else if (viewMode === 'yearly' && targetYear) {
+        dateFilter = 'AND YEAR(ar.attendance_date) = ?';
+        queryDateParams.push(targetYear);
+    } else if (viewMode === 'custom' && startDate && endDate) {
+        dateFilter = 'AND ar.attendance_date BETWEEN ? AND ?';
+        queryDateParams.push(startDate, endDate);
+    } else {
+        // Default fallback if no specific filter (e.g., Overall)
+        // No date filter added, calculating across all time
     }
 
     let whereClause = 'ar.class_group = ?';
     let queryParams = [filters.classGroup];
 
+    // Optional Subject Filter
     if (filters.subjectName) {
         whereClause += ' AND ar.subject_name = ?';
         queryParams.push(filters.subjectName);
     }
+    
+    // Optional Teacher Filter
     if (filters.teacherId) {
         whereClause += ' AND ar.teacher_id = ?';
         queryParams.push(filters.teacherId);
@@ -915,7 +928,7 @@ const getAttendanceSummary = async (filters) => {
          [[overallSummary]] = await db.query(summaryQuery, [...fullQueryParams, ...fullQueryParams]);
     }
 
-    // ★★★ MODIFIED QUERY: Joins user_profiles to get roll_no and orders by it ★★★
+    // Detailed Student List
     const studentDetailsQuery = `
         SELECT
             u.id AS student_id,
@@ -930,6 +943,7 @@ const getAttendanceSummary = async (filters) => {
         GROUP BY u.id, u.full_name, up.roll_no
         ORDER BY CAST(up.roll_no AS UNSIGNED), u.full_name;
     `;
+    // Note: studentDetails needs classGroup again at the end
     const studentDetailsParams = [...fullQueryParams, filters.classGroup];
     const [studentDetails] = await db.query(studentDetailsQuery, studentDetailsParams);
     return { overallSummary, studentDetails };
@@ -939,14 +953,16 @@ const getAttendanceSummary = async (filters) => {
 // --- MODIFIED SECTION ENDS HERE ---
 // ==========================================================
 
-// GET teacher attendance summary (No changes needed, this is correct)
+// GET teacher attendance summary
 app.get('/api/attendance/teacher-summary', async (req, res) => {
     try {
-        const { teacherId, classGroup, subjectName, viewMode, date } = req.query;
+        const { teacherId, classGroup, subjectName, viewMode, date, targetYear, startDate, endDate } = req.query;
         if (!teacherId || !classGroup || !subjectName) {
             return res.status(400).json({ message: 'Teacher ID, Class Group, and Subject are required.' });
         }
-        const summary = await getAttendanceSummary({ teacherId, classGroup, subjectName, viewMode, date });
+        const summary = await getAttendanceSummary({ 
+            teacherId, classGroup, subjectName, viewMode, date, targetYear, startDate, endDate 
+        });
         res.status(200).json(summary);
     } catch (error) {
         console.error("GET /api/attendance/teacher-summary Error:", error);
@@ -954,14 +970,16 @@ app.get('/api/attendance/teacher-summary', async (req, res) => {
     }
 });
 
-// GET admin attendance summary (No changes needed, this is correct)
+// GET admin attendance summary (MODIFIED: subjectName is now optional)
 app.get('/api/attendance/admin-summary', async (req, res) => {
     try {
-        const { classGroup, subjectName, viewMode, date } = req.query;
-        if (!classGroup || !subjectName) {
-            return res.status(400).json({ message: 'Class Group and Subject Name are required.' });
+        const { classGroup, subjectName, viewMode, date, targetYear, startDate, endDate } = req.query;
+        if (!classGroup) {
+            return res.status(400).json({ message: 'Class Group is required.' });
         }
-        const summary = await getAttendanceSummary({ classGroup, subjectName, viewMode, date });
+        const summary = await getAttendanceSummary({ 
+            classGroup, subjectName, viewMode, date, targetYear, startDate, endDate 
+        });
         res.status(200).json(summary);
     } catch (error) {
         console.error("GET /api/attendance/admin-summary Error:", error);
