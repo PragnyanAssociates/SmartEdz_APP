@@ -50,11 +50,11 @@ const TeacherAttendanceMarkingScreen = () => {
     try {
         // 1. Fetch the attendance sheet for the specified date
         const response = await apiClient.get<TeacherMarking[]>(`${API_BASE_URL}/sheet?date=${dateString}`);
-        const teachersData = response.data; // This now includes the 'status' field ('P', 'A', 'L') from the sheet endpoint
+        const teachersData = response.data; 
 
         // Set both the mutable marking list and the static report list
         setTeachers(teachersData);
-        setAllTeachersForReport(teachersData); // Use the same data structure for easy switching
+        setAllTeachersForReport(teachersData); 
 
         // 2. Check if *any* teacher was marked Absent or Late (meaning attendance was saved)
         const attendanceExists = teachersData.some(t => t.status === 'A' || t.status === 'L');
@@ -66,10 +66,9 @@ const TeacherAttendanceMarkingScreen = () => {
         }
 
     } catch (error: any) {
-        // Log the error response body if available for better debugging
         console.error("Failed to load teacher base data:", error.response?.data || error.message);
         Alert.alert("Error", error.response?.data?.message || "Failed to load teacher base data.");
-        setMarkingState('MARKING'); // Fallback state
+        setMarkingState('MARKING'); 
     } finally {
         setIsLoading(false);
     }
@@ -200,7 +199,6 @@ const TeacherAttendanceMarkingScreen = () => {
           <TouchableOpacity 
               style={styles.editButton}
               onPress={() => {
-                  // Switch back to MARKING state, the data is already in 'teachers' state
                   setMarkingState('MARKING');
               }}
           >
@@ -319,14 +317,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f4f7' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   
-  // --- Tabs ---
   tabBar: { flexDirection: 'row', backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
   tabButton: { flex: 1, paddingVertical: 15, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: PRIMARY_COLOR },
   tabButtonText: { color: TEXT_COLOR_MEDIUM, fontWeight: '600' },
   tabButtonTextActive: { color: PRIMARY_COLOR },
 
-  // --- Header/Date Selector (Marking Tab) ---
   header: { paddingHorizontal: 20, paddingTop: 15, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: TEXT_COLOR_DARK, marginBottom: 10, textAlign: 'left' },
   dateSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', paddingVertical: 10, paddingBottom: 20 },
@@ -334,7 +330,6 @@ const styles = StyleSheet.create({
   dateInput: { borderWidth: 1, borderColor: BORDER_COLOR, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 5, backgroundColor: WHITE },
   listTitle: { fontSize: 16, fontWeight: 'bold', padding: 10, backgroundColor: '#E0E0E0', color: TEXT_COLOR_DARK },
   
-  // --- Marking List Rows ---
   teacherRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#eee', backgroundColor: WHITE },
   teacherInfo: { flex: 1, marginRight: 10 },
   teacherName: { fontSize: 16, fontWeight: 'bold', color: TEXT_COLOR_DARK },
@@ -353,18 +348,15 @@ const styles = StyleSheet.create({
   absentActive: { backgroundColor: RED, borderColor: RED },
   activeText: { color: WHITE, fontWeight: 'bold' },
 
-  // --- Submit Button ---
   submitBtn: { backgroundColor: PRIMARY_COLOR, padding: 15, alignItems: 'center', position: 'absolute', bottom: 0, left: 0, right: 0 },
   submitBtnText: { color: WHITE, fontSize: 18, fontWeight: 'bold' },
   emptyText: { textAlign: 'center', marginTop: 20, color: TEXT_COLOR_MEDIUM },
 
-  // --- Report Selection List ---
   searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, marginHorizontal: 15, marginVertical: 15, borderRadius: 8, borderWidth: 1, borderColor: BORDER_COLOR, paddingHorizontal: 10 },
   searchBar: { flex: 1, height: 45, fontSize: 16, color: TEXT_COLOR_DARK },
   searchIcon: { marginRight: 8 },
   reportSelectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, paddingHorizontal: 20, marginHorizontal: 10, marginVertical: 4, backgroundColor: WHITE, borderRadius: 8, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4 },
 
-  // --- Success Summary View Styles ---
   summaryContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30, backgroundColor: WHITE },
   summaryTitle: { fontSize: 24, fontWeight: 'bold', color: TEXT_COLOR_DARK, marginTop: 15, marginBottom: 10 },
   summaryMessage: { fontSize: 16, color: TEXT_COLOR_MEDIUM, textAlign: 'center', marginBottom: 30 },

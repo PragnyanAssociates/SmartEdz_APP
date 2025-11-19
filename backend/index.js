@@ -6888,20 +6888,27 @@ app.get('/api/all-classes', async (req, res) => {
 // --- TEACHER ATTENDANCE MODULE API ROUTES (FINAL FOR EDITING) ---
 // ==========================================================
 
-// Helper function (remains unchanged)
+// Helper function
 const calculateTeacherAttendanceStats = (records) => {
-    // ... (unchanged)
     const totalDays = records.length;
     const daysPresent = records.filter(r => r.status === 'P').length;
     const daysAbsent = records.filter(r => r.status === 'A').length;
+    // Note: totalCountedDays is essentially "Working Days" (Present + Absent)
+    // assuming 'L' (Late) counts as Present or is ignored based on logic. 
+    // Here we sum P + A. If L should be counted, adjust accordingly.
+    // Based on your request: Working Days = Days Present + Days Absent.
     const totalCountedDays = daysPresent + daysAbsent; 
     const overallPercentage = totalCountedDays > 0 ? ((daysPresent / totalCountedDays) * 100).toFixed(1) : '0.0';
+    
     return {
-        overallPercentage, daysPresent, daysAbsent, totalDays: totalCountedDays 
+        overallPercentage, 
+        daysPresent, 
+        daysAbsent, 
+        totalDays: totalCountedDays // This matches your "Working Days" requirement
     };
 };
 
-// 1. ADMIN: Get list of teachers for marking/reporting (No change here)
+// 1. ADMIN: Get list of teachers for marking/reporting
 app.get('/api/teacher-attendance/teachers', verifyToken, isAdmin, async (req, res) => {
     try {
         const [teachers] = await db.query(
@@ -6925,9 +6932,8 @@ app.get('/api/teacher-attendance/teachers', verifyToken, isAdmin, async (req, re
     }
 });
 
-// 2. ADMIN: Mark attendance for teachers (No change in POST logic)
+// 2. ADMIN: Mark attendance for teachers
 app.post('/api/teacher-attendance/mark', verifyToken, isAdmin, async (req, res) => {
-    // ... (POST logic remains the same, assuming createBulkNotifications is available)
     const { date, attendanceData } = req.body;
     const adminId = req.user.id; 
 
@@ -6952,8 +6958,6 @@ app.post('/api/teacher-attendance/mark', verifyToken, isAdmin, async (req, res) 
 
         const insertQuery = 'INSERT INTO teacher_attendance (teacher_id, date, status, marked_by_admin_id) VALUES ?';
         await connection.query(insertQuery, [values]);
-
-        // --- Notification Logic (Removed bulk implementation for brevity, assuming its external helpers are correct)
         
         await connection.commit();
         res.status(200).send('Attendance marked successfully.');
@@ -6968,7 +6972,7 @@ app.post('/api/teacher-attendance/mark', verifyToken, isAdmin, async (req, res) 
 });
 
 
-// 3. ADMIN: Get Attendance Sheet for a specific date (NEW ENDPOINT FOR EDITING)
+// 3. ADMIN: Get Attendance Sheet for a specific date
 app.get('/api/teacher-attendance/sheet', verifyToken, isAdmin, async (req, res) => {
     const { date } = req.query;
 
@@ -6982,7 +6986,7 @@ app.get('/api/teacher-attendance/sheet', verifyToken, isAdmin, async (req, res) 
                 u.id AS teacher_id, 
                 u.full_name, 
                 u.subjects_taught,
-                COALESCE(ta.status, 'P') AS status -- Default to 'P' if no record exists
+                COALESCE(ta.status, 'P') AS status 
             FROM users u
             LEFT JOIN teacher_attendance ta 
                 ON u.id = ta.teacher_id AND ta.date = ?
@@ -6991,7 +6995,6 @@ app.get('/api/teacher-attendance/sheet', verifyToken, isAdmin, async (req, res) 
         `;
         const [sheet] = await db.query(query, [date]);
         
-        // Parse subjects_taught and format output
         const formattedSheet = sheet.map(row => {
             let subjects = [];
             if (row.subjects_taught && typeof row.subjects_taught === 'string') {
@@ -7002,7 +7005,7 @@ app.get('/api/teacher-attendance/sheet', verifyToken, isAdmin, async (req, res) 
                 id: row.teacher_id,
                 full_name: row.full_name,
                 subjects_taught: subjects,
-                status: row.status // Will be 'P', 'A', 'L', or 'P' (default if absent/not marked)
+                status: row.status 
             };
         });
 
@@ -7015,11 +7018,10 @@ app.get('/api/teacher-attendance/sheet', verifyToken, isAdmin, async (req, res) 
 });
 
 
-// 4. TEACHER/ADMIN: Get Attendance Report (No change in REPORT logic)
+// 4. TEACHER/ADMIN: Get Attendance Report (MODIFIED FOR CUSTOM DATE RANGE)
 app.get('/api/teacher-attendance/report/:teacherId', verifyToken, async (req, res) => {
-    // ... (Report logic remains the same)
     const { teacherId } = req.params;
-    const { period, targetDate, targetMonth } = req.query;
+    const { period, targetDate, targetMonth, startDate, endDate } = req.query;
     const loggedInUser = req.user; 
 
     if (loggedInUser.role === 'teacher' && String(loggedInUser.id) !== teacherId) {
@@ -7030,13 +7032,18 @@ app.get('/api/teacher-attendance/report/:teacherId', verifyToken, async (req, re
     let params = [teacherId];
 
     try {
+        // Handle various filtering modes
         if (period === 'daily' && targetDate) {
             query += ' AND date = ?';
             params.push(targetDate);
         } else if (period === 'monthly' && targetMonth) {
             query += ' AND DATE_FORMAT(date, "%Y-%m") = ?';
             params.push(targetMonth);
-        } 
+        } else if (startDate && endDate) {
+            // NEW: Handle Custom Date Range
+            query += ' AND date >= ? AND date <= ?';
+            params.push(startDate, endDate);
+        }
 
         const [records] = await db.query(query + ' ORDER BY date DESC', params);
         
@@ -7047,6 +7054,7 @@ app.get('/api/teacher-attendance/report/:teacherId', verifyToken, async (req, re
                 overallPercentage: stats.overallPercentage,
                 daysPresent: stats.daysPresent,
                 daysAbsent: stats.daysAbsent,
+                totalDays: stats.totalDays // Included "Working Days"
             },
             detailedHistory: records
         });
