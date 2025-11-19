@@ -1,3 +1,5 @@
+// Filename: screens/CalendarScreen.js
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
@@ -8,9 +10,9 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     Alert,
-    Modal, // ★★★ 1. IMPORT MODAL
-    ScrollView, // ★★★ 2. IMPORT SCROLLVIEW
-    Linking, // ★★★ 3. IMPORT LINKING
+    Modal,
+    ScrollView,
+    Linking,
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Calendar } from 'react-native-calendars';
@@ -35,7 +37,7 @@ const CalendarScreen = () => {
     const [vouchers, setVouchers] = useState<Voucher[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     
-    // ★★★ 4. ADD STATE FOR MODAL AND SELECTED VOUCHER (Copied from RegistersScreen) ★★★
+    // State for modal and selected voucher details
     const [selectedVoucher, setSelectedVoucher] = useState(null);
     const [isDetailModalVisible, setDetailModalVisible] = useState(false);
 
@@ -43,7 +45,6 @@ const CalendarScreen = () => {
     const fetchVouchersForDate = useCallback(async (date: string) => {
         setIsLoading(true);
         try {
-            // NOTE: The backend '/vouchers/list' endpoint MUST return 'voucher_type' for this to work.
             const response = await apiClient.get(`/vouchers/list?date=${date}`);
             setVouchers(response.data);
         } catch (error) {
@@ -60,7 +61,7 @@ const CalendarScreen = () => {
         }
     }, [isFocused, selectedDate, fetchVouchersForDate]);
 
-    // ★★★ 5. ADD VOUCHER DETAIL FETCHING AND PROOF HANDLING (Copied from RegistersScreen) ★★★
+    // Fetch full details for a specific voucher to show in the modal
     const viewVoucherDetails = async (voucherId) => {
         try {
             const response = await apiClient.get(`/vouchers/details/${voucherId}`);
@@ -71,13 +72,13 @@ const CalendarScreen = () => {
         }
     };
     
+    // Handle opening the proof attachment URL
     const handleViewProof = (attachmentUrl) => {
         if (!attachmentUrl) return;
         const baseUrl = apiClient.defaults.baseURL.replace('/api', '');
         const fullUrl = `${baseUrl}${attachmentUrl}`;
         Linking.openURL(fullUrl).catch(() => Alert.alert("Error", `Cannot open this URL: ${fullUrl}`));
     };
-
 
     const handleDayPress = (day: { dateString: string }) => {
         setSelectedDate(day.dateString);
@@ -104,7 +105,6 @@ const CalendarScreen = () => {
     const renderVoucherItem = ({ item, index }: { item: Voucher, index: number }) => {
         let amountStyle, amountPrefix;
 
-        // ★★★ 6. FINAL FIX FOR AMOUNT SIGNS (Copied from RegistersScreen logic) ★★★
         switch (item.voucher_type) {
             case 'Debit':
                 amountStyle = styles.amountDebit;
@@ -129,7 +129,6 @@ const CalendarScreen = () => {
                 <Text style={[styles.cell, styles.amountCell, amountStyle]}>
                     {`${amountPrefix}₹${parseFloat(item.total_amount).toFixed(2)}`}
                 </Text>
-                {/* Updated to open the modal */}
                 <TouchableOpacity style={[styles.cell, styles.actionCell]} onPress={() => viewVoucherDetails(item.id)}>
                     <MaterialIcons name="visibility" size={22} color="#007AFF" />
                 </TouchableOpacity>
@@ -198,7 +197,7 @@ const CalendarScreen = () => {
                 )}
             </View>
             
-            {/* ★★★ 7. ADD THE MODAL COMPONENT (Copied from RegistersScreen) ★★★ */}
+            {/* --- MODAL FOR VOUCHER DETAILS --- */}
             {selectedVoucher && (
                  <Modal animationType="slide" transparent={true} visible={isDetailModalVisible} onRequestClose={() => setDetailModalVisible(false)}>
                      <View style={styles.modalContainer}>
@@ -207,11 +206,16 @@ const CalendarScreen = () => {
                             <Text style={styles.modalVoucherNo}>{selectedVoucher.voucher_no}</Text>
                             <ScrollView>
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Date:</Text> {new Date(selectedVoucher.voucher_date).toLocaleDateString('en-GB')}</Text>
-                                {selectedVoucher.name && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Name:</Text> {selectedVoucher.name}</Text>}
+                                {/* Corrected name_title field */}
+                                {selectedVoucher.name_title && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Name/Title:</Text> {selectedVoucher.name_title}</Text>}
                                 {selectedVoucher.phone_no && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Phone No:</Text> {selectedVoucher.phone_no}</Text>}
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Head of A/C:</Text> {selectedVoucher.head_of_account}</Text>
                                 {selectedVoucher.sub_head && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Sub Head:</Text> {selectedVoucher.sub_head}</Text>}
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Account Type:</Text> {selectedVoucher.account_type}</Text>
+                                
+                                {/* ★★★ UPDATED ROW ADDED HERE ★★★ */}
+                                {selectedVoucher.transaction_context_type && <Text style={styles.detailRow}><Text style={styles.detailLabel}>{selectedVoucher.transaction_context_type}:</Text> {selectedVoucher.transaction_context_value}</Text>}
+                                
                                 <Text style={styles.modalSectionTitle}>Particulars</Text>
                                 {selectedVoucher.particulars.map((p, i) => (
                                     <View key={i} style={styles.particularRow}><Text style={styles.particularDesc}>{p.description}</Text><Text style={styles.particularAmt}>₹{p.amount}</Text></View>
@@ -232,7 +236,6 @@ const CalendarScreen = () => {
     );
 };
 
-// ★★★ 8. ADDED ALL STYLES FOR CONSISTENCY ★★★
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F0F4F8' },
     header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', paddingVertical: 12, paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#CFD8DC' },
@@ -259,7 +262,7 @@ const styles = StyleSheet.create({
     emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 40 },
     emptyText: { fontSize: 16, color: '#78909C' },
 
-    // Modal Styles (Copied from RegistersScreen)
+    // Modal Styles
     modalContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContent: { width: '90%', maxHeight: '80%', backgroundColor: 'white', borderRadius: 10, padding: 20, elevation: 10 },
     modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 5, textAlign: 'center', color: '#1A202C' },

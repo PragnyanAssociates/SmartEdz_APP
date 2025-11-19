@@ -7948,11 +7948,23 @@ app.get('/api/reports/summary', [verifyToken, isAdmin], async (req, res) => {
 });
 
 // ==========================================================
-// --- SCREENSHOTS SCREEN API ROUTE ---
+// --- SCREENSHOTS SCREEN API ROUTE (★ ★ ★ UPDATED ★ ★ ★) ---
 // ==========================================================
 
-// FETCH ALL VOUCHER ATTACHMENTS (SCREENSHOTS)
+// FETCH VOUCHER ATTACHMENTS WITH DATE FILTERING
 app.get('/api/vouchers/screenshots', [verifyToken, isAdmin], async (req, res) => {
+    const { startDate, endDate } = req.query;
+    
+    // Base conditions to only get vouchers with attachments
+    let whereClauses = ["attachment_url IS NOT NULL", "attachment_url != ''"];
+    const queryParams = [];
+
+    // Add date range condition if both start and end dates are provided
+    if (startDate && endDate) {
+        whereClauses.push("voucher_date BETWEEN ? AND ?");
+        queryParams.push(startDate, endDate);
+    }
+
     try {
         const query = `
             SELECT 
@@ -7960,10 +7972,10 @@ app.get('/api/vouchers/screenshots', [verifyToken, isAdmin], async (req, res) =>
                 voucher_date, 
                 attachment_url 
             FROM vouchers 
-            WHERE attachment_url IS NOT NULL AND attachment_url != '' 
+            WHERE ${whereClauses.join(' AND ')}
             ORDER BY voucher_date DESC, id DESC;
         `;
-        const [screenshots] = await db.query(query);
+        const [screenshots] = await db.query(query, queryParams);
         res.status(200).json(screenshots);
     } catch (error) {
         console.error('Error fetching voucher screenshots:', error);

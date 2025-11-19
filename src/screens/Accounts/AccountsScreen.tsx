@@ -49,7 +49,7 @@ const accountModules: AccountModule[] = [
     {
         id: 'acc5',
         title: 'Screenshots',
-        imageSource: 'https://cdn-icons-png.flaticon.com/128/16090/16090543.png',
+        imageSource: 'https://cdn-icons-png.flaticon.com/128/2496/2496847.png',
         navigateTo: 'Screenshots', // Screen name for Calendar
     },
     {
