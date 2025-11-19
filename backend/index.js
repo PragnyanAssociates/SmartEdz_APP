@@ -1113,18 +1113,32 @@ app.post('/api/attendance', async (req, res) => {
     }
 });
 
-// Helper function for student attendance history (No changes needed, this is correct)
-const getStudentHistory = async (studentId, viewMode, date) => {
+// Helper function for student attendance history (UPDATED)
+const getStudentHistory = async (studentId, viewMode, date, targetYear, startDate, endDate) => {
     let dateFilter = '';
     let queryDateParams = [];
 
+    // --- DATE FILTER LOGIC ---
     if (date) {
-        dateFilter = 'AND attendance_date = ?';
-        queryDateParams.push(date);
+        // Fallback if explicit 'date' param is passed in URL (usually for daily/monthly legacy)
+        if (viewMode === 'daily') {
+            dateFilter = 'AND attendance_date = ?';
+            queryDateParams.push(date);
+        } else if (viewMode === 'monthly') {
+             // Expecting YYYY-MM-DD, we slice for YYYY-MM
+            dateFilter = 'AND DATE_FORMAT(attendance_date, "%Y-%m") = ?';
+            queryDateParams.push(date.slice(0, 7));
+        }
     } else if (viewMode === 'daily') {
         dateFilter = 'AND attendance_date = CURDATE()';
     } else if (viewMode === 'monthly') {
         dateFilter = 'AND MONTH(attendance_date) = MONTH(CURDATE()) AND YEAR(attendance_date) = YEAR(CURDATE())';
+    } else if (viewMode === 'yearly' && targetYear) {
+        dateFilter = 'AND YEAR(attendance_date) = ?';
+        queryDateParams.push(targetYear);
+    } else if (viewMode === 'custom' && startDate && endDate) {
+        dateFilter = 'AND attendance_date BETWEEN ? AND ?';
+        queryDateParams.push(startDate, endDate);
     }
 
     const queryBase = `FROM attendance_records WHERE student_id = ? ${dateFilter}`;
@@ -1150,12 +1164,12 @@ const getStudentHistory = async (studentId, viewMode, date) => {
     };
 };
 
-// GET personal attendance history for a student (No changes needed, this is correct)
+// GET personal attendance history for a student
 app.get('/api/attendance/my-history/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
-        const { viewMode, date } = req.query;
-        const data = await getStudentHistory(studentId, viewMode, date);
+        const { viewMode, date, targetYear, startDate, endDate } = req.query;
+        const data = await getStudentHistory(studentId, viewMode, date, targetYear, startDate, endDate);
         res.status(200).json(data);
     } catch (error) {
         console.error("GET /api/attendance/my-history Error:", error);
@@ -1163,12 +1177,12 @@ app.get('/api/attendance/my-history/:studentId', async (req, res) => {
     }
 });
 
-// GET attendance history for a student (for Admin view) (No changes needed, this is correct)
+// GET attendance history for a student (for Admin/Teacher view)
 app.get('/api/attendance/student-history-admin/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
-        const { viewMode, date } = req.query;
-        const data = await getStudentHistory(studentId, viewMode, date);
+        const { viewMode, date, targetYear, startDate, endDate } = req.query;
+        const data = await getStudentHistory(studentId, viewMode, date, targetYear, startDate, endDate);
         res.status(200).json(data);
     } catch (error) {
         console.error("GET /api/attendance/student-history-admin Error:", error);

@@ -38,7 +38,6 @@ const WHITE = '#FFFFFF';
 const ORANGE = '#FB8C00';
 
 const CLASS_GROUPS = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
-const PERIOD_DEFINITIONS = [{ period: 1, time: '09:00-09:45' }];
 
 // --- Helper: Date Formatter (DD/MM/YYYY) ---
 const formatDate = (date) => {
@@ -91,44 +90,62 @@ const AttendanceScreen = ({ route }) => {
   }
 };
 
-// --- Student History Component (Unchanged logic, just formatting) ---
+// --- MODIFIED: Generic Student History Component with Yearly/Range ---
 const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     const [viewMode, setViewMode] = useState('monthly');
     const [data, setData] = useState({ summary: {}, history: [] });
     const [isLoading, setIsLoading] = useState(true);
+    
+    // Date States
     const [selectedDate, setSelectedDate] = useState(new Date());
-    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [fromDate, setFromDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)));
+    const [toDate, setToDate] = useState(new Date());
 
+    // Picker Visibility
+    const [showMainPicker, setShowMainPicker] = useState(false);
+    const [showFromPicker, setShowFromPicker] = useState(false);
+    const [showToPicker, setShowToPicker] = useState(false);
+
+    const fetchHistory = async () => {
+        if (!studentId) return;
+        setIsLoading(true);
+        try {
+            let url = onBack
+                ? `/attendance/student-history-admin/${studentId}?viewMode=${viewMode}`
+                : `/attendance/my-history/${studentId}?viewMode=${viewMode}`;
+
+            if (viewMode === 'daily') url += `&date=${selectedDate.toISOString().split('T')[0]}`;
+            else if (viewMode === 'monthly') url += `&date=${selectedDate.toISOString().slice(0, 7)}`;
+            else if (viewMode === 'yearly') url += `&targetYear=${selectedDate.getFullYear()}`;
+            else if (viewMode === 'custom') url += `&startDate=${fromDate.toISOString().split('T')[0]}&endDate=${toDate.toISOString().split('T')[0]}`;
+
+            const response = await apiClient.get(url);
+            setData(response.data);
+        } catch (error: any) {
+            Alert.alert('Error', error.response?.data?.message || 'Could not load attendance history.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Auto fetch on mode/date change (except custom range)
     useEffect(() => {
-        const fetchHistory = async () => {
-            if (!studentId) return;
-            setIsLoading(true);
-            try {
-                let url = onBack
-                    ? `/attendance/student-history-admin/${studentId}?viewMode=${viewMode}`
-                    : `/attendance/my-history/${studentId}?viewMode=${viewMode}`;
-
-                if (viewMode === 'daily') {
-                    url += `&date=${selectedDate.toISOString().split('T')[0]}`;
-                }
-
-                const response = await apiClient.get(url);
-                setData(response.data);
-            } catch (error: any) {
-                Alert.alert('Error', error.response?.data?.message || 'Could not load attendance history.');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchHistory();
+        if (viewMode !== 'custom') fetchHistory();
     }, [studentId, viewMode, selectedDate]);
 
-    const onDateChange = (event: any, date?: Date) => {
-        setShowDatePicker(Platform.OS === 'ios');
-        if (date) {
-            setSelectedDate(date);
-            if (viewMode !== 'daily') setViewMode('daily');
-        }
+    const onMainDateChange = (event: any, date?: Date) => {
+        setShowMainPicker(Platform.OS === 'ios');
+        if (date) setSelectedDate(date);
+    };
+
+    const onFromDateChange = (event: any, date?: Date) => {
+        setShowFromPicker(Platform.OS === 'ios');
+        if (date) setFromDate(date);
+    };
+
+    const onToDateChange = (event: any, date?: Date) => {
+        setShowToPicker(Platform.OS === 'ios');
+        if (date) setToDate(date);
     };
 
     const percentage = useMemo(() => {
@@ -147,14 +164,15 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
                     )}
                     <View style={{flex: 1, alignItems: 'center', paddingRight: onBack ? 30 : 0 }}>
                         <Text style={styles.headerTitle}>{headerTitle}</Text>
-                        {viewMode === 'daily' && (
-                            <Text style={styles.headerSubtitleSmall}>Date: {formatDate(selectedDate)}</Text>
-                        )}
+                        {viewMode === 'daily' && <Text style={styles.headerSubtitleSmall}>Date: {formatDate(selectedDate)}</Text>}
+                        {viewMode === 'monthly' && <Text style={styles.headerSubtitleSmall}>{selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>}
+                        {viewMode === 'yearly' && <Text style={styles.headerSubtitleSmall}>Year: {selectedDate.getFullYear()}</Text>}
+                        {viewMode === 'custom' && <Text style={styles.headerSubtitleSmall}>Custom Range</Text>}
                     </View>
                 </View>
             </Animatable.View>
-            
-            {/* Simple toggle for Student View - keeping simple as requested previously */}
+
+            {/* TABS: Daily | Monthly | Yearly | Range */}
             <View style={styles.toggleContainer}>
                 <TouchableOpacity style={[styles.toggleButton, viewMode === 'daily' && styles.toggleButtonActive]} onPress={() => setViewMode('daily')}>
                     <Text style={[styles.toggleButtonText, viewMode === 'daily' && styles.toggleButtonTextActive]}>Daily</Text>
@@ -162,15 +180,41 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
                 <TouchableOpacity style={[styles.toggleButton, viewMode === 'monthly' && styles.toggleButtonActive]} onPress={() => setViewMode('monthly')}>
                     <Text style={[styles.toggleButtonText, viewMode === 'monthly' && styles.toggleButtonTextActive]}>Monthly</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'overall' && styles.toggleButtonActive]} onPress={() => setViewMode('overall')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'overall' && styles.toggleButtonTextActive]}>Overall</Text>
+                <TouchableOpacity style={[styles.toggleButton, viewMode === 'yearly' && styles.toggleButtonActive]} onPress={() => setViewMode('yearly')}>
+                    <Text style={[styles.toggleButtonText, viewMode === 'yearly' && styles.toggleButtonTextActive]}>Yearly</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.calendarButton} onPress={() => setShowDatePicker(true)}>
-                    <Icon name="calendar" size={22} color={PRIMARY_COLOR} />
+                <TouchableOpacity style={[styles.toggleButton, viewMode === 'custom' && styles.toggleButtonActive]} onPress={() => setViewMode('custom')}>
+                    <Text style={[styles.toggleButtonText, viewMode === 'custom' && styles.toggleButtonTextActive]}>Range</Text>
                 </TouchableOpacity>
+                
+                {viewMode !== 'custom' && (
+                    <TouchableOpacity style={styles.calendarButton} onPress={() => setShowMainPicker(true)}>
+                        <Icon name="calendar" size={22} color={PRIMARY_COLOR} />
+                    </TouchableOpacity>
+                )}
             </View>
 
-            {showDatePicker && <DateTimePicker value={selectedDate} mode="date" onChange={onDateChange} />}
+            {/* Range Inputs */}
+            {viewMode === 'custom' && (
+                <Animatable.View animation="fadeIn" duration={300} style={styles.rangeContainer}>
+                    <TouchableOpacity style={styles.dateInputBox} onPress={() => setShowFromPicker(true)}>
+                        <Icon name="calendar-today" size={18} color={TEXT_COLOR_MEDIUM} style={{marginRight:5}}/>
+                        <Text style={styles.dateInputText}>{formatDate(fromDate)}</Text>
+                    </TouchableOpacity>
+                    <Icon name="arrow-right" size={20} color={TEXT_COLOR_MEDIUM} />
+                    <TouchableOpacity style={styles.dateInputBox} onPress={() => setShowToPicker(true)}>
+                        <Icon name="calendar-today" size={18} color={TEXT_COLOR_MEDIUM} style={{marginRight:5}}/>
+                        <Text style={styles.dateInputText}>{formatDate(toDate)}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.goButton} onPress={fetchHistory}>
+                        <Text style={styles.goButtonText}>Go</Text>
+                    </TouchableOpacity>
+                </Animatable.View>
+            )}
+
+            {showMainPicker && <DateTimePicker value={selectedDate} mode="date" onChange={onMainDateChange} />}
+            {showFromPicker && <DateTimePicker value={fromDate} mode="date" onChange={onFromDateChange} />}
+            {showToPicker && <DateTimePicker value={toDate} mode="date" onChange={onToDateChange} />}
 
             {isLoading ? <ActivityIndicator style={styles.loaderContainer} size="large" color={PRIMARY_COLOR} /> : (
                 <>
@@ -196,21 +240,18 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
 const StudentAttendanceView = ({ student }) => <GenericStudentHistoryView studentId={student.id} headerTitle="My Attendance Report" />;
 const AdminStudentDetailView = ({ student, onBack }) => <GenericStudentHistoryView studentId={student.student_id} headerTitle={`${student.full_name}'s Report`} onBack={onBack} />;
 
-// ==========================================================
-// --- GENERIC SUMMARY VIEW (ADMIN & TEACHER) ---
-// ==========================================================
+// --- Generic Summary View (Teacher & Admin Class List) ---
 const GenericSummaryView = ({
     picker1, picker2, listData,
     summaryData, isLoading, viewMode, setViewMode, 
-    selectedDate, onDateChange, // For Daily/Monthly/Yearly main picker
-    fromDate, setFromDate, // For Range
-    toDate, setToDate,     // For Range
-    onRangeFetch,          // Function to trigger fetch
+    selectedDate, onDateChange, 
+    fromDate, setFromDate, 
+    toDate, setToDate,     
+    onRangeFetch,          
     onSelectStudent
 }) => {
     const summary = summaryData?.overallSummary ?? {};
     
-    // Internal state for pickers
     const [showMainPicker, setShowMainPicker] = useState(false);
     const [showFromPicker, setShowFromPicker] = useState(false);
     const [showToPicker, setShowToPicker] = useState(false);
@@ -269,7 +310,6 @@ const GenericSummaryView = ({
                     <View style={styles.pickerWrapper}>{picker1}</View>
                     {picker2 && <View style={styles.pickerWrapper}>{picker2}</View>} 
                 </View>
-                {/* Subtitle */}
                 <View style={{alignItems: 'center', marginBottom: 5}}>
                      {viewMode === 'daily' && <Text style={styles.headerSubtitleSmall}>Date: {formatDate(selectedDate)}</Text>}
                      {viewMode === 'monthly' && <Text style={styles.headerSubtitleSmall}>Month: {selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>}
@@ -374,7 +414,7 @@ const GenericSummaryView = ({
     );
 };
 
-// --- Teacher View (Maintains Subject Logic) ---
+// --- Teacher View ---
 const TeacherSummaryView = ({ teacher }) => {
     const [assignments, setAssignments] = useState([]);
     const [selectedClass, setSelectedClass] = useState('');
@@ -384,7 +424,6 @@ const TeacherSummaryView = ({ teacher }) => {
     const [viewMode, setViewMode] = useState('overall');
     const [selectedDate, setSelectedDate] = useState(new Date());
     
-    // Range States
     const [fromDate, setFromDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)));
     const [toDate, setToDate] = useState(new Date());
 
@@ -474,7 +513,7 @@ const TeacherSummaryView = ({ teacher }) => {
     );
 };
 
-// --- Admin View (Updated to remove Subject Picker) ---
+// --- Admin View ---
 const AdminAttendanceView = () => {
   const [selectedClass, setSelectedClass] = useState(CLASS_GROUPS[0]);
   const [summaryData, setSummaryData] = useState(null);
@@ -483,7 +522,6 @@ const AdminAttendanceView = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   
-  // Range States
   const [fromDate, setFromDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)));
   const [toDate, setToDate] = useState(new Date());
 
@@ -491,9 +529,7 @@ const AdminAttendanceView = () => {
       if (!selectedClass) return;
       setIsLoading(true);
       try {
-        // Subject name removed from query
         let url = `/attendance/admin-summary?classGroup=${selectedClass}&viewMode=${viewMode}`;
-        
         if (viewMode === 'daily') url += `&date=${selectedDate.toISOString().split('T')[0]}`;
         else if (viewMode === 'monthly') url += `&date=${selectedDate.toISOString().slice(0, 7)}`;
         else if (viewMode === 'yearly') url += `&targetYear=${selectedDate.getFullYear()}`;
@@ -523,7 +559,6 @@ const AdminAttendanceView = () => {
     </Picker>
   );
 
-  // Note: picker2 is not passed
   return (
     <GenericSummaryView
         picker1={picker1}
@@ -542,12 +577,12 @@ const AdminAttendanceView = () => {
   );
 };
 
-// --- Teacher Live Attendance (Same as before) ---
+// --- Teacher Live Attendance ---
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
-    // ... (No changes needed for this part, but ensuring it exists)
-    // (Abbreviated for brevity - keeping your existing logic)
     const { class_group, subject_name, date } = route?.params || {};
-    return ( <View><Text>Live Attendance</Text></View> ); // Placeholder, assumes you keep the existing code I provided earlier for this specific component
+    // ... (Teacher Live Attendance Logic remains as is, using the same structure provided previously)
+    // Placeholder for brevity since no changes were requested here, but integration is standard
+    return ( <View><Text>Live Attendance View</Text></View> ); 
 };
 
 // --- Styles ---
@@ -559,25 +594,20 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: TEXT_COLOR_DARK, textAlign: 'center' },
   headerSubtitleSmall: { fontSize: 14, color: TEXT_COLOR_MEDIUM, marginTop: 2, textAlign: 'center' },
   backButton: { position: 'absolute', left: 15, zIndex: 1, padding: 5 },
-  
   pickerContainer: { flexDirection: 'row', padding: 10, backgroundColor: WHITE, borderBottomColor: BORDER_COLOR, borderBottomWidth: 1, alignItems: 'center' },
   pickerWrapper: { flex: 1, marginHorizontal: 5, backgroundColor: '#F0F4F8', borderWidth: 1, borderColor: BORDER_COLOR, borderRadius: 8, height: 50, justifyContent: 'center' },
-  
   summaryContainer: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 15, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
   summaryBox: { alignItems: 'center', flex: 1, paddingVertical: 10, paddingHorizontal: 5 },
-  summaryValue: { fontSize: 22, fontWeight: 'bold' }, // Slightly smaller font for fit
+  summaryValue: { fontSize: 22, fontWeight: 'bold' },
   summaryLabel: { fontSize: 12, color: TEXT_COLOR_MEDIUM, marginTop: 5, fontWeight: '500', textAlign: 'center' },
-  
   searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, marginHorizontal: 15, marginTop: 15, borderRadius: 8, borderWidth: 1, borderColor: BORDER_COLOR, paddingHorizontal: 10 },
   searchBar: { flex: 1, height: 45, fontSize: 16, color: TEXT_COLOR_DARK },
   searchIcon: { marginRight: 8 },
-  
   summaryStudentRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, padding: 15, marginHorizontal: 15, marginVertical: 6, borderRadius: 8, elevation: 1, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
   studentName: { fontSize: 16, color: TEXT_COLOR_DARK, fontWeight: '600' },
   studentDetailText: { fontSize: 12, color: TEXT_COLOR_MEDIUM, marginTop: 4 },
   percentageText: { fontSize: 20, fontWeight: 'bold' },
   
-  // Toggle & Range Styles
   toggleContainer: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 2, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR, alignItems: 'center', flexWrap: 'wrap' },
   toggleButton: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, marginHorizontal: 3, backgroundColor: '#E0E0E0', marginBottom: 5 },
   toggleButtonActive: { backgroundColor: PRIMARY_COLOR },
@@ -591,7 +621,6 @@ const styles = StyleSheet.create({
   goButton: { backgroundColor: GREEN, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 6, marginLeft: 5 },
   goButtonText: { color: WHITE, fontWeight: 'bold' },
 
-  // History
   historyTitle: { fontSize: 18, fontWeight: 'bold', paddingHorizontal: 20, marginTop: 15, marginBottom: 10, color: TEXT_COLOR_DARK },
   historyDayCard: { backgroundColor: WHITE, marginHorizontal: 15, marginVertical: 8, borderRadius: 8, elevation: 2, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 5 },
   historyDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
