@@ -1,5 +1,3 @@
-// Filename: screens/CalendarScreen.js
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
@@ -19,14 +17,14 @@ import { Calendar } from 'react-native-calendars';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import apiClient from '../../api/client';
 
-// Define the structure for a voucher item
-interface Voucher {
-    id: number;
-    voucher_no: string;
-    head_of_account: string;
-    total_amount: number;
-    voucher_type: 'Debit' | 'Credit' | 'Deposit';
-}
+// --- Helper: Format Currency (Indian System with Commas) ---
+const formatCurrency = (amount) => {
+    const num = Number(amount) || 0;
+    return new Intl.NumberFormat('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(num);
+};
 
 const CalendarScreen = () => {
     const navigation = useNavigation();
@@ -34,7 +32,7 @@ const CalendarScreen = () => {
 
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [vouchers, setVouchers] = useState<Voucher[]>([]);
+    const [vouchers, setVouchers] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     
     // State for modal and selected voucher details
@@ -42,7 +40,7 @@ const CalendarScreen = () => {
     const [isDetailModalVisible, setDetailModalVisible] = useState(false);
 
     // Fetch vouchers for the currently selected date
-    const fetchVouchersForDate = useCallback(async (date: string) => {
+    const fetchVouchersForDate = useCallback(async (date) => {
         setIsLoading(true);
         try {
             const response = await apiClient.get(`/vouchers/list?date=${date}`);
@@ -80,11 +78,11 @@ const CalendarScreen = () => {
         Linking.openURL(fullUrl).catch(() => Alert.alert("Error", `Cannot open this URL: ${fullUrl}`));
     };
 
-    const handleDayPress = (day: { dateString: string }) => {
+    const handleDayPress = (day) => {
         setSelectedDate(day.dateString);
     };
 
-    const changeMonth = (monthOffset: number) => {
+    const changeMonth = (monthOffset) => {
         const newDate = new Date(currentMonth);
         newDate.setMonth(newDate.getMonth() + monthOffset);
         setCurrentMonth(newDate);
@@ -102,7 +100,7 @@ const CalendarScreen = () => {
     }), [selectedDate]);
     
     // Renders each row in the voucher list
-    const renderVoucherItem = ({ item, index }: { item: Voucher, index: number }) => {
+    const renderVoucherItem = ({ item, index }) => {
         let amountStyle, amountPrefix;
 
         switch (item.voucher_type) {
@@ -127,7 +125,7 @@ const CalendarScreen = () => {
                 <Text style={[styles.cell, styles.vchCell]}>{item.voucher_no}</Text>
                 <Text style={[styles.cell, styles.headCell]} numberOfLines={1}>{item.head_of_account}</Text>
                 <Text style={[styles.cell, styles.amountCell, amountStyle]}>
-                    {`${amountPrefix}₹${parseFloat(item.total_amount).toFixed(2)}`}
+                    {`${amountPrefix}₹${formatCurrency(item.total_amount)}`}
                 </Text>
                 <TouchableOpacity style={[styles.cell, styles.actionCell]} onPress={() => viewVoucherDetails(item.id)}>
                     <MaterialIcons name="visibility" size={22} color="#007AFF" />
@@ -206,21 +204,28 @@ const CalendarScreen = () => {
                             <Text style={styles.modalVoucherNo}>{selectedVoucher.voucher_no}</Text>
                             <ScrollView>
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Date:</Text> {new Date(selectedVoucher.voucher_date).toLocaleDateString('en-GB')}</Text>
-                                {/* Corrected name_title field */}
+                                
                                 {selectedVoucher.name_title && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Name/Title:</Text> {selectedVoucher.name_title}</Text>}
                                 {selectedVoucher.phone_no && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Phone No:</Text> {selectedVoucher.phone_no}</Text>}
+                                
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Head of A/C:</Text> {selectedVoucher.head_of_account}</Text>
                                 {selectedVoucher.sub_head && <Text style={styles.detailRow}><Text style={styles.detailLabel}>Sub Head:</Text> {selectedVoucher.sub_head}</Text>}
                                 <Text style={styles.detailRow}><Text style={styles.detailLabel}>Account Type:</Text> {selectedVoucher.account_type}</Text>
                                 
-                                {/* ★★★ UPDATED ROW ADDED HERE ★★★ */}
-                                {selectedVoucher.transaction_context_type && <Text style={styles.detailRow}><Text style={styles.detailLabel}>{selectedVoucher.transaction_context_type}:</Text> {selectedVoucher.transaction_context_value}</Text>}
+                                <Text style={styles.detailRow}><Text style={styles.detailLabel}>{selectedVoucher.transaction_context_type}:</Text> {selectedVoucher.transaction_context_value}</Text>
                                 
                                 <Text style={styles.modalSectionTitle}>Particulars</Text>
                                 {selectedVoucher.particulars.map((p, i) => (
-                                    <View key={i} style={styles.particularRow}><Text style={styles.particularDesc}>{p.description}</Text><Text style={styles.particularAmt}>₹{p.amount}</Text></View>
+                                    <View key={i} style={styles.particularRow}>
+                                        <Text style={styles.particularDesc}>{p.description}</Text>
+                                        <Text style={styles.particularAmt}>₹{formatCurrency(p.amount)}</Text>
+                                    </View>
                                 ))}
-                                <View style={styles.totalRow}><Text style={styles.totalText}>Total Amount:</Text><Text style={styles.totalAmount}>₹{selectedVoucher.total_amount}</Text></View>
+                                <View style={styles.totalRow}>
+                                    <Text style={styles.totalText}>Total Amount:</Text>
+                                    <Text style={styles.totalAmount}>₹{formatCurrency(selectedVoucher.total_amount)}</Text>
+                                </View>
+                                
                                 {selectedVoucher.attachment_url && <TouchableOpacity style={styles.viewProofButton} onPress={() => handleViewProof(selectedVoucher.attachment_url)}><MaterialIcons name="image" size={20} color="#FFF" /><Text style={styles.viewProofButtonText}>View Proof</Text></TouchableOpacity>}
                                 <View style={styles.userInfoContainer}>
                                     <Text style={styles.userInfoText}>Created by: {selectedVoucher.creator_name || 'N/A'}</Text>
