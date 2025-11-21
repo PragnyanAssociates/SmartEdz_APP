@@ -7883,12 +7883,26 @@ app.get('/api/vouchers/list', [verifyToken, isAdmin], async (req, res) => {
     try {
         let query = 'SELECT id, voucher_no, head_of_account, sub_head, account_type, total_amount, voucher_date, voucher_type FROM vouchers WHERE 1=1';
         const queryParams = [];
+
+        // --- START MODIFICATION: Listen for specific date ---
+        if (req.query.date) {
+            query += ' AND voucher_date = ?';
+            queryParams.push(req.query.date);
+        }
+        // --- END MODIFICATION ---
+
         if (req.query.voucher_type) { query += ' AND voucher_type = ?'; queryParams.push(req.query.voucher_type); }
+        
         const period = req.query.period;
-        if (period === 'daily') { query += ' AND voucher_date = CURDATE()'; } else if (period === 'monthly') { query += ' AND MONTH(voucher_date) = MONTH(CURDATE()) AND YEAR(voucher_date) = YEAR(CURDATE())'; }
+        if (period === 'daily') { query += ' AND voucher_date = CURDATE()'; } 
+        else if (period === 'monthly') { query += ' AND MONTH(voucher_date) = MONTH(CURDATE()) AND YEAR(voucher_date) = YEAR(CURDATE())'; }
+        
         if (req.query.startDate && req.query.endDate) { query += ' AND voucher_date BETWEEN ? AND ?'; queryParams.push(req.query.startDate, req.query.endDate); }
+        
         query += ' ORDER BY id DESC';
+        
         if (req.query.limit) { query += ' LIMIT ?'; queryParams.push(parseInt(req.query.limit, 10)); }
+        
         const [vouchers] = await db.query(query, queryParams);
         res.status(200).json(vouchers);
     } catch (error) {

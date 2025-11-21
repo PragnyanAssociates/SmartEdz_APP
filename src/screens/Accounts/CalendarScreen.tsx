@@ -26,11 +26,20 @@ const formatCurrency = (amount) => {
     }).format(num);
 };
 
+// --- Helper: Get Local Date String (YYYY-MM-DD) ---
+const getLocalDateString = () => {
+    const date = new Date();
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+};
+
 const CalendarScreen = () => {
     const navigation = useNavigation();
     const isFocused = useIsFocused();
 
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    // Use local date to ensure current day is accurate
+    const [selectedDate, setSelectedDate] = useState(getLocalDateString());
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [vouchers, setVouchers] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -43,7 +52,10 @@ const CalendarScreen = () => {
     const fetchVouchersForDate = useCallback(async (date) => {
         setIsLoading(true);
         try {
-            const response = await apiClient.get(`/vouchers/list?date=${date}`);
+            // Passing 'date' parameter which the modified backend now accepts
+            const response = await apiClient.get(`/vouchers/list`, {
+                params: { date: date }
+            });
             setVouchers(response.data);
         } catch (error) {
             console.error("Error fetching vouchers for the selected date:", error);
@@ -175,7 +187,7 @@ const CalendarScreen = () => {
 
             <View style={[styles.card, styles.tableContainer]}>
                 <Text style={styles.tableTitle}>
-                    Entries for {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    Entries for {new Date(selectedDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                 </Text>
                 {isLoading ? (
                     <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 20 }}/>
