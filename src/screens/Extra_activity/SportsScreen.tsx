@@ -31,9 +31,9 @@ const COLORS = {
     text: '#263238',
     grey: '#78909C',
     lightGrey: '#ECEFF1',
-    green: '#388E3C', // For Approved
-    orange: '#FF9800', // For Pending
-    red: '#D32F2F',    // For Rejected
+    green: '#388E3C', // Approved
+    orange: '#FF9800', // Pending
+    red: '#D32F2F',    // Rejected
     border: '#E0E0E0',
     chatBubbleUser: '#E3F2FD',
     chatBubbleOther: '#FFFFFF',
@@ -51,7 +51,7 @@ const SportsScreen = () => {
     const [data, setData] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
 
-    // --- LOADING STATE FOR BUTTON ---
+    // --- BUTTON LOADING STATE ---
     const [applyingId, setApplyingId] = useState(null);
 
     // --- MODAL STATES ---
@@ -194,7 +194,6 @@ const SportsScreen = () => {
     };
 
     // --- APPLICATION HANDLERS ---
-
     const handleViewApplicants = async (applicationId) => {
         try {
             setLoading(true);
@@ -219,17 +218,15 @@ const SportsScreen = () => {
         }
     };
 
-    // *** UPDATED: Handle Apply Logic ***
+    // *** APPLY HANDLER ***
     const handleApply = async (applicationId) => {
         setApplyingId(applicationId); 
         try {
-            await apiClient.post('/sports/apply', { application_id: applicationId });
+            const res = await apiClient.post('/sports/apply', { application_id: applicationId });
             
-            // 1. Show Success Message
-            Alert.alert("Success", "Application Submitted Successfully!");
+            Alert.alert("Success", res.data.message);
 
-            // 2. OPTIMISTIC UPDATE: Update local state immediately so button changes
-            // This prevents "Already applied" error because the button becomes text
+            // Optimistic Update: Immediately disable button and show "Pending"
             setData(prevData => prevData.map(item => {
                 if (item.id === applicationId) {
                     return { ...item, my_status: 'Pending' }; 
@@ -238,13 +235,13 @@ const SportsScreen = () => {
             }));
 
         } catch (error) {
-            // Check if it's the 400 error from backend
+            // Handle backend "Already applied" message
             if (error.response && error.response.status === 400) {
-                Alert.alert("Notice", "You have already applied for this activity.");
-                // Refresh data to ensure UI matches backend
-                fetchData();
+                Alert.alert("Notice", error.response.data.message || "You have already applied.");
+                fetchData(); // Sync data
             } else {
-                Alert.alert("Error", "Could not submit application.");
+                console.error(error);
+                Alert.alert("Error", "Could not submit application. Please check connection.");
             }
         } finally {
             setApplyingId(null);
@@ -409,16 +406,14 @@ const SportsScreen = () => {
         </View>
     );
 
-    // *** UPDATED: Logic to show Success/Failure/Pending ***
     const renderApplicationCard = ({ item }) => {
         const isExpired = item.deadline ? new Date(item.deadline) < new Date() : false;
         
-        // my_status comes from backend: 'Pending', 'Approved', 'Rejected'
-        const myStatus = item.my_status; 
-        
+        // my_status comes from backend query: 'Pending', 'Approved', 'Rejected'
+        const myStatus = item.my_status;
         const isProcessing = applyingId === item.id;
 
-        // Color Logic for Status
+        // Status Badge Color
         let statusColor = COLORS.green; // Default (Approved)
         if (myStatus === 'Pending') statusColor = COLORS.orange;
         if (myStatus === 'Rejected') statusColor = COLORS.red;
@@ -435,7 +430,7 @@ const SportsScreen = () => {
                                 <TouchableOpacity onPress={() => handleDelete(item.id)}><Icon name="trash-can" size={20} color={COLORS.primary} /></TouchableOpacity>
                             </View>
                         ) : (
-                            // Show Status Badge if exists
+                            // IF status exists, show badge top right
                             myStatus && <Text style={[styles.statusBadge, { color: statusColor }]}>{myStatus}</Text>
                         )}
                     </View>
@@ -448,7 +443,6 @@ const SportsScreen = () => {
                                 <Text style={styles.adminBtnText}>View Applicants</Text>
                             </TouchableOpacity>
                         ) : (
-                            // IF user has a status (applied) OR expired OR processing -> Disable button
                             <TouchableOpacity 
                                 style={[styles.applyBtn, (myStatus || isExpired || isProcessing) && styles.disabledBtn]} 
                                 onPress={() => handleApply(item.id)} 

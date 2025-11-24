@@ -8121,6 +8121,45 @@ app.get('/api/users/students/search', verifyToken, async (req, res) => {
     }
 });
 
+// 1. HELPER: Get Students & Teachers for Selection
+app.get('/api/users/sports/search', verifyToken, async (req, res) => {
+    try {
+        // Fetch Students with Roll No
+        const [students] = await db.query(`
+            SELECT u.id, u.full_name, u.class_group, up.roll_no 
+            FROM users u 
+            LEFT JOIN user_profiles up ON u.id = up.user_id 
+            WHERE u.role = 'student' 
+            ORDER BY u.class_group, CAST(up.roll_no AS UNSIGNED) ASC
+        `);
+
+        // Fetch Teachers
+        const [teachers] = await db.query(`
+            SELECT u.id, u.full_name 
+            FROM users u 
+            WHERE u.role = 'teacher' 
+            ORDER BY u.full_name ASC
+        `);
+
+        // Get List of unique classes
+        const [classes] = await db.query(`
+            SELECT DISTINCT class_group 
+            FROM users 
+            WHERE role = 'student' AND class_group IS NOT NULL AND class_group != ''
+            ORDER BY class_group
+        `);
+
+        res.json({ 
+            students, 
+            teachers,
+            classes: classes.map(c => c.class_group)
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Error fetching user data" });
+    }
+});
+
 // --- GROUPS CRUD ---
 
 // GET Groups (Updated to fetch creator_name)
@@ -8311,16 +8350,22 @@ app.post('/api/sports/apply', verifyToken, async (req, res) => {
     const { application_id } = req.body;
     const student_id = req.user.id;
 
+    // debug log to ensure data is receiving
+    console.log("Applying for:", application_id, "Student:", student_id);
+
+    if (!application_id) {
+        return res.status(400).json({ message: "Application ID is missing" });
+    }
+
     try {
-        // 1. Check if the student has ALREADY applied for this specific application
+        // 1. Check if the student has ALREADY applied
         const [existing] = await db.query(
-            "SELECT status FROM sports_application_entries WHERE application_id = ? AND student_id = ?", 
+            "SELECT id, status FROM sports_application_entries WHERE application_id = ? AND student_id = ?", 
             [application_id, student_id]
         );
 
         if (existing.length > 0) {
-            // If entry exists, return 400 Bad Request with specific message
-            // This prevents the "Success" message from showing on a duplicate click
+            // Already applied
             return res.status(400).json({ message: "You have already applied for this activity." });
         }
 
@@ -8335,45 +8380,6 @@ app.post('/api/sports/apply', verifyToken, async (req, res) => {
     } catch (e) {
         console.error("Apply Error:", e);
         res.status(500).json({ message: "Server error while applying." });
-    }
-});
-
-// 1. HELPER: Get Students & Teachers for Selection
-app.get('/api/users/sports/search', verifyToken, async (req, res) => {
-    try {
-        // Fetch Students with Roll No
-        const [students] = await db.query(`
-            SELECT u.id, u.full_name, u.class_group, up.roll_no 
-            FROM users u 
-            LEFT JOIN user_profiles up ON u.id = up.user_id 
-            WHERE u.role = 'student' 
-            ORDER BY u.class_group, CAST(up.roll_no AS UNSIGNED) ASC
-        `);
-
-        // Fetch Teachers
-        const [teachers] = await db.query(`
-            SELECT u.id, u.full_name 
-            FROM users u 
-            WHERE u.role = 'teacher' 
-            ORDER BY u.full_name ASC
-        `);
-
-        // Get List of unique classes
-        const [classes] = await db.query(`
-            SELECT DISTINCT class_group 
-            FROM users 
-            WHERE role = 'student' AND class_group IS NOT NULL AND class_group != ''
-            ORDER BY class_group
-        `);
-
-        res.json({ 
-            students, 
-            teachers,
-            classes: classes.map(c => c.class_group)
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Error fetching user data" });
     }
 });
 
