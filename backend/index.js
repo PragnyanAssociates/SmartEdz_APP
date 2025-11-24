@@ -8123,11 +8123,10 @@ app.get('/api/users/students/search', verifyToken, async (req, res) => {
 
 // --- GROUPS CRUD ---
 
-// GET Groups (With member check)
+// GET Groups
 app.get('/api/sports/groups', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        // Returns group info + "is_member" (1 or 0) to check access on frontend
         const query = `
             SELECT sg.*, u.full_name as coach_name, 
             (SELECT COUNT(*) FROM sports_group_members WHERE group_id = sg.id) as member_count,
@@ -8143,7 +8142,7 @@ app.get('/api/sports/groups', verifyToken, async (req, res) => {
     }
 });
 
-// GET Single Group Details (Members)
+// GET Single Group Members (Students only)
 app.get('/api/sports/groups/:id/members', verifyToken, async (req, res) => {
     try {
         const query = `
@@ -8161,13 +8160,16 @@ app.get('/api/sports/groups/:id/members', verifyToken, async (req, res) => {
 
 // POST Create Group
 app.post('/api/sports/groups', [verifyToken, isTeacherOrAdmin], async (req, res) => {
-    const { name, category, description, member_ids } = req.body; // member_ids is array of ints
+    // Added coach_id here
+    const { name, category, description, member_ids, coach_id } = req.body;
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
+        
+        // Insert with coach_id
         const [result] = await connection.query(
             "INSERT INTO sports_groups (name, category, description, coach_id) VALUES (?, ?, ?, ?)",
-            [name, category, description, req.user.id]
+            [name, category, description, coach_id || null] 
         );
         const groupId = result.insertId;
 
@@ -8187,13 +8189,19 @@ app.post('/api/sports/groups', [verifyToken, isTeacherOrAdmin], async (req, res)
 
 // PUT Update Group
 app.put('/api/sports/groups/:id', [verifyToken, isTeacherOrAdmin], async (req, res) => {
-    const { name, category, description, member_ids } = req.body;
+    // Added coach_id here
+    const { name, category, description, member_ids, coach_id } = req.body;
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        await connection.query("UPDATE sports_groups SET name=?, category=?, description=? WHERE id=?", [name, category, description, req.params.id]);
         
-        // Sync Members (Delete old, Insert new for simplicity, or smarter diffing)
+        // Update coach_id
+        await connection.query(
+            "UPDATE sports_groups SET name=?, category=?, description=?, coach_id=? WHERE id=?", 
+            [name, category, description, coach_id || null, req.params.id]
+        );
+        
+        // Sync Members
         await connection.query("DELETE FROM sports_group_members WHERE group_id = ?", [req.params.id]);
         if (member_ids && member_ids.length > 0) {
             const values = member_ids.map(uid => [req.params.id, uid]);

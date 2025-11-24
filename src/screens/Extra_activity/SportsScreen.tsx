@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
     View,
     Text,
@@ -45,7 +45,6 @@ const SportsScreen = () => {
 
     // Main Screen State
     const [activeTab, setActiveTab] = useState('groups');
-    const [showMyGroupsOnly, setShowMyGroupsOnly] = useState(false);
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
@@ -57,7 +56,7 @@ const SportsScreen = () => {
     const [applicantsModalVisible, setApplicantsModalVisible] = useState(false);
 
     // --- GROUP DETAIL SUB-TABS ---
-    const [detailTab, setDetailTab] = useState('info'); // info, announcements, chat
+    const [detailTab, setDetailTab] = useState('info');
 
     // --- DATA STATES ---
     const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -69,6 +68,7 @@ const SportsScreen = () => {
     
     const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
     const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
+    
     const [filterClass, setFilterClass] = useState<string>('All');
     const [searchText, setSearchText] = useState('');
 
@@ -119,6 +119,8 @@ const SportsScreen = () => {
 
             const chatRes = await apiClient.get(`/sports/groups/${groupId}/messages`);
             setGroupMessages(chatRes.data);
+            
+            setTimeout(() => chatListRef.current?.scrollToEnd({ animated: true }), 500);
         } catch (e) { console.error(e); }
     };
 
@@ -131,7 +133,6 @@ const SportsScreen = () => {
                 message_type: 'text' 
             });
             setChatInput('');
-            // Refresh chat without closing keyboard or full reload
             const chatRes = await apiClient.get(`/sports/groups/${selectedItem.id}/messages`);
             setGroupMessages(chatRes.data);
         } catch (e) { Alert.alert("Error", "Failed to send"); }
@@ -139,22 +140,15 @@ const SportsScreen = () => {
 
     // --- DELETE MESSAGE ---
     const handleDeleteMessage = (msgId: number) => {
-        Alert.alert(
-            "Delete Message", 
-            "Are you sure you want to delete this message?", 
-            [
-                { text: "Cancel", style: "cancel" },
-                { text: "Delete", style: "destructive", onPress: async () => {
-                    try {
-                        await apiClient.delete(`/sports/messages/${msgId}`);
-                        // Remove locally to update UI immediately
-                        setGroupMessages(prev => prev.filter(msg => msg.id !== msgId));
-                    } catch (e) {
-                        Alert.alert("Error", "Could not delete message.");
-                    }
-                }}
-            ]
-        );
+        Alert.alert("Delete Message", "Are you sure?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: async () => {
+                try {
+                    await apiClient.delete(`/sports/messages/${msgId}`);
+                    setGroupMessages(prev => prev.filter((msg: any) => msg.id !== msgId));
+                } catch (e) { Alert.alert("Error", "Could not delete message."); }
+            }}
+        ]);
     };
 
     // --- POST ANNOUNCEMENT ---
@@ -164,7 +158,6 @@ const SportsScreen = () => {
             await apiClient.post(`/sports/groups/${selectedItem.id}/announcements`, announcementForm);
             Alert.alert("Success", "Announcement Posted");
             setAnnouncementForm({ title: '', message: '', event_date: '' });
-            // Refresh
             const annRes = await apiClient.get(`/sports/groups/${selectedItem.id}/announcements`);
             setGroupAnnouncements(annRes.data);
         } catch (e) { Alert.alert("Error", "Failed to post"); }
@@ -183,7 +176,7 @@ const SportsScreen = () => {
     const handleGroupPress = async (item: any) => {
         if (isStaff || item.is_member > 0) {
             setSelectedItem(item);
-            setDetailTab('info'); // Reset to info tab
+            setDetailTab('info');
             setDetailModalVisible(true);
             await fetchGroupDetails(item.id);
         } else {
@@ -197,6 +190,7 @@ const SportsScreen = () => {
         setFormModalVisible(true);
         if (activeTab === 'groups') await fetchUsersForSelection();
     };
+
     const handleOpenEdit = async (item: any) => {
         setIsEditMode(true); setSelectedItem(item); setFormData(item);
         if (activeTab === 'groups') {
@@ -204,11 +198,13 @@ const SportsScreen = () => {
             try {
                 const res = await apiClient.get(`/sports/groups/${item.id}/members`);
                 setSelectedMemberIds(res.data.map((m: any) => m.id));
-                setSelectedTeacherId(item.coach_id || null);
+                // Ensure coach_id is properly set from the item
+                setSelectedTeacherId(item.coach_id || null); 
             } catch (e) { console.error(e); }
         }
         setFormModalVisible(true);
     };
+
     const handleDelete = (id: number) => {
         Alert.alert("Delete?", "Confirm delete?", [{ text: "Cancel" }, { text: "Delete", onPress: async () => {
             try {
@@ -217,27 +213,31 @@ const SportsScreen = () => {
             } catch (e) { Alert.alert("Error"); }
         }}]);
     };
+
     const handleSubmit = async () => {
         try {
             let ep = activeTab === 'groups' ? '/sports/groups' : activeTab === 'schedule' ? '/sports/schedules' : '/sports/applications';
             let url = isEditMode ? `${ep}/${selectedItem.id}` : ep;
             let method = isEditMode ? 'put' : 'post';
+            
             const pl = { ...formData };
-            if (activeTab === 'groups') { pl.member_ids = selectedMemberIds; if (selectedTeacherId) pl.coach_id = selectedTeacherId; }
+            
+            // Explicitly add member_ids and coach_id for groups
+            if (activeTab === 'groups') { 
+                pl.member_ids = selectedMemberIds; 
+                // Send selectedTeacherId as coach_id
+                pl.coach_id = selectedTeacherId; 
+            }
+            
             await apiClient[method](url, pl);
             setFormModalVisible(false); fetchData();
-        } catch (e) { Alert.alert("Error"); }
+        } catch (e) { Alert.alert("Error", "Operation Failed"); }
     };
 
     const toggleMemberSelection = (studentId: number) => {
         if (selectedMemberIds.includes(studentId)) setSelectedMemberIds(prev => prev.filter(id => id !== studentId));
         else setSelectedMemberIds(prev => [...prev, studentId]);
     };
-
-    // Filter Data for "My Groups"
-    const filteredData = showMyGroupsOnly && activeTab === 'groups' 
-        ? data.filter((item: any) => item.is_member > 0) 
-        : data;
 
     // Filter Students for Picker
     const filteredStudents = useMemo(() => {
@@ -265,7 +265,8 @@ const SportsScreen = () => {
         return map[cat] || 'trophy';
     };
 
-    // --- CARD RENDERERS ---
+    // --- RENDERERS ---
+
     const renderGroupCard = ({ item }: any) => (
         <TouchableOpacity style={styles.card} onPress={() => handleGroupPress(item)} activeOpacity={0.8}>
             <View style={styles.iconBox}><Icon name={getSportIcon(item.category)} size={30} color={COLORS.white} /></View>
@@ -338,18 +339,10 @@ const SportsScreen = () => {
                 ))}
             </View>
 
-            {/* FILTER TOGGLE (Groups) */}
-            {activeTab === 'groups' && (
-                <View style={styles.filterRow}>
-                    <TouchableOpacity style={[styles.filterChip, !showMyGroupsOnly && styles.filterChipActive]} onPress={() => setShowMyGroupsOnly(false)}><Text style={[styles.filterText, !showMyGroupsOnly && styles.filterTextActive]}>All Groups</Text></TouchableOpacity>
-                    <TouchableOpacity style={[styles.filterChip, showMyGroupsOnly && styles.filterChipActive]} onPress={() => setShowMyGroupsOnly(true)}><Text style={[styles.filterText, showMyGroupsOnly && styles.filterTextActive]}>My Groups</Text></TouchableOpacity>
-                </View>
-            )}
-
             {/* LIST */}
             {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={{marginTop:50}}/> : (
                 <FlatList
-                    data={filteredData}
+                    data={data}
                     keyExtractor={(item: any) => item.id.toString()}
                     renderItem={activeTab === 'groups' ? renderGroupCard : activeTab === 'schedule' ? renderScheduleCard : renderApplicationCard}
                     contentContainerStyle={{ padding: 15 }}
@@ -358,7 +351,7 @@ const SportsScreen = () => {
                 />
             )}
 
-            {/* --- GROUP DETAIL MODAL (TABS: INFO, ANNOUNCE, CHAT) --- */}
+            {/* --- GROUP DETAIL MODAL --- */}
             <Modal visible={detailModalVisible} animationType="slide" transparent={false}>
                 <SafeAreaView style={{flex: 1, backgroundColor: COLORS.bg}}>
                     <View style={styles.modalFullHeader}>
@@ -383,8 +376,20 @@ const SportsScreen = () => {
                                 <View style={styles.infoCard}>
                                     <Text style={styles.sectionHeader}>Description</Text>
                                     <Text style={styles.infoText}>{selectedItem?.description || 'No description.'}</Text>
-                                    <Text style={styles.infoText}>Coach: {selectedItem?.coach_name}</Text>
                                 </View>
+
+                                {/* COACH SECTION - UPDATED TO SHOW IN LIST STYLE */}
+                                <Text style={styles.sectionHeader}>Coach</Text>
+                                <View style={[styles.memberItem, {borderLeftWidth: 4, borderLeftColor: COLORS.primary}]}>
+                                    <View style={[styles.avatarPlaceholder, {backgroundColor: COLORS.primary}]}>
+                                        <Text style={styles.avatarText}>{selectedItem?.coach_name ? selectedItem.coach_name.charAt(0) : '?'}</Text>
+                                    </View>
+                                    <View>
+                                        <Text style={styles.memberName}>{selectedItem?.coach_name || 'No Coach Assigned'}</Text>
+                                        <Text style={styles.memberClass}>Teacher / Admin</Text>
+                                    </View>
+                                </View>
+
                                 <Text style={styles.sectionHeader}>Members ({currentGroupMembers.length})</Text>
                                 {currentGroupMembers.map((m: any) => (
                                     <View key={m.id} style={styles.memberItem}>
@@ -434,7 +439,7 @@ const SportsScreen = () => {
                                     data={groupMessages}
                                     keyExtractor={(item: any) => item.id.toString()}
                                     contentContainerStyle={{paddingBottom: 10}}
-                                    onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })} // Auto-scroll to bottom
+                                    onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
                                     renderItem={({item}) => {
                                         const isMe = item.sender_id === user.id;
                                         return (
@@ -463,7 +468,7 @@ const SportsScreen = () => {
                 {datePicker.show && <DateTimePicker value={new Date()} mode={datePicker.mode as any} onChange={onDateChange} />}
             </Modal>
 
-            {/* --- CREATE/EDIT MODAL (Groups/Schedule/Apps) --- */}
+            {/* --- CREATE/EDIT MODAL --- */}
             <Modal visible={formModalVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -475,7 +480,7 @@ const SportsScreen = () => {
                                     <TextInput placeholder="Category (e.g., Football)" style={styles.input} value={formData.category} onChangeText={t => setFormData({...formData, category: t})} />
                                     <TextInput placeholder="Description" style={[styles.input, {height: 60}]} multiline value={formData.description} onChangeText={t => setFormData({...formData, description: t})} />
                                     
-                                    {/* Teacher Selection */}
+                                    {/* Teacher Selection Dropdown */}
                                     <View style={styles.pickerContainer}>
                                         <Text style={styles.label}>Assign Coach (Optional):</Text>
                                         <View style={styles.pickerBox}>
@@ -491,7 +496,6 @@ const SportsScreen = () => {
                                     </TouchableOpacity>
                                 </>
                             )}
-                            {/* Schedule Fields */}
                             {activeTab === 'schedule' && (
                                 <>
                                     <TextInput placeholder="Event Title" style={styles.input} value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
@@ -500,7 +504,6 @@ const SportsScreen = () => {
                                     <TextInput placeholder="Venue" style={styles.input} value={formData.venue} onChangeText={t => setFormData({...formData, venue: t})} />
                                 </>
                             )}
-                            {/* Application Fields */}
                             {activeTab === 'applications' && (
                                 <>
                                     <TextInput placeholder="Title" style={styles.input} value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
@@ -515,9 +518,10 @@ const SportsScreen = () => {
                         </View>
                     </View>
                 </View>
+                {datePicker.show && <DateTimePicker value={new Date()} mode={datePicker.mode as any} onChange={onDateChange} />}
             </Modal>
 
-            {/* --- MEMBER PICKER MODAL (Advanced) --- */}
+            {/* --- MEMBER PICKER MODAL --- */}
             <Modal visible={memberPickerVisible} animationType="slide">
                 <SafeAreaView style={{flex: 1, backgroundColor: COLORS.bg}}>
                     <View style={styles.header}>
@@ -525,7 +529,6 @@ const SportsScreen = () => {
                         <TouchableOpacity onPress={() => setMemberPickerVisible(false)}><Icon name="check" size={28} color={COLORS.primary} /></TouchableOpacity>
                     </View>
                     
-                    {/* Filters */}
                     <View style={styles.filterSection}>
                         <View style={styles.pickerBoxSmall}>
                             <Picker selectedValue={filterClass} onValueChange={setFilterClass} style={styles.picker}>
@@ -574,14 +577,25 @@ const SportsScreen = () => {
                         contentContainerStyle={{ padding: 15 }}
                         renderItem={({ item }: any) => (
                             <View style={styles.applicantRow}>
-                                <View><Text style={styles.applicantName}>{item.full_name}</Text><Text style={styles.applicantClass}>{item.class_group}</Text></View>
+                                <View>
+                                    <Text style={styles.applicantName}>{item.full_name}</Text>
+                                    <Text style={styles.applicantClass}>{item.class_group}</Text>
+                                </View>
                                 <View style={{ flexDirection: 'row' }}>
                                     {item.status === 'Pending' ? (
                                         <>
-                                            <TouchableOpacity onPress={() => handleUpdateStatus(item.id, 'Approved')} style={[styles.actionIcon, { backgroundColor: COLORS.green }]}><Icon name="check" size={18} color="#FFF" /></TouchableOpacity>
-                                            <TouchableOpacity onPress={() => handleUpdateStatus(item.id, 'Rejected')} style={[styles.actionIcon, { backgroundColor: COLORS.primary }]}><Icon name="close" size={18} color="#FFF" /></TouchableOpacity>
+                                            <TouchableOpacity onPress={() => handleUpdateStatus(item.id, 'Approved')} style={[styles.actionIcon, { backgroundColor: COLORS.green }]}>
+                                                <Icon name="check" size={18} color="#FFF" />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity onPress={() => handleUpdateStatus(item.id, 'Rejected')} style={[styles.actionIcon, { backgroundColor: COLORS.primary }]}>
+                                                <Icon name="close" size={18} color="#FFF" />
+                                            </TouchableOpacity>
                                         </>
-                                    ) : <Text style={{ color: item.status === 'Approved' ? COLORS.green : COLORS.primary, fontWeight: 'bold' }}>{item.status}</Text>}
+                                    ) : (
+                                        <Text style={{ color: item.status === 'Approved' ? COLORS.green : COLORS.primary, fontWeight: 'bold' }}>
+                                            {item.status}
+                                        </Text>
+                                    )}
                                 </View>
                             </View>
                         )}
@@ -604,11 +618,6 @@ const styles = StyleSheet.create({
     activeTab: { borderBottomColor: COLORS.primary },
     tabText: { fontWeight: '600', color: COLORS.grey },
     activeTabText: { color: COLORS.primary },
-    filterRow: { flexDirection: 'row', padding: 10, gap: 10 },
-    filterChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: COLORS.lightGrey },
-    filterChipActive: { backgroundColor: COLORS.primary },
-    filterText: { color: COLORS.text, fontSize: 12 },
-    filterTextActive: { color: COLORS.white },
     emptyText: { textAlign: 'center', marginTop: 50, color: COLORS.grey },
     card: { flexDirection: 'row', backgroundColor: '#FFF', marginBottom: 12, borderRadius: 10, overflow: 'hidden', elevation: 2, marginHorizontal: 15 },
     iconBox: { width: 70, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
