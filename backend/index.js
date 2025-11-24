@@ -8105,6 +8105,7 @@ app.get('/api/vouchers/screenshots', [verifyToken, isAdmin], async (req, res) =>
 
 
 
+
 // ==========================================================
 // --- Extracurricular Activities API ROUTE ---
 // ==========================================================
@@ -8347,33 +8348,37 @@ app.delete('/api/sports/applications/:id', [verifyToken, isTeacherOrAdmin], asyn
 
 // Student Apply Route
 app.post('/api/sports/apply', verifyToken, async (req, res) => {
+    // 1. Extract application_id from body (Frontend sends this)
     const { application_id } = req.body;
-    const student_id = req.user.id;
+    
+    // 2. Extract student_id from the verified token
+    const student_id = req.user ? req.user.id : null;
 
-    // Debugging logs to verify data is arriving
+    // Debugging logs
     console.log("Hit /api/sports/apply");
     console.log("Payload:", req.body);
     console.log("User ID:", student_id);
 
+    // 3. Validation
+    if (!student_id) {
+        return res.status(401).json({ message: "Unauthorized: User ID not found." });
+    }
     if (!application_id) {
         return res.status(400).json({ message: "Application ID is required" });
     }
 
     try {
-        // 1. Check if the student has ALREADY applied
-        // Uses table: sports_application_entries
+        // 4. Check if ALREADY applied using the correct table: sports_application_entries
         const [existing] = await db.query(
             "SELECT id FROM sports_application_entries WHERE application_id = ? AND student_id = ?", 
             [application_id, student_id]
         );
 
         if (existing.length > 0) {
-            // Return 400 so the Frontend knows to show the "Already Applied" alert
             return res.status(400).json({ message: "You have already applied." });
         }
 
-        // 2. Insert new entry
-        // Uses table: sports_application_entries
+        // 5. Insert new entry into the correct table: sports_application_entries
         await db.query(
             "INSERT INTO sports_application_entries (application_id, student_id, status) VALUES (?, ?, 'Pending')", 
             [application_id, student_id]
@@ -8383,6 +8388,7 @@ app.post('/api/sports/apply', verifyToken, async (req, res) => {
 
     } catch (e) {
         console.error("Apply Error:", e);
+        // This log will help identify if there are other SQL issues
         res.status(500).json({ message: "Server error while applying." });
     }
 });
