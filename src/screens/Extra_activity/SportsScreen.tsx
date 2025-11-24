@@ -218,18 +218,17 @@ const SportsScreen = () => {
         }
     };
 
-    // *** MODIFIED APPLY HANDLER ***
+    // *** APPLY HANDLER ***
     const handleApply = async (applicationId) => {
         if (!applicationId) return;
 
         setApplyingId(applicationId); 
         try {
-            // We send 'application_id' to match the database column
             const res = await apiClient.post('/sports/apply', { application_id: applicationId });
             
             Alert.alert("Success", res.data.message);
 
-            // Optimistic Update: Immediately disable button and show "Pending"
+            // Optimistic Update
             setData(prevData => prevData.map(item => {
                 if (item.id === applicationId) {
                     return { ...item, my_status: 'Pending' }; 
@@ -238,13 +237,12 @@ const SportsScreen = () => {
             }));
 
         } catch (error) {
-            // Handle backend "Already applied" message specific to the new logic
             if (error.response && error.response.status === 400) {
                 Alert.alert("Notice", error.response.data.message || "You have already applied.");
-                fetchData(); // Refresh to sync status
+                fetchData(); 
             } else {
                 console.error("Apply Error:", error);
-                Alert.alert("Error", "Could not submit application. Please check connection.");
+                Alert.alert("Error", "Could not submit application.");
             }
         } finally {
             setApplyingId(null);
@@ -411,13 +409,9 @@ const SportsScreen = () => {
 
     const renderApplicationCard = ({ item }) => {
         const isExpired = item.deadline ? new Date(item.deadline) < new Date() : false;
-        
-        // my_status comes from backend query: 'Pending', 'Approved', 'Rejected'
         const myStatus = item.my_status;
         const isProcessing = applyingId === item.id;
-
-        // Status Badge Color
-        let statusColor = COLORS.green; // Default (Approved)
+        let statusColor = COLORS.green; 
         if (myStatus === 'Pending') statusColor = COLORS.orange;
         if (myStatus === 'Rejected') statusColor = COLORS.red;
 
@@ -433,7 +427,6 @@ const SportsScreen = () => {
                                 <TouchableOpacity onPress={() => handleDelete(item.id)}><Icon name="trash-can" size={20} color={COLORS.primary} /></TouchableOpacity>
                             </View>
                         ) : (
-                            // IF status exists, show badge top right
                             myStatus && <Text style={[styles.statusBadge, { color: statusColor }]}>{myStatus}</Text>
                         )}
                     </View>
@@ -517,6 +510,18 @@ const SportsScreen = () => {
                                 <View style={styles.infoCard}>
                                     <Text style={styles.sectionHeader}>Description</Text>
                                     <Text style={styles.infoText}>{selectedItem?.description || 'No description.'}</Text>
+                                    
+                                    {/* --- CREATED BY SECTION (UPDATED: ALWAYS SHOWS) --- */}
+                                    <View style={styles.metaBox}>
+                                        <Icon name="account-edit" size={16} color={COLORS.grey} style={{marginRight: 5}}/>
+                                        <Text style={styles.metaText}>
+                                            Group Created By: <Text style={{fontWeight: 'bold', color: COLORS.text}}>
+                                                {selectedItem?.creator_name ? selectedItem.creator_name : 'Admin'}
+                                            </Text>
+                                        </Text>
+                                    </View>
+                                    {/* ------------------------------------------------ */}
+
                                 </View>
                                 <Text style={styles.sectionHeader}>Coach</Text>
                                 <View style={[styles.memberItem, {borderLeftWidth: 4, borderLeftColor: COLORS.primary}]}>
@@ -832,7 +837,19 @@ const styles = StyleSheet.create({
     applicantRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#FFF', marginBottom: 1, borderBottomWidth: 1, borderBottomColor: '#EEE' },
     applicantName: { fontSize: 16, fontWeight: '600', color: COLORS.text },
     applicantClass: { fontSize: 12, color: COLORS.grey },
-    actionIcon: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginLeft: 10 }
+    actionIcon: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
+    metaBox: {
+        marginTop: 15,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#EEE',
+        flexDirection: 'row',
+        alignItems: 'center'
+    },
+    metaText: {
+        fontSize: 12,
+        color: COLORS.grey
+    }
 });
 
 export default SportsScreen;
