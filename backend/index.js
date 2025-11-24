@@ -8277,6 +8277,45 @@ app.post('/api/sports/apply', verifyToken, async (req, res) => {
     try { await db.query("INSERT INTO sports_application_entries (application_id, student_id) VALUES (?, ?)", [req.body.application_id, req.user.id]); res.json({message: "Applied"}); } catch (e) { res.status(500).json({message: "Error"}); }
 });
 
+// 1. HELPER: Get Students & Teachers for Selection
+app.get('/api/users/sports/search', verifyToken, async (req, res) => {
+    try {
+        // Fetch Students with Roll No
+        const [students] = await db.query(`
+            SELECT u.id, u.full_name, u.class_group, up.roll_no 
+            FROM users u 
+            LEFT JOIN user_profiles up ON u.id = up.user_id 
+            WHERE u.role = 'student' 
+            ORDER BY u.class_group, CAST(up.roll_no AS UNSIGNED) ASC
+        `);
+
+        // Fetch Teachers
+        const [teachers] = await db.query(`
+            SELECT u.id, u.full_name 
+            FROM users u 
+            WHERE u.role = 'teacher' 
+            ORDER BY u.full_name ASC
+        `);
+
+        // Get List of unique classes
+        const [classes] = await db.query(`
+            SELECT DISTINCT class_group 
+            FROM users 
+            WHERE role = 'student' AND class_group IS NOT NULL AND class_group != ''
+            ORDER BY class_group
+        `);
+
+        res.json({ 
+            students, 
+            teachers,
+            classes: classes.map(c => c.class_group)
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Error fetching user data" });
+    }
+});
+
 // View Applicants (Admin)
 app.get('/api/sports/applications/:id/entries', [verifyToken, isTeacherOrAdmin], async (req, res) => {
     try { const [r] = await db.query("SELECT sae.*, u.full_name, u.class_group FROM sports_application_entries sae JOIN users u ON sae.student_id = u.id WHERE sae.application_id = ?", [req.params.id]); res.json(r); } catch (e) { res.status(500).json({message: "Error"}); }

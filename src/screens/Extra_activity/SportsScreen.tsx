@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -11,13 +11,15 @@ import {
     ScrollView,
     SafeAreaView,
     ActivityIndicator,
-    RefreshControl
+    RefreshControl,
+    Platform
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 
 // --- COLORS ---
 const COLORS = {
@@ -29,12 +31,13 @@ const COLORS = {
     grey: '#78909C',
     lightGrey: '#ECEFF1',
     green: '#388E3C',
-    border: '#E0E0E0'
+    border: '#E0E0E0',
+    selected: '#E3F2FD'
 };
 
 const SportsScreen = () => {
     const navigation = useNavigation();
-    const { user } = useAuth(); // { role: 'student' | 'teacher' | 'admin', id: ... }
+    const { user } = useAuth(); 
     const isStaff = user?.role === 'admin' || user?.role === 'teacher';
 
     const [activeTab, setActiveTab] = useState('groups');
@@ -49,11 +52,21 @@ const SportsScreen = () => {
     const [applicantsModalVisible, setApplicantsModalVisible] = useState(false);
 
     // --- DATA STATES ---
-    const [selectedItem, setSelectedItem] = useState<any>(null); // For Edit/Details
+    const [selectedItem, setSelectedItem] = useState<any>(null);
     const [isEditMode, setIsEditMode] = useState(false);
-    const [allStudents, setAllStudents] = useState<any[]>([]); // List of all students for picker
-    const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]); // IDs for new group
-    const [currentGroupMembers, setCurrentGroupMembers] = useState<any[]>([]); // List for detail view
+    
+    // Member Selection Data
+    const [allStudents, setAllStudents] = useState<any[]>([]);
+    const [allTeachers, setAllTeachers] = useState<any[]>([]);
+    const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+    
+    // Selection Logic State
+    const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+    const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
+    const [filterClass, setFilterClass] = useState<string>('All');
+    const [searchText, setSearchText] = useState('');
+
+    const [currentGroupMembers, setCurrentGroupMembers] = useState<any[]>([]);
     const [applicantsList, setApplicantsList] = useState([]);
 
     // --- FORM DATA ---
@@ -88,38 +101,43 @@ const SportsScreen = () => {
         fetchData();
     };
 
-    // --- FETCH STUDENTS FOR PICKER ---
-    const fetchAllStudents = async () => {
+    // --- FETCH USERS FOR PICKER ---
+    const fetchUsersForSelection = async () => {
         try {
-            const res = await apiClient.get('/users/students/search');
-            setAllStudents(res.data);
+            const res = await apiClient.get('/users/sports/search');
+            setAllStudents(res.data.students);
+            setAllTeachers(res.data.teachers);
+            setAvailableClasses(['All', ...res.data.classes]);
         } catch (error) {
-            console.error("Error fetching students");
+            console.error("Error fetching users");
         }
     };
 
     // --- CRUD HANDLERS ---
 
-    const handleOpenCreate = () => {
+    const handleOpenCreate = async () => {
         setIsEditMode(false);
         setFormData({});
         setSelectedMemberIds([]);
+        setSelectedTeacherId(user?.role === 'teacher' ? user.id : null); // Default to current user if teacher
         setFormModalVisible(true);
-        if (activeTab === 'groups') fetchAllStudents();
+        if (activeTab === 'groups') await fetchUsersForSelection();
     };
 
     const handleOpenEdit = async (item: any) => {
         setIsEditMode(true);
         setSelectedItem(item);
-        setFormData(item); // Pre-fill
+        setFormData(item);
         
         if (activeTab === 'groups') {
-            await fetchAllStudents();
-            // Fetch existing members for this group to pre-select
+            await fetchUsersForSelection();
             try {
+                // Get existing members
                 const res = await apiClient.get(`/sports/groups/${item.id}/members`);
                 const ids = res.data.map((m: any) => m.id);
                 setSelectedMemberIds(ids);
+                // Set existing coach if any
+                setSelectedTeacherId(item.coach_id || null);
             } catch (e) { console.error(e); }
         }
         setFormModalVisible(true);
@@ -152,6 +170,8 @@ const SportsScreen = () => {
             const payload = { ...formData };
             if (activeTab === 'groups') {
                 payload.member_ids = selectedMemberIds;
+                // If a specific teacher is selected, use their ID, otherwise current user remains owner in backend logic usually
+                if (selectedTeacherId) payload.coach_id = selectedTeacherId; 
             }
 
             await apiClient[method](url, payload);
@@ -163,9 +183,28 @@ const SportsScreen = () => {
         }
     };
 
+    // --- MEMBER SELECTION LOGIC ---
+    
+    // Filter students based on Class and Search Text
+    const filteredStudents = useMemo(() => {
+        return allStudents.filter(student => {
+            const matchesClass = filterClass === 'All' || student.class_group === filterClass;
+            const matchesSearch = student.full_name.toLowerCase().includes(searchText.toLowerCase()) || 
+                                  (student.roll_no && student.roll_no.includes(searchText));
+            return matchesClass && matchesSearch;
+        });
+    }, [allStudents, filterClass, searchText]);
+
+    const toggleMemberSelection = (studentId: number) => {
+        if (selectedMemberIds.includes(studentId)) {
+            setSelectedMemberIds(prev => prev.filter(id => id !== studentId));
+        } else {
+            setSelectedMemberIds(prev => [...prev, studentId]);
+        }
+    };
+
     // --- GROUP DETAIL ACCESS ---
     const handleGroupPress = async (item: any) => {
-        // Logic: If Staff OR if Student is a member
         if (isStaff || item.is_member > 0) {
             setSelectedItem(item);
             try {
@@ -215,13 +254,10 @@ const SportsScreen = () => {
         }
     };
 
-    // --- TOGGLE MEMBER SELECTION ---
-    const toggleMemberSelection = (studentId: number) => {
-        if (selectedMemberIds.includes(studentId)) {
-            setSelectedMemberIds(prev => prev.filter(id => id !== studentId));
-        } else {
-            setSelectedMemberIds(prev => [...prev, studentId]);
-        }
+    // --- HELPER FOR ICONS ---
+    const getSportIcon = (cat: string) => {
+        const map: any = { 'Football': 'soccer', 'Cricket': 'cricket', 'Volleyball': 'volleyball', 'Chess': 'chess-king', 'Swimming': 'swim' };
+        return map[cat] || 'trophy';
     };
 
     // --- RENDERERS ---
@@ -229,7 +265,7 @@ const SportsScreen = () => {
     const renderGroupCard = ({ item }: any) => (
         <TouchableOpacity style={styles.card} onPress={() => handleGroupPress(item)} activeOpacity={0.8}>
             <View style={styles.iconBox}>
-                <Icon name="trophy" size={30} color={COLORS.white} />
+                <Icon name={getSportIcon(item.category)} size={30} color={COLORS.white} />
             </View>
             <View style={styles.cardContent}>
                 <View style={styles.cardHeaderRow}>
@@ -335,7 +371,7 @@ const SportsScreen = () => {
                 ))}
             </View>
 
-            {/* CONTENT */}
+            {/* LIST CONTENT */}
             {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 50 }} /> : (
                 <FlatList
                     data={data}
@@ -358,12 +394,33 @@ const SportsScreen = () => {
                                     <TextInput placeholder="Group Name" style={styles.input} value={formData.name} onChangeText={t => setFormData({...formData, name: t})} />
                                     <TextInput placeholder="Category (e.g., Football)" style={styles.input} value={formData.category} onChangeText={t => setFormData({...formData, category: t})} />
                                     <TextInput placeholder="Description" style={[styles.input, {height: 80}]} multiline value={formData.description} onChangeText={t => setFormData({...formData, description: t})} />
+                                    
+                                    {/* Teacher Picker */}
+                                    <View style={styles.pickerContainer}>
+                                        <Text style={styles.label}>Assign Coach (Optional):</Text>
+                                        <View style={styles.pickerBox}>
+                                            <Picker
+                                                selectedValue={selectedTeacherId}
+                                                onValueChange={(val) => setSelectedTeacherId(val)}
+                                                style={styles.picker}
+                                            >
+                                                <Picker.Item label="-- Select Teacher --" value={null} />
+                                                {allTeachers.map((t: any) => <Picker.Item key={t.id} label={t.full_name} value={t.id} />)}
+                                            </Picker>
+                                        </View>
+                                    </View>
+
+                                    {/* Student Selector Trigger */}
                                     <TouchableOpacity style={styles.memberSelectorBtn} onPress={() => setMemberPickerVisible(true)}>
                                         <Icon name="account-plus" size={20} color={COLORS.primary} />
-                                        <Text style={styles.memberSelectorText}>Select Members ({selectedMemberIds.length})</Text>
+                                        <Text style={styles.memberSelectorText}>
+                                            Select Students ({selectedMemberIds.length} selected)
+                                        </Text>
+                                        <Icon name="chevron-right" size={20} color={COLORS.grey} />
                                     </TouchableOpacity>
                                 </>
                             )}
+                            {/* ... Schedule & Application Form Inputs (Unchanged) ... */}
                             {activeTab === 'schedule' && (
                                 <>
                                     <TextInput placeholder="Event Title" style={styles.input} value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
@@ -377,11 +434,6 @@ const SportsScreen = () => {
                                     <TextInput placeholder="Title" style={styles.input} value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
                                     <TextInput placeholder="Description" style={[styles.input, {height: 80}]} multiline value={formData.description} onChangeText={t => setFormData({...formData, description: t})} />
                                     <TouchableOpacity onPress={() => showDatePicker('deadline', 'date')} style={styles.input}><Text>{formData.deadline || 'Select Deadline'}</Text></TouchableOpacity>
-                                    {isEditMode && (
-                                        <TouchableOpacity onPress={() => setFormData({...formData, status: formData.status === 'Open' ? 'Closed' : 'Open'})} style={styles.input}>
-                                            <Text>Status: {formData.status || 'Open'}</Text>
-                                        </TouchableOpacity>
-                                    )}
                                 </>
                             )}
                         </ScrollView>
@@ -394,26 +446,52 @@ const SportsScreen = () => {
                 {datePicker.show && <DateTimePicker value={new Date()} mode={datePicker.mode as any} onChange={onDateChange} />}
             </Modal>
 
-            {/* --- MEMBER PICKER MODAL --- */}
+            {/* --- ADVANCED MEMBER PICKER MODAL --- */}
             <Modal visible={memberPickerVisible} animationType="slide">
                 <SafeAreaView style={{flex: 1, backgroundColor: COLORS.bg}}>
                     <View style={styles.header}>
                         <Text style={styles.headerTitle}>Select Students</Text>
-                        <TouchableOpacity onPress={() => setMemberPickerVisible(false)}><Icon name="check" size={24} color={COLORS.text} /></TouchableOpacity>
+                        <TouchableOpacity onPress={() => setMemberPickerVisible(false)}><Icon name="check" size={28} color={COLORS.primary} /></TouchableOpacity>
                     </View>
+                    
+                    {/* Filters */}
+                    <View style={styles.filterSection}>
+                        <View style={styles.pickerBoxSmall}>
+                            <Picker selectedValue={filterClass} onValueChange={setFilterClass} style={styles.picker}>
+                                {availableClasses.map(c => <Picker.Item key={c} label={c === 'All' ? 'All Classes' : c} value={c} />)}
+                            </Picker>
+                        </View>
+                        <View style={styles.searchBox}>
+                            <Icon name="magnify" size={20} color={COLORS.grey} />
+                            <TextInput 
+                                placeholder="Search Name or Roll No" 
+                                style={styles.searchInput} 
+                                value={searchText} 
+                                onChangeText={setSearchText} 
+                            />
+                        </View>
+                    </View>
+
+                    {/* List */}
                     <FlatList
-                        data={allStudents}
+                        data={filteredStudents}
                         keyExtractor={(item: any) => item.id.toString()}
                         contentContainerStyle={{padding: 15}}
+                        initialNumToRender={20}
+                        maxToRenderPerBatch={20}
                         renderItem={({item}) => {
                             const isSelected = selectedMemberIds.includes(item.id);
                             return (
                                 <TouchableOpacity style={[styles.memberRow, isSelected && styles.memberRowSelected]} onPress={() => toggleMemberSelection(item.id)}>
-                                    <Text style={[styles.memberName, isSelected && {color: COLORS.primary}]}>{item.full_name} ({item.class_group})</Text>
-                                    {isSelected && <Icon name="check-circle" size={20} color={COLORS.primary} />}
+                                    <View>
+                                        <Text style={[styles.memberName, isSelected && {color: COLORS.primary}]}>{item.full_name}</Text>
+                                        <Text style={styles.memberInfo}>{item.class_group} • Roll: {item.roll_no || 'N/A'}</Text>
+                                    </View>
+                                    {isSelected ? <Icon name="checkbox-marked-circle" size={24} color={COLORS.primary} /> : <Icon name="checkbox-blank-circle-outline" size={24} color={COLORS.grey} />}
                                 </TouchableOpacity>
                             )
                         }}
+                        ListHeaderComponent={<Text style={styles.listHeader}>{selectedMemberIds.length} Students Selected</Text>}
                     />
                 </SafeAreaView>
             </Modal>
@@ -421,20 +499,26 @@ const SportsScreen = () => {
             {/* --- GROUP DETAILS MODAL --- */}
             <Modal visible={detailModalVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, {height: '70%'}]}>
-                        <View style={{flexDirection:'row', justifyContent:'space-between'}}>
+                    <View style={[styles.modalContent, {height: '75%'}]}>
+                        <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom: 10}}>
                             <Text style={styles.modalTitle}>{selectedItem?.name}</Text>
                             <TouchableOpacity onPress={() => setDetailModalVisible(false)}><Icon name="close" size={24} color={COLORS.text} /></TouchableOpacity>
                         </View>
-                        <Text style={{color: COLORS.grey, marginBottom: 10}}>{selectedItem?.description}</Text>
-                        <Text style={styles.sectionHeader}>Members ({currentGroupMembers.length})</Text>
+                        <Text style={{color: COLORS.grey, marginBottom: 5}}>{selectedItem?.category}</Text>
+                        <Text style={{color: COLORS.text, marginBottom: 15}}>{selectedItem?.description}</Text>
+                        
+                        <View style={styles.sectionTitleBox}><Text style={styles.sectionTitleText}>Members ({currentGroupMembers.length})</Text></View>
+                        
                         <FlatList
                             data={currentGroupMembers}
                             keyExtractor={(item: any) => item.id.toString()}
                             renderItem={({item}) => (
                                 <View style={styles.memberItem}>
-                                    <Text style={styles.memberName}>{item.full_name}</Text>
-                                    <Text style={styles.memberClass}>{item.class_group}</Text>
+                                    <View style={styles.avatarPlaceholder}><Text style={styles.avatarText}>{item.full_name.charAt(0)}</Text></View>
+                                    <View>
+                                        <Text style={styles.memberName}>{item.full_name}</Text>
+                                        <Text style={styles.memberClass}>{item.class_group}</Text>
+                                    </View>
                                 </View>
                             )}
                         />
@@ -444,10 +528,12 @@ const SportsScreen = () => {
 
             {/* --- APPLICANTS MODAL --- */}
             <Modal visible={applicantsModalVisible} animationType="slide">
-                <SafeAreaView style={{flex: 1, backgroundColor: COLORS.bg}}>
-                    <View style={styles.header}>
+                <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
+                    <View style={[styles.header, { borderBottomWidth: 1, borderBottomColor: COLORS.border }]}>
                         <Text style={styles.headerTitle}>Applicants</Text>
-                        <TouchableOpacity onPress={() => setApplicantsModalVisible(false)}><Icon name="close" size={24} color={COLORS.text} /></TouchableOpacity>
+                        <TouchableOpacity onPress={() => setApplicantsModalVisible(false)}>
+                            <Icon name="close" size={24} color={COLORS.text} />
+                        </TouchableOpacity>
                     </View>
                     <FlatList 
                         data={applicantsList}
@@ -491,13 +577,17 @@ const styles = StyleSheet.create({
     backBtn: { marginRight: 15 },
     headerTitle: { color: COLORS.text, fontSize: 20, fontWeight: 'bold' },
     addBtn: { padding: 5 },
+    
     tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', elevation: 1, borderBottomWidth: 1, borderBottomColor: COLORS.border },
     tab: { flex: 1, paddingVertical: 15, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
     activeTab: { borderBottomColor: COLORS.primary },
     tabText: { fontWeight: '600', color: COLORS.grey },
     activeTabText: { color: COLORS.primary },
+
     emptyText: { textAlign: 'center', marginTop: 50, color: COLORS.grey },
-    card: { flexDirection: 'row', backgroundColor: '#FFF', marginBottom: 12, borderRadius: 10, overflow: 'hidden', elevation: 2 },
+
+    // Card Styles
+    card: { flexDirection: 'row', backgroundColor: '#FFF', marginBottom: 12, borderRadius: 10, overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
     iconBox: { width: 80, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
     cardContent: { flex: 1, padding: 15 },
     cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 },
@@ -508,11 +598,15 @@ const styles = StyleSheet.create({
     cardDesc: { fontSize: 13, color: '#546E7A', marginBottom: 8 },
     badgeContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.lightGrey, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
     badgeText: { fontSize: 11, marginLeft: 4, color: COLORS.text },
+
+    // Schedule Card
     scheduleCard: { flexDirection: 'row', backgroundColor: '#FFF', marginBottom: 10, borderRadius: 10, padding: 15, elevation: 2 },
     dateBox: { backgroundColor: '#FFEBEE', padding: 10, borderRadius: 8, alignItems: 'center', marginRight: 15, minWidth: 60 },
     dateDay: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary },
     dateMonth: { fontSize: 12, color: COLORS.primary, textTransform: 'uppercase' },
     groupTag: { backgroundColor: '#E3F2FD', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, fontSize: 10, color: COLORS.secondary, marginTop: 5 },
+
+    // Application Styles
     statusLine: { width: 6 },
     actionRow: { marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end' },
     applyBtn: { backgroundColor: COLORS.secondary, paddingVertical: 8, paddingHorizontal: 20, borderRadius: 5 },
@@ -521,6 +615,8 @@ const styles = StyleSheet.create({
     adminBtn: { backgroundColor: COLORS.text, paddingVertical: 8, paddingHorizontal: 15, borderRadius: 5 },
     adminBtnText: { color: '#FFF', fontSize: 12 },
     statusBadge: { fontSize: 12, fontWeight: 'bold' },
+
+    // Modal Styles
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
     modalContent: { backgroundColor: '#FFF', borderRadius: 10, padding: 20, maxHeight: '90%' },
     modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, color: COLORS.text },
@@ -528,19 +624,39 @@ const styles = StyleSheet.create({
     modalBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
     modalBtn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 5 },
     btnTxt: { color: '#FFF', fontWeight: 'bold' },
-    memberSelectorBtn: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#F0F4C3', borderRadius: 5, marginBottom: 15 },
-    memberSelectorText: { marginLeft: 10, color: COLORS.text, fontWeight: '600' },
-    memberRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+    
+    // Picker & Filter Styles
+    pickerContainer: { marginBottom: 15 },
+    label: { fontSize: 14, color: COLORS.grey, marginBottom: 5 },
+    pickerBox: { borderWidth: 1, borderColor: '#DDD', borderRadius: 5 },
+    pickerBoxSmall: { flex: 1, borderWidth: 1, borderColor: '#DDD', borderRadius: 5, height: 45, justifyContent: 'center', marginRight: 10 },
+    picker: { width: '100%', color: '#000' },
+    memberSelectorBtn: { flexDirection: 'row', alignItems: 'center', justifyContent:'space-between', padding: 12, backgroundColor: '#E3F2FD', borderRadius: 5, marginBottom: 15, borderStyle: 'dashed', borderWidth: 1, borderColor: COLORS.secondary },
+    memberSelectorText: { color: COLORS.secondary, fontWeight: '600', flex: 1, marginLeft: 10 },
+    
+    // Member Modal Specifics
+    filterSection: { flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+    searchBox: { flex: 1.5, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#DDD', borderRadius: 5, paddingHorizontal: 10, height: 45 },
+    searchInput: { flex: 1, marginLeft: 5, color: '#000' },
+    memberRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#EEE' },
     memberRowSelected: { backgroundColor: '#E8F5E9' },
-    memberName: { fontSize: 16, color: COLORS.text },
-    memberClass: { fontSize: 14, color: COLORS.grey },
+    memberName: { fontSize: 16, color: COLORS.text, fontWeight: '500' },
+    memberInfo: { fontSize: 12, color: COLORS.grey },
+    listHeader: { padding: 10, fontSize: 14, fontWeight: 'bold', color: COLORS.secondary, backgroundColor: '#E3F2FD' },
+
+    // Group Details
+    sectionTitleBox: { backgroundColor: '#F5F5F5', padding: 8, borderRadius: 4, marginBottom: 10 },
+    sectionTitleText: { fontWeight: 'bold', color: COLORS.text },
+    memberItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
+    avatarPlaceholder: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.secondary, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+    avatarText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+    memberClass: { fontSize: 12, color: COLORS.grey },
+
+    // Applicants List
     applicantRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#FFF', marginBottom: 1, borderBottomWidth: 1, borderBottomColor: '#EEE' },
     applicantName: { fontSize: 16, fontWeight: '600', color: COLORS.text },
     applicantClass: { fontSize: 12, color: COLORS.grey },
-    actionIcon: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
-    sectionHeader: { fontSize: 16, fontWeight: 'bold', marginTop: 10, marginBottom: 5, color: COLORS.text },
-    memberItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-    selectedMemberIds: { useState: [] } // Note: This line in styles is incorrect syntax for JS, but harmless in StyleSheet object. It was likely a copy-paste remnant.
+    actionIcon: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginLeft: 10 }
 });
 
 export default SportsScreen;
