@@ -8123,16 +8123,17 @@ app.get('/api/users/students/search', verifyToken, async (req, res) => {
 
 // --- GROUPS CRUD ---
 
-// GET Groups
+// GET Groups (Updated to fetch creator_name)
 app.get('/api/sports/groups', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
         const query = `
-            SELECT sg.*, u.full_name as coach_name, 
+            SELECT sg.*, u.full_name as coach_name, creator.full_name as creator_name,
             (SELECT COUNT(*) FROM sports_group_members WHERE group_id = sg.id) as member_count,
             (SELECT COUNT(*) FROM sports_group_members WHERE group_id = sg.id AND student_id = ?) as is_member
             FROM sports_groups sg
             LEFT JOIN users u ON sg.coach_id = u.id
+            LEFT JOIN users creator ON sg.created_by = creator.id
             ORDER BY sg.created_at DESC
         `;
         const [groups] = await db.query(query, [userId]);
@@ -8158,18 +8159,17 @@ app.get('/api/sports/groups/:id/members', verifyToken, async (req, res) => {
     }
 });
 
-// POST Create Group
+// POST Create Group (Updated to save created_by)
 app.post('/api/sports/groups', [verifyToken, isTeacherOrAdmin], async (req, res) => {
-    // Added coach_id here
     const { name, category, description, member_ids, coach_id } = req.body;
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
         
-        // Insert with coach_id
+        // Insert with created_by = req.user.id
         const [result] = await connection.query(
-            "INSERT INTO sports_groups (name, category, description, coach_id) VALUES (?, ?, ?, ?)",
-            [name, category, description, coach_id || null] 
+            "INSERT INTO sports_groups (name, category, description, coach_id, created_by) VALUES (?, ?, ?, ?, ?)",
+            [name, category, description, coach_id || null, req.user.id] 
         );
         const groupId = result.insertId;
 

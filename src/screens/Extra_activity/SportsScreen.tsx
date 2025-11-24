@@ -43,22 +43,18 @@ const SportsScreen = () => {
     const { user } = useAuth(); 
     const isStaff = user?.role === 'admin' || user?.role === 'teacher';
 
-    // Main Screen State
     const [activeTab, setActiveTab] = useState('groups');
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
 
-    // --- MODAL STATES ---
     const [formModalVisible, setFormModalVisible] = useState(false);
     const [detailModalVisible, setDetailModalVisible] = useState(false);
     const [memberPickerVisible, setMemberPickerVisible] = useState(false);
     const [applicantsModalVisible, setApplicantsModalVisible] = useState(false);
 
-    // --- GROUP DETAIL SUB-TABS ---
     const [detailTab, setDetailTab] = useState('info');
 
-    // --- DATA STATES ---
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [isEditMode, setIsEditMode] = useState(false);
     
@@ -68,7 +64,6 @@ const SportsScreen = () => {
     
     const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
     const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
-    
     const [filterClass, setFilterClass] = useState<string>('All');
     const [searchText, setSearchText] = useState('');
 
@@ -77,7 +72,6 @@ const SportsScreen = () => {
     const [groupMessages, setGroupMessages] = useState<any[]>([]);
     const [applicantsList, setApplicantsList] = useState([]);
 
-    // --- FORM DATA ---
     const [formData, setFormData] = useState<any>({});
     const [chatInput, setChatInput] = useState('');
     const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '', event_date: '' });
@@ -85,7 +79,6 @@ const SportsScreen = () => {
     
     const chatListRef = useRef<FlatList>(null);
 
-    // --- FETCH MAIN DATA ---
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -108,7 +101,6 @@ const SportsScreen = () => {
 
     const onRefresh = () => { setRefreshing(true); fetchData(); };
 
-    // --- GROUP INTERACTION DATA FETCHERS ---
     const fetchGroupDetails = async (groupId: number) => {
         try {
             const membersRes = await apiClient.get(`/sports/groups/${groupId}/members`);
@@ -124,7 +116,6 @@ const SportsScreen = () => {
         } catch (e) { console.error(e); }
     };
 
-    // --- SEND MESSAGE ---
     const handleSendMessage = async () => {
         if (!chatInput.trim()) return;
         try {
@@ -138,7 +129,6 @@ const SportsScreen = () => {
         } catch (e) { Alert.alert("Error", "Failed to send"); }
     };
 
-    // --- DELETE MESSAGE ---
     const handleDeleteMessage = (msgId: number) => {
         Alert.alert("Delete Message", "Are you sure?", [
             { text: "Cancel", style: "cancel" },
@@ -151,7 +141,6 @@ const SportsScreen = () => {
         ]);
     };
 
-    // --- POST ANNOUNCEMENT ---
     const handlePostAnnouncement = async () => {
         if (!announcementForm.title || !announcementForm.message) return Alert.alert("Error", "Title and Message required");
         try {
@@ -163,7 +152,6 @@ const SportsScreen = () => {
         } catch (e) { Alert.alert("Error", "Failed to post"); }
     };
 
-    // --- UTILS ---
     const fetchUsersForSelection = async () => {
         try {
             const res = await apiClient.get('/users/sports/search');
@@ -184,7 +172,6 @@ const SportsScreen = () => {
         }
     };
 
-    // --- CRUD HANDLERS ---
     const handleOpenCreate = async () => {
         setIsEditMode(false); setFormData({}); setSelectedMemberIds([]); setSelectedTeacherId(user?.role === 'teacher' ? user.id : null);
         setFormModalVisible(true);
@@ -198,8 +185,7 @@ const SportsScreen = () => {
             try {
                 const res = await apiClient.get(`/sports/groups/${item.id}/members`);
                 setSelectedMemberIds(res.data.map((m: any) => m.id));
-                // Ensure coach_id is properly set from the item
-                setSelectedTeacherId(item.coach_id || null); 
+                setSelectedTeacherId(item.coach_id || null);
             } catch (e) { console.error(e); }
         }
         setFormModalVisible(true);
@@ -219,19 +205,11 @@ const SportsScreen = () => {
             let ep = activeTab === 'groups' ? '/sports/groups' : activeTab === 'schedule' ? '/sports/schedules' : '/sports/applications';
             let url = isEditMode ? `${ep}/${selectedItem.id}` : ep;
             let method = isEditMode ? 'put' : 'post';
-            
             const pl = { ...formData };
-            
-            // Explicitly add member_ids and coach_id for groups
-            if (activeTab === 'groups') { 
-                pl.member_ids = selectedMemberIds; 
-                // Send selectedTeacherId as coach_id
-                pl.coach_id = selectedTeacherId; 
-            }
-            
+            if (activeTab === 'groups') { pl.member_ids = selectedMemberIds; if (selectedTeacherId) pl.coach_id = selectedTeacherId; }
             await apiClient[method](url, pl);
             setFormModalVisible(false); fetchData();
-        } catch (e) { Alert.alert("Error", "Operation Failed"); }
+        } catch (e) { Alert.alert("Error"); }
     };
 
     const toggleMemberSelection = (studentId: number) => {
@@ -239,7 +217,6 @@ const SportsScreen = () => {
         else setSelectedMemberIds(prev => [...prev, studentId]);
     };
 
-    // Filter Students for Picker
     const filteredStudents = useMemo(() => {
         return allStudents.filter(student => {
             const matchesClass = filterClass === 'All' || student.class_group === filterClass;
@@ -249,7 +226,6 @@ const SportsScreen = () => {
         });
     }, [allStudents, filterClass, searchText]);
 
-    // Date Picker logic
     const showDatePicker = (field: string, mode: any = 'date') => setDatePicker({ show: true, mode, field });
     const onDateChange = (event: any, selectedDate?: Date) => {
         setDatePicker({ ...datePicker, show: false });
@@ -264,8 +240,6 @@ const SportsScreen = () => {
         const map: any = { 'Football': 'soccer', 'Cricket': 'cricket', 'Volleyball': 'volleyball', 'Chess': 'chess-king', 'Swimming': 'swim' };
         return map[cat] || 'trophy';
     };
-
-    // --- RENDERERS ---
 
     const renderGroupCard = ({ item }: any) => (
         <TouchableOpacity style={styles.card} onPress={() => handleGroupPress(item)} activeOpacity={0.8}>
@@ -321,7 +295,6 @@ const SportsScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* HEADER */}
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}><Icon name="arrow-left" size={26} color={COLORS.text} /></TouchableOpacity>
@@ -330,7 +303,6 @@ const SportsScreen = () => {
                 {isStaff && <TouchableOpacity onPress={handleOpenCreate}><Icon name="plus" size={28} color={COLORS.primary} /></TouchableOpacity>}
             </View>
 
-            {/* TABS */}
             <View style={styles.tabContainer}>
                 {['groups', 'schedule', 'applications'].map(tab => (
                     <TouchableOpacity key={tab} style={[styles.tab, activeTab === tab && styles.activeTab]} onPress={() => setActiveTab(tab)}>
@@ -339,7 +311,6 @@ const SportsScreen = () => {
                 ))}
             </View>
 
-            {/* LIST */}
             {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={{marginTop:50}}/> : (
                 <FlatList
                     data={data}
@@ -370,7 +341,6 @@ const SportsScreen = () => {
                     </View>
 
                     <View style={{flex: 1, padding: 10}}>
-                        {/* INFO TAB */}
                         {detailTab === 'info' && (
                             <ScrollView>
                                 <View style={styles.infoCard}>
@@ -378,7 +348,6 @@ const SportsScreen = () => {
                                     <Text style={styles.infoText}>{selectedItem?.description || 'No description.'}</Text>
                                 </View>
 
-                                {/* COACH SECTION - UPDATED TO SHOW IN LIST STYLE */}
                                 <Text style={styles.sectionHeader}>Coach</Text>
                                 <View style={[styles.memberItem, {borderLeftWidth: 4, borderLeftColor: COLORS.primary}]}>
                                     <View style={[styles.avatarPlaceholder, {backgroundColor: COLORS.primary}]}>
@@ -387,6 +356,18 @@ const SportsScreen = () => {
                                     <View>
                                         <Text style={styles.memberName}>{selectedItem?.coach_name || 'No Coach Assigned'}</Text>
                                         <Text style={styles.memberClass}>Teacher / Admin</Text>
+                                    </View>
+                                </View>
+
+                                {/* --- NEW: CREATED BY SECTION --- */}
+                                <Text style={styles.sectionHeader}>Group Created By</Text>
+                                <View style={[styles.memberItem, {borderLeftWidth: 4, borderLeftColor: COLORS.grey}]}>
+                                    <View style={[styles.avatarPlaceholder, {backgroundColor: COLORS.grey}]}>
+                                        <Text style={styles.avatarText}>{selectedItem?.creator_name ? selectedItem.creator_name.charAt(0) : 'A'}</Text>
+                                    </View>
+                                    <View>
+                                        <Text style={styles.memberName}>{selectedItem?.creator_name || 'Admin'}</Text>
+                                        <Text style={styles.memberClass}>Administrator</Text>
                                     </View>
                                 </View>
 
@@ -400,7 +381,6 @@ const SportsScreen = () => {
                             </ScrollView>
                         )}
 
-                        {/* ANNOUNCEMENTS TAB */}
                         {detailTab === 'announcements' && (
                             <View style={{flex: 1}}>
                                 {isStaff && (
@@ -431,7 +411,6 @@ const SportsScreen = () => {
                             </View>
                         )}
 
-                        {/* CHAT TAB */}
                         {detailTab === 'chat' && (
                             <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === "ios" ? "padding" : undefined}>
                                 <FlatList
@@ -480,7 +459,6 @@ const SportsScreen = () => {
                                     <TextInput placeholder="Category (e.g., Football)" style={styles.input} value={formData.category} onChangeText={t => setFormData({...formData, category: t})} />
                                     <TextInput placeholder="Description" style={[styles.input, {height: 60}]} multiline value={formData.description} onChangeText={t => setFormData({...formData, description: t})} />
                                     
-                                    {/* Teacher Selection Dropdown */}
                                     <View style={styles.pickerContainer}>
                                         <Text style={styles.label}>Assign Coach (Optional):</Text>
                                         <View style={styles.pickerBox}>
@@ -518,10 +496,9 @@ const SportsScreen = () => {
                         </View>
                     </View>
                 </View>
-                {datePicker.show && <DateTimePicker value={new Date()} mode={datePicker.mode as any} onChange={onDateChange} />}
             </Modal>
 
-            {/* --- MEMBER PICKER MODAL --- */}
+            {/* --- MEMBER PICKER --- */}
             <Modal visible={memberPickerVisible} animationType="slide">
                 <SafeAreaView style={{flex: 1, backgroundColor: COLORS.bg}}>
                     <View style={styles.header}>
