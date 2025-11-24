@@ -31,7 +31,9 @@ const COLORS = {
     text: '#263238',
     grey: '#78909C',
     lightGrey: '#ECEFF1',
-    green: '#388E3C',
+    green: '#388E3C', // For Approved
+    orange: '#FF9800', // For Pending
+    red: '#D32F2F',    // For Rejected
     border: '#E0E0E0',
     chatBubbleUser: '#E3F2FD',
     chatBubbleOther: '#FFFFFF',
@@ -43,42 +45,53 @@ const SportsScreen = () => {
     const { user } = useAuth(); 
     const isStaff = user?.role === 'admin' || user?.role === 'teacher';
 
+    // Main Screen State
     const [activeTab, setActiveTab] = useState('groups');
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
 
+    // --- LOADING STATE FOR BUTTON ---
+    const [applyingId, setApplyingId] = useState(null);
+
+    // --- MODAL STATES ---
     const [formModalVisible, setFormModalVisible] = useState(false);
     const [detailModalVisible, setDetailModalVisible] = useState(false);
     const [memberPickerVisible, setMemberPickerVisible] = useState(false);
     const [applicantsModalVisible, setApplicantsModalVisible] = useState(false);
 
-    const [detailTab, setDetailTab] = useState('info');
+    // --- GROUP DETAIL SUB-TABS ---
+    const [detailTab, setDetailTab] = useState('info'); 
 
-    const [selectedItem, setSelectedItem] = useState<any>(null);
+    // --- DATA STATES ---
+    const [selectedItem, setSelectedItem] = useState(null);
     const [isEditMode, setIsEditMode] = useState(false);
     
-    const [allStudents, setAllStudents] = useState<any[]>([]);
-    const [allTeachers, setAllTeachers] = useState<any[]>([]);
-    const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+    const [allStudents, setAllStudents] = useState([]);
+    const [allTeachers, setAllTeachers] = useState([]);
+    const [allGroups, setAllGroups] = useState([]); 
+    const [availableClasses, setAvailableClasses] = useState([]);
     
-    const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
-    const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
-    const [filterClass, setFilterClass] = useState<string>('All');
+    const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+    const [selectedTeacherId, setSelectedTeacherId] = useState(null);
+    const [filterClass, setFilterClass] = useState('All');
     const [searchText, setSearchText] = useState('');
 
-    const [currentGroupMembers, setCurrentGroupMembers] = useState<any[]>([]);
-    const [groupAnnouncements, setGroupAnnouncements] = useState<any[]>([]);
-    const [groupMessages, setGroupMessages] = useState<any[]>([]);
+    const [currentGroupMembers, setCurrentGroupMembers] = useState([]);
+    const [groupAnnouncements, setGroupAnnouncements] = useState([]);
+    const [groupMessages, setGroupMessages] = useState([]);
     const [applicantsList, setApplicantsList] = useState([]);
 
-    const [formData, setFormData] = useState<any>({});
+    // --- FORM DATA ---
+    const [formData, setFormData] = useState({});
     const [chatInput, setChatInput] = useState('');
     const [announcementForm, setAnnouncementForm] = useState({ title: '', message: '', event_date: '' });
-    const [datePicker, setDatePicker] = useState({ show: false, mode: 'date', field: '' });
     
-    const chatListRef = useRef<FlatList>(null);
+    const [datePicker, setDatePicker] = useState({ show: false, mode: 'date', field: '', initialValue: new Date() });
+    
+    const chatListRef = useRef(null);
 
+    // --- FETCH MAIN DATA ---
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -101,7 +114,35 @@ const SportsScreen = () => {
 
     const onRefresh = () => { setRefreshing(true); fetchData(); };
 
-    const fetchGroupDetails = async (groupId: number) => {
+    // --- UTILS ---
+    const fetchUsersForSelection = async () => {
+        try {
+            const res = await apiClient.get('/users/sports/search');
+            setAllStudents(res.data.students);
+            setAllTeachers(res.data.teachers);
+            setAvailableClasses(['All', ...res.data.classes]);
+        } catch (error) { console.error("Error fetching users"); }
+    };
+
+    const fetchAllGroups = async () => {
+        try {
+            const res = await apiClient.get('/sports/groups');
+            setAllGroups(res.data);
+        } catch (error) { console.error("Error fetching groups"); }
+    };
+
+    const handleGroupPress = async (item) => {
+        if (isStaff || item.is_member > 0) {
+            setSelectedItem(item);
+            setDetailTab('info');
+            setDetailModalVisible(true);
+            await fetchGroupDetails(item.id);
+        } else {
+            Alert.alert("Access Denied", "Join the group to view details.");
+        }
+    };
+
+    const fetchGroupDetails = async (groupId) => {
         try {
             const membersRes = await apiClient.get(`/sports/groups/${groupId}/members`);
             setCurrentGroupMembers(membersRes.data);
@@ -129,13 +170,13 @@ const SportsScreen = () => {
         } catch (e) { Alert.alert("Error", "Failed to send"); }
     };
 
-    const handleDeleteMessage = (msgId: number) => {
+    const handleDeleteMessage = (msgId) => {
         Alert.alert("Delete Message", "Are you sure?", [
             { text: "Cancel", style: "cancel" },
             { text: "Delete", style: "destructive", onPress: async () => {
                 try {
                     await apiClient.delete(`/sports/messages/${msgId}`);
-                    setGroupMessages(prev => prev.filter((msg: any) => msg.id !== msgId));
+                    setGroupMessages(prev => prev.filter(msg => msg.id !== msgId));
                 } catch (e) { Alert.alert("Error", "Could not delete message."); }
             }}
         ]);
@@ -152,46 +193,98 @@ const SportsScreen = () => {
         } catch (e) { Alert.alert("Error", "Failed to post"); }
     };
 
-    const fetchUsersForSelection = async () => {
-        try {
-            const res = await apiClient.get('/users/sports/search');
-            setAllStudents(res.data.students);
-            setAllTeachers(res.data.teachers);
-            setAvailableClasses(['All', ...res.data.classes]);
-        } catch (error) { console.error("Error fetching users"); }
-    };
+    // --- APPLICATION HANDLERS ---
 
-    const handleGroupPress = async (item: any) => {
-        if (isStaff || item.is_member > 0) {
-            setSelectedItem(item);
-            setDetailTab('info');
-            setDetailModalVisible(true);
-            await fetchGroupDetails(item.id);
-        } else {
-            Alert.alert("Access Denied", "Join the group to view details.");
+    const handleViewApplicants = async (applicationId) => {
+        try {
+            setLoading(true);
+            const res = await apiClient.get(`/sports/applications/${applicationId}/entries`);
+            setApplicantsList(res.data);
+            setApplicantsModalVisible(true);
+        } catch (error) {
+            Alert.alert("Error", "Failed to fetch applicants");
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleOpenCreate = async () => {
-        setIsEditMode(false); setFormData({}); setSelectedMemberIds([]); setSelectedTeacherId(user?.role === 'teacher' ? user.id : null);
-        setFormModalVisible(true);
-        if (activeTab === 'groups') await fetchUsersForSelection();
+    const handleUpdateStatus = async (entryId, newStatus) => {
+        try {
+            await apiClient.put(`/sports/entries/${entryId}/status`, { status: newStatus });
+            setApplicantsList(prev => prev.map(item => 
+                item.id === entryId ? { ...item, status: newStatus } : item
+            ));
+        } catch (error) {
+            Alert.alert("Error", "Failed to update status");
+        }
     };
 
-    const handleOpenEdit = async (item: any) => {
-        setIsEditMode(true); setSelectedItem(item); setFormData(item);
+    // *** UPDATED: Handle Apply Logic ***
+    const handleApply = async (applicationId) => {
+        setApplyingId(applicationId); 
+        try {
+            await apiClient.post('/sports/apply', { application_id: applicationId });
+            
+            // 1. Show Success Message
+            Alert.alert("Success", "Application Submitted Successfully!");
+
+            // 2. OPTIMISTIC UPDATE: Update local state immediately so button changes
+            // This prevents "Already applied" error because the button becomes text
+            setData(prevData => prevData.map(item => {
+                if (item.id === applicationId) {
+                    return { ...item, my_status: 'Pending' }; 
+                }
+                return item;
+            }));
+
+        } catch (error) {
+            // Check if it's the 400 error from backend
+            if (error.response && error.response.status === 400) {
+                Alert.alert("Notice", "You have already applied for this activity.");
+                // Refresh data to ensure UI matches backend
+                fetchData();
+            } else {
+                Alert.alert("Error", "Could not submit application.");
+            }
+        } finally {
+            setApplyingId(null);
+        }
+    };
+
+    // --- CRUD HANDLERS ---
+    const handleOpenCreate = async () => {
+        setIsEditMode(false); 
+        setFormData({}); 
+        setSelectedMemberIds([]); 
+        setSelectedTeacherId(user?.role === 'teacher' ? user.id : null);
+        
+        if (activeTab === 'groups') await fetchUsersForSelection();
+        if (activeTab === 'schedule') await fetchAllGroups(); 
+        
+        setFormModalVisible(true);
+    };
+
+    const handleOpenEdit = async (item) => {
+        setIsEditMode(true); 
+        setSelectedItem(item); 
+        setFormData(item);
+        
         if (activeTab === 'groups') {
             await fetchUsersForSelection();
             try {
                 const res = await apiClient.get(`/sports/groups/${item.id}/members`);
-                setSelectedMemberIds(res.data.map((m: any) => m.id));
+                setSelectedMemberIds(res.data.map(m => m.id));
                 setSelectedTeacherId(item.coach_id || null);
             } catch (e) { console.error(e); }
         }
+        if (activeTab === 'schedule') {
+             await fetchAllGroups();
+        }
+
         setFormModalVisible(true);
     };
 
-    const handleDelete = (id: number) => {
+    const handleDelete = (id) => {
         Alert.alert("Delete?", "Confirm delete?", [{ text: "Cancel" }, { text: "Delete", onPress: async () => {
             try {
                 let ep = activeTab === 'groups' ? `/sports/groups/${id}` : activeTab === 'schedule' ? `/sports/schedules/${id}` : `/sports/applications/${id}`;
@@ -205,14 +298,30 @@ const SportsScreen = () => {
             let ep = activeTab === 'groups' ? '/sports/groups' : activeTab === 'schedule' ? '/sports/schedules' : '/sports/applications';
             let url = isEditMode ? `${ep}/${selectedItem.id}` : ep;
             let method = isEditMode ? 'put' : 'post';
+            
             const pl = { ...formData };
-            if (activeTab === 'groups') { pl.member_ids = selectedMemberIds; if (selectedTeacherId) pl.coach_id = selectedTeacherId; }
+            
+            if (activeTab === 'groups') { 
+                pl.member_ids = selectedMemberIds; 
+                if (selectedTeacherId) pl.coach_id = selectedTeacherId; 
+            }
+            
+            if (activeTab === 'schedule') {
+                if(!pl.event_date || !pl.event_time) {
+                    return Alert.alert("Error", "Date and Time are required");
+                }
+            }
+
             await apiClient[method](url, pl);
-            setFormModalVisible(false); fetchData();
-        } catch (e) { Alert.alert("Error"); }
+            setFormModalVisible(false); 
+            fetchData();
+        } catch (e) { 
+            console.error(e);
+            Alert.alert("Error", "Operation Failed"); 
+        }
     };
 
-    const toggleMemberSelection = (studentId: number) => {
+    const toggleMemberSelection = (studentId) => {
         if (selectedMemberIds.includes(studentId)) setSelectedMemberIds(prev => prev.filter(id => id !== studentId));
         else setSelectedMemberIds(prev => [...prev, studentId]);
     };
@@ -226,8 +335,19 @@ const SportsScreen = () => {
         });
     }, [allStudents, filterClass, searchText]);
 
-    const showDatePicker = (field: string, mode: any = 'date') => setDatePicker({ show: true, mode, field });
-    const onDateChange = (event: any, selectedDate?: Date) => {
+    const showDatePicker = (field, mode = 'date', currentValue = '') => {
+        let initial = new Date();
+        if (mode === 'time' && currentValue) {
+            const [hours, minutes] = currentValue.split(':');
+            if(hours && minutes) initial.setHours(parseInt(hours), parseInt(minutes), 0);
+        } else if (currentValue && currentValue.includes('-')) {
+            const d = new Date(currentValue);
+            if (!isNaN(d.getTime())) initial = d;
+        }
+        setDatePicker({ show: true, mode, field, initialValue: initial });
+    };
+
+    const onDateChange = (event, selectedDate) => {
         setDatePicker({ ...datePicker, show: false });
         if (selectedDate) {
             let val = datePicker.mode === 'time' ? selectedDate.toTimeString().split(' ')[0] : selectedDate.toISOString().split('T')[0];
@@ -236,12 +356,13 @@ const SportsScreen = () => {
         }
     };
 
-    const getSportIcon = (cat: string) => {
-        const map: any = { 'Football': 'soccer', 'Cricket': 'cricket', 'Volleyball': 'volleyball', 'Chess': 'chess-king', 'Swimming': 'swim' };
+    const getSportIcon = (cat) => {
+        const map = { 'Football': 'soccer', 'Cricket': 'cricket', 'Volleyball': 'volleyball', 'Chess': 'chess-king', 'Swimming': 'swim' };
         return map[cat] || 'trophy';
     };
 
-    const renderGroupCard = ({ item }: any) => (
+    // --- RENDERERS ---
+    const renderGroupCard = ({ item }) => (
         <TouchableOpacity style={styles.card} onPress={() => handleGroupPress(item)} activeOpacity={0.8}>
             <View style={styles.iconBox}><Icon name={getSportIcon(item.category)} size={30} color={COLORS.white} /></View>
             <View style={styles.cardContent}>
@@ -262,30 +383,85 @@ const SportsScreen = () => {
         </TouchableOpacity>
     );
 
-    const renderScheduleCard = ({ item }: any) => (
+    const renderScheduleCard = ({ item }) => (
         <View style={styles.scheduleCard}>
-            <View style={styles.dateBox}><Text style={styles.dateDay}>{new Date(item.event_date).getDate()}</Text><Text style={styles.dateMonth}>{new Date(item.event_date).toLocaleString('default', { month: 'short' })}</Text></View>
-            <View style={styles.cardContent}><View style={styles.cardHeaderRow}><Text style={styles.cardTitle}>{item.title}</Text>{isStaff && <TouchableOpacity onPress={() => handleDelete(item.id)}><Icon name="trash-can" size={20} color={COLORS.primary} /></TouchableOpacity>}</View><Text style={styles.cardSubtitle}>{item.event_time} • {item.venue}</Text></View>
+            <View style={styles.dateBox}>
+                <Text style={styles.dateDay}>{item.event_date ? new Date(item.event_date).getDate() : '--'}</Text>
+                <Text style={styles.dateMonth}>{item.event_date ? new Date(item.event_date).toLocaleString('default', { month: 'short' }) : '--'}</Text>
+            </View>
+            <View style={styles.cardContent}>
+                <View style={styles.cardHeaderRow}>
+                    <Text style={styles.cardTitle}>{item.title}</Text>
+                    {isStaff && (
+                        <View style={styles.actionIcons}>
+                            <TouchableOpacity onPress={() => handleOpenEdit(item)} style={{marginRight: 10}}>
+                                <Icon name="pencil" size={20} color={COLORS.secondary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDelete(item.id)}>
+                                <Icon name="trash-can" size={20} color={COLORS.primary} />
+                            </TouchableOpacity>
+                        </View>
+                    )}
+                </View>
+                <Text style={styles.cardSubtitle}>{(item.event_time ? item.event_time.toString().slice(0,5) : 'N/A')} • {item.group_name || 'General'}</Text>
+                <Text style={styles.cardDesc}><Icon name="map-marker" size={12}/> {item.venue}</Text>
+            </View>
         </View>
     );
 
-    const renderApplicationCard = ({ item }: any) => {
-        const isExpired = new Date(item.deadline) < new Date();
+    // *** UPDATED: Logic to show Success/Failure/Pending ***
+    const renderApplicationCard = ({ item }) => {
+        const isExpired = item.deadline ? new Date(item.deadline) < new Date() : false;
+        
+        // my_status comes from backend: 'Pending', 'Approved', 'Rejected'
+        const myStatus = item.my_status; 
+        
+        const isProcessing = applyingId === item.id;
+
+        // Color Logic for Status
+        let statusColor = COLORS.green; // Default (Approved)
+        if (myStatus === 'Pending') statusColor = COLORS.orange;
+        if (myStatus === 'Rejected') statusColor = COLORS.red;
+
         return (
             <View style={styles.card}>
                 <View style={[styles.statusLine, { backgroundColor: item.status === 'Closed' || isExpired ? COLORS.grey : COLORS.green }]} />
                 <View style={{ padding: 15, width: '100%' }}>
                     <View style={styles.cardHeaderRow}>
                         <Text style={styles.cardTitle}>{item.title}</Text>
-                        {isStaff ? <View style={styles.actionIcons}><TouchableOpacity onPress={() => handleOpenEdit(item)}><Icon name="pencil" size={20} color={COLORS.secondary} style={{marginRight:10}} /></TouchableOpacity><TouchableOpacity onPress={() => handleDelete(item.id)}><Icon name="trash-can" size={20} color={COLORS.primary} /></TouchableOpacity></View> : item.my_status && <Text style={[styles.statusBadge, { color: COLORS.green }]}>{item.my_status}</Text>}
+                        {isStaff ? (
+                            <View style={styles.actionIcons}>
+                                <TouchableOpacity onPress={() => handleOpenEdit(item)}><Icon name="pencil" size={20} color={COLORS.secondary} style={{marginRight:10}} /></TouchableOpacity>
+                                <TouchableOpacity onPress={() => handleDelete(item.id)}><Icon name="trash-can" size={20} color={COLORS.primary} /></TouchableOpacity>
+                            </View>
+                        ) : (
+                            // Show Status Badge if exists
+                            myStatus && <Text style={[styles.statusBadge, { color: statusColor }]}>{myStatus}</Text>
+                        )}
                     </View>
                     <Text style={styles.cardDesc}>{item.description}</Text>
-                    <Text style={styles.cardSubtitle}>Deadline: {new Date(item.deadline).toLocaleDateString()}</Text>
+                    <Text style={styles.cardSubtitle}>Deadline: {item.deadline ? new Date(item.deadline).toLocaleDateString() : 'No Deadline'}</Text>
+                    
                     <View style={styles.actionRow}>
                         {isStaff ? (
-                            <TouchableOpacity style={styles.adminBtn} onPress={() => handleViewApplicants(item.id)}><Text style={styles.adminBtnText}>View Applicants</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.adminBtn} onPress={() => handleViewApplicants(item.id)}>
+                                <Text style={styles.adminBtnText}>View Applicants</Text>
+                            </TouchableOpacity>
                         ) : (
-                            <TouchableOpacity style={[styles.applyBtn, (item.my_status || isExpired) && styles.disabledBtn]} onPress={() => handleApply(item.id)} disabled={!!item.my_status || isExpired}><Text style={styles.applyBtnText}>{item.my_status ? 'Applied' : isExpired ? 'Expired' : 'Apply Now'}</Text></TouchableOpacity>
+                            // IF user has a status (applied) OR expired OR processing -> Disable button
+                            <TouchableOpacity 
+                                style={[styles.applyBtn, (myStatus || isExpired || isProcessing) && styles.disabledBtn]} 
+                                onPress={() => handleApply(item.id)} 
+                                disabled={!!myStatus || isExpired || isProcessing}
+                            >
+                                {isProcessing ? (
+                                    <ActivityIndicator size="small" color="#FFF" />
+                                ) : (
+                                    <Text style={styles.applyBtnText}>
+                                        {myStatus ? (myStatus === 'Approved' ? 'Joined' : 'Applied') : isExpired ? 'Expired' : 'Apply Now'}
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
                         )}
                     </View>
                 </View>
@@ -314,7 +490,7 @@ const SportsScreen = () => {
             {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={{marginTop:50}}/> : (
                 <FlatList
                     data={data}
-                    keyExtractor={(item: any) => item.id.toString()}
+                    keyExtractor={(item) => item.id.toString()}
                     renderItem={activeTab === 'groups' ? renderGroupCard : activeTab === 'schedule' ? renderScheduleCard : renderApplicationCard}
                     contentContainerStyle={{ padding: 15 }}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} tintColor={COLORS.primary} />}
@@ -322,7 +498,7 @@ const SportsScreen = () => {
                 />
             )}
 
-            {/* --- GROUP DETAIL MODAL --- */}
+            {/* --- DETAIL MODAL --- */}
             <Modal visible={detailModalVisible} animationType="slide" transparent={false}>
                 <SafeAreaView style={{flex: 1, backgroundColor: COLORS.bg}}>
                     <View style={styles.modalFullHeader}>
@@ -330,7 +506,6 @@ const SportsScreen = () => {
                         <Text style={styles.modalFullTitle}>{selectedItem?.name}</Text>
                         <View style={{width:24}} />
                     </View>
-
                     <View style={styles.detailTabRow}>
                         {['info', 'announcements', 'chat'].map(t => (
                             <TouchableOpacity key={t} style={[styles.detailTab, detailTab === t && styles.detailTabActive]} onPress={() => setDetailTab(t)}>
@@ -339,7 +514,6 @@ const SportsScreen = () => {
                             </TouchableOpacity>
                         ))}
                     </View>
-
                     <View style={{flex: 1, padding: 10}}>
                         {detailTab === 'info' && (
                             <ScrollView>
@@ -347,32 +521,13 @@ const SportsScreen = () => {
                                     <Text style={styles.sectionHeader}>Description</Text>
                                     <Text style={styles.infoText}>{selectedItem?.description || 'No description.'}</Text>
                                 </View>
-
                                 <Text style={styles.sectionHeader}>Coach</Text>
                                 <View style={[styles.memberItem, {borderLeftWidth: 4, borderLeftColor: COLORS.primary}]}>
-                                    <View style={[styles.avatarPlaceholder, {backgroundColor: COLORS.primary}]}>
-                                        <Text style={styles.avatarText}>{selectedItem?.coach_name ? selectedItem.coach_name.charAt(0) : '?'}</Text>
-                                    </View>
-                                    <View>
-                                        <Text style={styles.memberName}>{selectedItem?.coach_name || 'No Coach Assigned'}</Text>
-                                        <Text style={styles.memberClass}>Teacher / Admin</Text>
-                                    </View>
+                                    <View style={[styles.avatarPlaceholder, {backgroundColor: COLORS.primary}]}><Text style={styles.avatarText}>{selectedItem?.coach_name ? selectedItem.coach_name.charAt(0) : '?'}</Text></View>
+                                    <View><Text style={styles.memberName}>{selectedItem?.coach_name || 'No Coach Assigned'}</Text><Text style={styles.memberClass}>Teacher / Admin</Text></View>
                                 </View>
-
-                                {/* --- NEW: CREATED BY SECTION --- */}
-                                <Text style={styles.sectionHeader}>Group Created By</Text>
-                                <View style={[styles.memberItem, {borderLeftWidth: 4, borderLeftColor: COLORS.grey}]}>
-                                    <View style={[styles.avatarPlaceholder, {backgroundColor: COLORS.grey}]}>
-                                        <Text style={styles.avatarText}>{selectedItem?.creator_name ? selectedItem.creator_name.charAt(0) : 'A'}</Text>
-                                    </View>
-                                    <View>
-                                        <Text style={styles.memberName}>{selectedItem?.creator_name || 'Admin'}</Text>
-                                        <Text style={styles.memberClass}>Administrator</Text>
-                                    </View>
-                                </View>
-
                                 <Text style={styles.sectionHeader}>Members ({currentGroupMembers.length})</Text>
-                                {currentGroupMembers.map((m: any) => (
+                                {currentGroupMembers.map((m) => (
                                     <View key={m.id} style={styles.memberItem}>
                                         <View style={styles.avatarPlaceholder}><Text style={styles.avatarText}>{m.full_name.charAt(0)}</Text></View>
                                         <View><Text style={styles.memberName}>{m.full_name}</Text><Text style={styles.memberClass}>{m.class_group}</Text></View>
@@ -380,7 +535,6 @@ const SportsScreen = () => {
                                 ))}
                             </ScrollView>
                         )}
-
                         {detailTab === 'announcements' && (
                             <View style={{flex: 1}}>
                                 {isStaff && (
@@ -395,43 +549,31 @@ const SportsScreen = () => {
                                 )}
                                 <FlatList
                                     data={groupAnnouncements}
-                                    keyExtractor={(item: any) => item.id.toString()}
+                                    keyExtractor={(item) => item.id.toString()}
                                     renderItem={({item}) => (
                                         <View style={styles.announceCard}>
-                                            <View style={{flexDirection:'row', justifyContent:'space-between'}}>
-                                                <Text style={styles.announceTitle}>{item.title}</Text>
-                                                <Text style={styles.announceDate}>{new Date(item.created_at).toLocaleDateString()}</Text>
-                                            </View>
+                                            <View style={{flexDirection:'row', justifyContent:'space-between'}}><Text style={styles.announceTitle}>{item.title}</Text><Text style={styles.announceDate}>{new Date(item.created_at).toLocaleDateString()}</Text></View>
                                             <Text style={styles.announceMsg}>{item.message}</Text>
                                             {item.event_date && <View style={styles.eventBadge}><Icon name="calendar-clock" size={16} color={COLORS.primary} /><Text style={{color: COLORS.primary, marginLeft:5, fontWeight:'bold'}}>Game: {new Date(item.event_date).toLocaleDateString()}</Text></View>}
-                                            <Text style={styles.announceAuthor}>Posted by: {item.creator_name}</Text>
                                         </View>
                                     )}
                                 />
                             </View>
                         )}
-
                         {detailTab === 'chat' && (
                             <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === "ios" ? "padding" : undefined}>
                                 <FlatList
                                     ref={chatListRef}
                                     data={groupMessages}
-                                    keyExtractor={(item: any) => item.id.toString()}
+                                    keyExtractor={(item) => item.id.toString()}
                                     contentContainerStyle={{paddingBottom: 10}}
                                     onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
                                     renderItem={({item}) => {
                                         const isMe = item.sender_id === user.id;
                                         return (
-                                            <TouchableOpacity 
-                                                onLongPress={() => isMe ? handleDeleteMessage(item.id) : null}
-                                                activeOpacity={isMe ? 0.7 : 1}
-                                                style={[styles.msgRow, isMe ? {alignSelf:'flex-end'} : {alignSelf:'flex-start'}]}
-                                            >
+                                            <TouchableOpacity onLongPress={() => isMe ? handleDeleteMessage(item.id) : null} activeOpacity={isMe ? 0.7 : 1} style={[styles.msgRow, isMe ? {alignSelf:'flex-end'} : {alignSelf:'flex-start'}]}>
                                                 {!isMe && <Text style={styles.msgSender}>{item.sender_name}</Text>}
-                                                <View style={[styles.msgBubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
-                                                    <Text style={[styles.msgText, isMe ? {color: COLORS.text} : {color: COLORS.text}]}>{item.message_text}</Text>
-                                                    <Text style={styles.msgTime}>{new Date(item.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</Text>
-                                                </View>
+                                                <View style={[styles.msgBubble, isMe ? styles.bubbleMe : styles.bubbleOther]}><Text style={styles.msgText}>{item.message_text}</Text><Text style={styles.msgTime}>{new Date(item.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</Text></View>
                                             </TouchableOpacity>
                                         );
                                     }}
@@ -444,7 +586,7 @@ const SportsScreen = () => {
                         )}
                     </View>
                 </SafeAreaView>
-                {datePicker.show && <DateTimePicker value={new Date()} mode={datePicker.mode as any} onChange={onDateChange} />}
+                {datePicker.show && <DateTimePicker value={datePicker.initialValue} mode={datePicker.mode} onChange={onDateChange} is24Hour={true} />}
             </Modal>
 
             {/* --- CREATE/EDIT MODAL --- */}
@@ -458,17 +600,15 @@ const SportsScreen = () => {
                                     <TextInput placeholder="Group Name" style={styles.input} value={formData.name} onChangeText={t => setFormData({...formData, name: t})} />
                                     <TextInput placeholder="Category (e.g., Football)" style={styles.input} value={formData.category} onChangeText={t => setFormData({...formData, category: t})} />
                                     <TextInput placeholder="Description" style={[styles.input, {height: 60}]} multiline value={formData.description} onChangeText={t => setFormData({...formData, description: t})} />
-                                    
                                     <View style={styles.pickerContainer}>
                                         <Text style={styles.label}>Assign Coach (Optional):</Text>
                                         <View style={styles.pickerBox}>
                                             <Picker selectedValue={selectedTeacherId} onValueChange={setSelectedTeacherId} style={styles.picker}>
                                                 <Picker.Item label="-- Select Teacher --" value={null} />
-                                                {allTeachers.map((t: any) => <Picker.Item key={t.id} label={t.full_name} value={t.id} />)}
+                                                {allTeachers.map((t) => <Picker.Item key={t.id} label={t.full_name} value={t.id} />)}
                                             </Picker>
                                         </View>
                                     </View>
-
                                     <TouchableOpacity style={styles.memberSelectorBtn} onPress={() => setMemberPickerVisible(true)}>
                                         <Icon name="account-plus" size={20} color={COLORS.primary} /><Text style={styles.memberSelectorText}>Select Members ({selectedMemberIds.length})</Text><Icon name="chevron-right" size={20} color={COLORS.grey} />
                                     </TouchableOpacity>
@@ -476,9 +616,35 @@ const SportsScreen = () => {
                             )}
                             {activeTab === 'schedule' && (
                                 <>
-                                    <TextInput placeholder="Event Title" style={styles.input} value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
-                                    <TouchableOpacity onPress={() => showDatePicker('event_date', 'date')} style={styles.input}><Text>{formData.event_date || 'Select Date'}</Text></TouchableOpacity>
-                                    <TouchableOpacity onPress={() => showDatePicker('event_time', 'time')} style={styles.input}><Text>{formData.event_time || 'Select Time'}</Text></TouchableOpacity>
+                                    <TextInput placeholder="Event Title (e.g. Cricket Match)" style={styles.input} value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
+                                    <View style={styles.pickerContainer}>
+                                        <Text style={styles.label}>Select Sports Group:</Text>
+                                        <View style={styles.pickerBox}>
+                                            <Picker 
+                                                selectedValue={formData.group_id} 
+                                                onValueChange={(val) => setFormData({...formData, group_id: val})} 
+                                                style={styles.picker}>
+                                                <Picker.Item label="-- General Event --" value={null} />
+                                                {allGroups.map((g) => <Picker.Item key={g.id} label={g.name} value={g.id} />)}
+                                            </Picker>
+                                        </View>
+                                    </View>
+                                    <TouchableOpacity onPress={() => showDatePicker('event_date', 'date', formData.event_date)} style={styles.input}>
+                                        <View style={{flexDirection:'row', alignItems:'center'}}>
+                                            <Icon name="calendar" size={20} color={COLORS.grey} style={{marginRight:10}} />
+                                            <Text style={{color: formData.event_date ? COLORS.text : '#999'}}>
+                                                {formData.event_date || 'Select Date'}
+                                            </Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => showDatePicker('event_time', 'time', formData.event_time)} style={styles.input}>
+                                        <View style={{flexDirection:'row', alignItems:'center'}}>
+                                            <Icon name="clock-outline" size={20} color={COLORS.grey} style={{marginRight:10}} />
+                                            <Text style={{color: formData.event_time ? COLORS.text : '#999'}}>
+                                                {formData.event_time ? formData.event_time.slice(0,5) : 'Select Time'}
+                                            </Text>
+                                        </View>
+                                    </TouchableOpacity>
                                     <TextInput placeholder="Venue" style={styles.input} value={formData.venue} onChangeText={t => setFormData({...formData, venue: t})} />
                                 </>
                             )}
@@ -486,7 +652,9 @@ const SportsScreen = () => {
                                 <>
                                     <TextInput placeholder="Title" style={styles.input} value={formData.title} onChangeText={t => setFormData({...formData, title: t})} />
                                     <TextInput placeholder="Description" style={[styles.input, {height: 80}]} multiline value={formData.description} onChangeText={t => setFormData({...formData, description: t})} />
-                                    <TouchableOpacity onPress={() => showDatePicker('deadline', 'date')} style={styles.input}><Text>{formData.deadline || 'Select Deadline'}</Text></TouchableOpacity>
+                                    <TouchableOpacity onPress={() => showDatePicker('deadline', 'date', formData.deadline)} style={styles.input}>
+                                        <Text style={{color: formData.deadline ? COLORS.text : '#999'}}>{formData.deadline || 'Select Deadline'}</Text>
+                                    </TouchableOpacity>
                                 </>
                             )}
                         </ScrollView>
@@ -496,16 +664,16 @@ const SportsScreen = () => {
                         </View>
                     </View>
                 </View>
+                {datePicker.show && <DateTimePicker value={datePicker.initialValue} mode={datePicker.mode} onChange={onDateChange} is24Hour={true} />}
             </Modal>
 
-            {/* --- MEMBER PICKER --- */}
+            {/* --- MEMBER PICKER MODAL --- */}
             <Modal visible={memberPickerVisible} animationType="slide">
                 <SafeAreaView style={{flex: 1, backgroundColor: COLORS.bg}}>
                     <View style={styles.header}>
                         <Text style={styles.headerTitle}>Select Students</Text>
                         <TouchableOpacity onPress={() => setMemberPickerVisible(false)}><Icon name="check" size={28} color={COLORS.primary} /></TouchableOpacity>
                     </View>
-                    
                     <View style={styles.filterSection}>
                         <View style={styles.pickerBoxSmall}>
                             <Picker selectedValue={filterClass} onValueChange={setFilterClass} style={styles.picker}>
@@ -517,10 +685,9 @@ const SportsScreen = () => {
                             <TextInput placeholder="Search..." style={styles.searchInput} value={searchText} onChangeText={setSearchText} />
                         </View>
                     </View>
-
                     <FlatList
                         data={filteredStudents}
-                        keyExtractor={(item: any) => item.id.toString()}
+                        keyExtractor={(item) => item.id.toString()}
                         contentContainerStyle={{padding: 15}}
                         initialNumToRender={20}
                         maxToRenderPerBatch={20}
@@ -550,29 +717,19 @@ const SportsScreen = () => {
                     </View>
                     <FlatList 
                         data={applicantsList}
-                        keyExtractor={(item: any) => item.id.toString()}
+                        keyExtractor={(item) => item.id.toString()}
                         contentContainerStyle={{ padding: 15 }}
-                        renderItem={({ item }: any) => (
+                        ListEmptyComponent={<Text style={styles.emptyText}>No applicants yet.</Text>}
+                        renderItem={({ item }) => (
                             <View style={styles.applicantRow}>
-                                <View>
-                                    <Text style={styles.applicantName}>{item.full_name}</Text>
-                                    <Text style={styles.applicantClass}>{item.class_group}</Text>
-                                </View>
+                                <View><Text style={styles.applicantName}>{item.full_name}</Text><Text style={styles.applicantClass}>{item.class_group}</Text></View>
                                 <View style={{ flexDirection: 'row' }}>
                                     {item.status === 'Pending' ? (
                                         <>
-                                            <TouchableOpacity onPress={() => handleUpdateStatus(item.id, 'Approved')} style={[styles.actionIcon, { backgroundColor: COLORS.green }]}>
-                                                <Icon name="check" size={18} color="#FFF" />
-                                            </TouchableOpacity>
-                                            <TouchableOpacity onPress={() => handleUpdateStatus(item.id, 'Rejected')} style={[styles.actionIcon, { backgroundColor: COLORS.primary }]}>
-                                                <Icon name="close" size={18} color="#FFF" />
-                                            </TouchableOpacity>
+                                            <TouchableOpacity onPress={() => handleUpdateStatus(item.id, 'Approved')} style={[styles.actionIcon, { backgroundColor: COLORS.green }]}><Icon name="check" size={18} color="#FFF" /></TouchableOpacity>
+                                            <TouchableOpacity onPress={() => handleUpdateStatus(item.id, 'Rejected')} style={[styles.actionIcon, { backgroundColor: COLORS.primary }]}><Icon name="close" size={18} color="#FFF" /></TouchableOpacity>
                                         </>
-                                    ) : (
-                                        <Text style={{ color: item.status === 'Approved' ? COLORS.green : COLORS.primary, fontWeight: 'bold' }}>
-                                            {item.status}
-                                        </Text>
-                                    )}
+                                    ) : <Text style={{ color: item.status === 'Approved' ? COLORS.green : COLORS.primary, fontWeight: 'bold' }}>{item.status}</Text>}
                                 </View>
                             </View>
                         )}
@@ -645,8 +802,8 @@ const styles = StyleSheet.create({
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
     modalContent: { backgroundColor: '#FFF', borderRadius: 10, padding: 20, maxHeight: '90%' },
     modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-    input: { borderWidth: 1, borderColor: '#DDD', borderRadius: 5, padding: 10, marginBottom: 15 },
-    inputSmall: { borderWidth: 1, borderColor: '#DDD', borderRadius: 5, padding: 8, marginBottom: 8 },
+    input: { borderWidth: 1, borderColor: '#DDD', borderRadius: 5, padding: 10, marginBottom: 15, color: COLORS.text },
+    inputSmall: { borderWidth: 1, borderColor: '#DDD', borderRadius: 5, padding: 8, marginBottom: 8, color: COLORS.text },
     modalBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
     modalBtn: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 5 },
     btnTxt: { color: '#FFF', fontWeight: 'bold' },

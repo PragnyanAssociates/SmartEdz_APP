@@ -8231,29 +8231,55 @@ app.delete('/api/sports/groups/:id', [verifyToken, isTeacherOrAdmin], async (req
 
 app.get('/api/sports/schedules', verifyToken, async (req, res) => {
     try {
-        const [rows] = await db.query(`SELECT ss.*, sg.name as group_name FROM sports_schedules ss LEFT JOIN sports_groups sg ON ss.group_id = sg.id ORDER BY ss.event_date ASC`);
+        const [rows] = await db.query(`
+            SELECT ss.*, sg.name as group_name 
+            FROM sports_schedules ss 
+            LEFT JOIN sports_groups sg ON ss.group_id = sg.id 
+            ORDER BY ss.event_date ASC, ss.event_time ASC
+        `);
         res.json(rows);
-    } catch (e) { res.status(500).json({message: "Error"}); }
+    } catch (e) { 
+        res.status(500).json({message: "Error fetching schedules"}); 
+    }
 });
 
 app.post('/api/sports/schedules', [verifyToken, isTeacherOrAdmin], async (req, res) => {
-    const { title, event_date, event_time, venue } = req.body;
+    // 1. Added group_id to request
+    const { group_id, title, event_date, event_time, venue } = req.body;
+    
     try {
-        await db.query("INSERT INTO sports_schedules (title, event_date, event_time, venue, created_by) VALUES (?, ?, ?, ?, ?)", [title, event_date, event_time, venue, req.user.id]);
+        // 2. Added group_id to INSERT query
+        await db.query(
+            "INSERT INTO sports_schedules (group_id, title, event_date, event_time, venue, created_by) VALUES (?, ?, ?, ?, ?, ?)", 
+            [group_id || null, title, event_date, event_time, venue, req.user.id]
+        );
         res.json({message: "Created"});
-    } catch (e) { res.status(500).json({message: "Error"}); }
+    } catch (e) { 
+        console.error("Schedule Create Error:", e); // Log error to console for debugging
+        res.status(500).json({message: "Error creating schedule"}); 
+    }
 });
 
 app.put('/api/sports/schedules/:id', [verifyToken, isTeacherOrAdmin], async (req, res) => {
-    const { title, event_date, event_time, venue } = req.body;
+    const { group_id, title, event_date, event_time, venue } = req.body;
     try {
-        await db.query("UPDATE sports_schedules SET title=?, event_date=?, event_time=?, venue=? WHERE id=?", [title, event_date, event_time, venue, req.params.id]);
+        await db.query(
+            "UPDATE sports_schedules SET group_id=?, title=?, event_date=?, event_time=?, venue=? WHERE id=?", 
+            [group_id || null, title, event_date, event_time, venue, req.params.id]
+        );
         res.json({message: "Updated"});
-    } catch (e) { res.status(500).json({message: "Error"}); }
+    } catch (e) { 
+        res.status(500).json({message: "Error updating schedule"}); 
+    }
 });
 
 app.delete('/api/sports/schedules/:id', [verifyToken, isTeacherOrAdmin], async (req, res) => {
-    try { await db.query("DELETE FROM sports_schedules WHERE id=?", [req.params.id]); res.json({message: "Deleted"}); } catch (e) { res.status(500).json({message: "Error"}); }
+    try { 
+        await db.query("DELETE FROM sports_schedules WHERE id=?", [req.params.id]); 
+        res.json({message: "Deleted"}); 
+    } catch (e) { 
+        res.status(500).json({message: "Error deleting schedule"}); 
+    }
 });
 
 // --- APPLICATIONS CRUD ---
@@ -8280,9 +8306,36 @@ app.delete('/api/sports/applications/:id', [verifyToken, isTeacherOrAdmin], asyn
     try { await db.query("DELETE FROM sports_applications WHERE id=?", [req.params.id]); res.json({message: "Deleted"}); } catch (e) { res.status(500).json({message: "Error"}); }
 });
 
-// Student Apply
+// Student Apply Route
 app.post('/api/sports/apply', verifyToken, async (req, res) => {
-    try { await db.query("INSERT INTO sports_application_entries (application_id, student_id) VALUES (?, ?)", [req.body.application_id, req.user.id]); res.json({message: "Applied"}); } catch (e) { res.status(500).json({message: "Error"}); }
+    const { application_id } = req.body;
+    const student_id = req.user.id;
+
+    try {
+        // 1. Check if the student has ALREADY applied for this specific application
+        const [existing] = await db.query(
+            "SELECT status FROM sports_application_entries WHERE application_id = ? AND student_id = ?", 
+            [application_id, student_id]
+        );
+
+        if (existing.length > 0) {
+            // If entry exists, return 400 Bad Request with specific message
+            // This prevents the "Success" message from showing on a duplicate click
+            return res.status(400).json({ message: "You have already applied for this activity." });
+        }
+
+        // 2. Insert new entry with 'Pending' status
+        await db.query(
+            "INSERT INTO sports_application_entries (application_id, student_id, status) VALUES (?, ?, 'Pending')", 
+            [application_id, student_id]
+        );
+        
+        res.json({ message: "Application submitted successfully" });
+
+    } catch (e) {
+        console.error("Apply Error:", e);
+        res.status(500).json({ message: "Server error while applying." });
+    }
 });
 
 // 1. HELPER: Get Students & Teachers for Selection
