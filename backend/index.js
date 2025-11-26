@@ -8244,18 +8244,21 @@ app.delete('/api/sports/messages/:id', verifyToken, async (req, res) => {
 app.get('/api/dictionary/search', verifyToken, async (req, res) => {
     const { query } = req.query;
 
+    // If query is empty, usually we return empty, but for the "A" default view
+    // we might send 'A' from frontend. So we keep this check generic.
     if (!query) {
         return res.json([]);
     }
 
     try {
-        // Search for words starting with the query
+        // Search for words STARTING with the query
+        // Increased LIMIT to 100 to show more words when selecting a letter
         const sql = `
             SELECT id, word, part_of_speech, definition_en, definition_te 
             FROM dictionary 
             WHERE word LIKE ? 
             ORDER BY word ASC 
-            LIMIT 50
+            LIMIT 100
         `;
         const [results] = await db.query(sql, [`${query}%`]);
         res.status(200).json(results);
@@ -8265,10 +8268,11 @@ app.get('/api/dictionary/search', verifyToken, async (req, res) => {
     }
 });
 
-// 2. Add Word (Restricted to Admin & Teacher)
+// 2. Add Word (Restricted to Admin & Teacher) -> SAME AS BEFORE
 app.post('/api/dictionary/add', verifyToken, isTeacherOrAdmin, async (req, res) => {
+    // ... (Keep your existing Add Word logic here) ...
     const { word, part_of_speech, definition_en, definition_te } = req.body;
-    const added_by = req.user.id; // From the token
+    const added_by = req.user.id; 
 
     if (!word || !part_of_speech || !definition_en || !definition_te) {
         return res.status(400).json({ message: "All fields are required." });
@@ -8278,7 +8282,6 @@ app.post('/api/dictionary/add', verifyToken, isTeacherOrAdmin, async (req, res) 
     try {
         await connection.beginTransaction();
 
-        // Check if word already exists to prevent duplicates
         const [existing] = await connection.query('SELECT id FROM dictionary WHERE word = ?', [word]);
         if (existing.length > 0) {
             connection.release();

@@ -60,6 +60,7 @@ import StaffNavigator from '../screens/StaffNavigator';
 import AccountsScreen from '../screens/Accounts/AccountsScreen';
 
 import ActivitiesScreen from '../screens/Extra_activity/ActivitiesScreen';
+import DictionaryScreen from '../screens/dictionary/DictionaryScreen';
 
 const { width: windowWidth } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -126,6 +127,7 @@ const AdminDashboard = ({ navigation }) => {
     { id: 'qa28', title: 'Extracurricular Activities', imageSource: 'https://cdn-icons-png.flaticon.com/128/12693/12693554.png', navigateToTab: 'ActivitiesScreen' },
     { id: 'qa4', title: 'Gallery', imageSource: 'https://cdn-icons-png.flaticon.com/128/8418/8418513.png', navigateTo: 'Gallery' },
     { id: 'qa6', title: 'Exams', imageSource: 'https://cdn-icons-png.flaticon.com/128/9913/9913475.png', navigateToTab: 'TeacherAdminExamsScreen' },
+    { id: 'qa29', title: 'Dictionary', imageSource: 'https://cdn-icons-png.flaticon.com/128/4033/4033369.png', navigateToTab: 'DictionaryScreen' },
     { id: 'qa7', title: 'PTM', imageSource: 'https://cdn-icons-png.flaticon.com/128/11277/11277118.png', navigateToTab: 'TeacherAdminPTMScreen' },
     { id: 'qa8', title: 'Online class', imageSource: 'https://cdn-icons-png.flaticon.com/128/3214/3214781.png', navigateToTab: 'OnlineClassScreen' },
     { id: 'qa9', title: 'Lunch Menu', imageSource: 'https://cdn-icons-png.flaticon.com/128/561/561611.png', navigateToTab: 'FoodScreen' },
@@ -225,6 +227,7 @@ const AdminDashboard = ({ navigation }) => {
         case 'StaffNavigator': return ( <><ContentScreenHeader title="Staff" onBack={handleBack} /><StaffNavigator /></> );
         case 'AccountsScreen': return ( <><ContentScreenHeader title="Accounts" onBack={handleBack} /><AccountsScreen /></> );
         case 'ActivitiesScreen': return ( <><ContentScreenHeader title="Extracurricular Activities" onBack={handleBack} /><ActivitiesScreen /></> );
+        case 'DictionaryScreen': return ( <><ContentScreenHeader title="Dictionary" onBack={handleBack} /><DictionaryScreen /></> );
 
         default: return ( <View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content for '{activeTab}' is not available.</Text><TouchableOpacity onPress={handleBack}><Text style={styles.fallbackLink}>Go to Home</Text></TouchableOpacity></View> );
       }

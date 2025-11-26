@@ -5,9 +5,10 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import apiClient from '../../api/client';
-import { useAuth } from '../../context/AuthContext'; // Hook to get user role
+import { useAuth } from '../../context/AuthContext';
 
 const PRIMARY_COLOR = '#00897B';
+const ALPHABETS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 interface DictionaryItem {
     id: number;
@@ -20,11 +21,11 @@ interface DictionaryItem {
 const DictionaryScreen = () => {
     const { user } = useAuth();
     const userRole = user?.role || 'student';
-    // Admin or Teacher can add words
     const canAdd = userRole === 'admin' || userRole === 'teacher';
 
-    // Search States
+    // Search & Filter States
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeLetter, setActiveLetter] = useState('A'); // Default to 'A'
     const [results, setResults] = useState<DictionaryItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
@@ -37,13 +38,15 @@ const DictionaryScreen = () => {
     const [newDefTe, setNewDefTe] = useState('');
     const [adding, setAdding] = useState(false);
 
-    // --- SEARCH LOGIC ---
+    // --- INITIAL LOAD (Load 'A') ---
+    useEffect(() => {
+        fetchDefinitions(activeLetter);
+    }, []);
+
+    // --- SEARCH API CALL ---
     const fetchDefinitions = async (query: string) => {
-        if (!query.trim()) {
-            setResults([]);
-            setLoading(false);
-            return;
-        }
+        if (!query.trim()) return;
+        
         setLoading(true);
         try {
             const response = await apiClient.get(`/dictionary/search?query=${query}`);
@@ -55,17 +58,31 @@ const DictionaryScreen = () => {
         }
     };
 
+    // --- HANDLERS ---
+    
+    // 1. Handle Typing in Search Bar
     const handleSearch = (text: string) => {
         setSearchQuery(text);
-        if (typingTimeout) clearTimeout(typingTimeout);
-        if (text.length > 0) {
-            setLoading(true);
-            const newTimeout = setTimeout(() => fetchDefinitions(text), 500);
-            setTypingTimeout(newTimeout);
-        } else {
-            setResults([]);
-            setLoading(false);
+        
+        // If user clears search, revert to active letter
+        if (text.length === 0) {
+            fetchDefinitions(activeLetter);
+            return;
         }
+
+        // Debounce search
+        if (typingTimeout) clearTimeout(typingTimeout);
+        setLoading(true);
+        const newTimeout = setTimeout(() => fetchDefinitions(text), 500);
+        setTypingTimeout(newTimeout);
+    };
+
+    // 2. Handle Letter Press (A, B, C...)
+    const handleLetterPress = (letter: string) => {
+        setActiveLetter(letter);
+        setSearchQuery(''); // Clear manual search text
+        Keyboard.dismiss();
+        fetchDefinitions(letter);
     };
 
     // --- ADD WORD LOGIC ---
@@ -85,12 +102,13 @@ const DictionaryScreen = () => {
             });
             Alert.alert("Success", "Word added successfully!");
             setModalVisible(false);
-            // Reset form
             setNewWord(''); setNewPOS(''); setNewDefEn(''); setNewDefTe('');
-            // If the user was searching for this word, refresh search
-            if (searchQuery) fetchDefinitions(searchQuery);
+            
+            // Refresh list if the new word matches current view
+            if (newWord.toUpperCase().startsWith(activeLetter) || searchQuery) {
+                fetchDefinitions(searchQuery || activeLetter);
+            }
         } catch (error: any) {
-            console.error("Add Word Error:", error);
             Alert.alert("Error", error.response?.data?.message || "Failed to add word.");
         } finally {
             setAdding(false);
@@ -131,7 +149,6 @@ const DictionaryScreen = () => {
                         <Text style={styles.headerSubtitle}>English - English & Telugu</Text>
                     </View>
                     
-                    {/* ADD BUTTON (Only for Admin/Teacher) */}
                     {canAdd && (
                         <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
                             <Icon name="plus" size={24} color="#FFF" />
@@ -152,18 +169,41 @@ const DictionaryScreen = () => {
                         onChangeText={handleSearch}
                     />
                     {searchQuery.length > 0 && (
-                        <TouchableOpacity onPress={() => { setSearchQuery(''); setResults([]); Keyboard.dismiss(); }}>
+                        <TouchableOpacity onPress={() => { 
+                            setSearchQuery(''); 
+                            Keyboard.dismiss(); 
+                            fetchDefinitions(activeLetter); 
+                        }}>
                             <Icon name="close-circle" size={20} color="#757575" />
                         </TouchableOpacity>
                     )}
                 </View>
             </View>
 
+            {/* --- ALPHABET SELECTOR --- */}
+            <View style={styles.alphabetContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 10}}>
+                    {ALPHABETS.map((letter) => {
+                        const isActive = activeLetter === letter && searchQuery === '';
+                        return (
+                            <TouchableOpacity 
+                                key={letter} 
+                                style={[styles.letterButton, isActive && styles.letterButtonActive]}
+                                onPress={() => handleLetterPress(letter)}
+                            >
+                                <Text style={[styles.letterText, isActive && styles.letterTextActive]}>{letter}</Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </ScrollView>
+            </View>
+
+            {/* --- RESULTS LIST --- */}
             <View style={styles.contentContainer}>
                 {loading ? (
                     <View style={styles.centerView}>
                         <ActivityIndicator size="large" color={PRIMARY_COLOR} />
-                        <Text style={styles.loadingText}>Searching...</Text>
+                        <Text style={styles.loadingText}>Loading Dictionary...</Text>
                     </View>
                 ) : (
                     <FlatList
@@ -173,9 +213,9 @@ const DictionaryScreen = () => {
                         contentContainerStyle={styles.listContent}
                         ListEmptyComponent={
                             <View style={styles.centerView}>
-                                <Icon name="book-search-outline" size={60} color="#CFD8DC" />
+                                <Icon name="book-open-page-variant" size={60} color="#CFD8DC" />
                                 <Text style={styles.emptyText}>
-                                    {searchQuery ? "No definitions found." : "Type above to search."}
+                                    No words found for "{searchQuery || activeLetter}"
                                 </Text>
                             </View>
                         }
@@ -236,6 +276,7 @@ const DictionaryScreen = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F5F7FA' },
+    
     header: { backgroundColor: PRIMARY_COLOR, paddingTop: 10, paddingBottom: 35, paddingHorizontal: 20, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
     headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#FFFFFF' },
     headerSubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
@@ -246,6 +287,13 @@ const styles = StyleSheet.create({
     searchContainerWrapper: { marginTop: -25, paddingHorizontal: 20, marginBottom: 10 },
     searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 10, paddingHorizontal: 15, height: 50, elevation: 4 },
     input: { flex: 1, marginLeft: 10, fontSize: 16, color: '#333' },
+
+    // --- ALPHABET BAR STYLES ---
+    alphabetContainer: { backgroundColor: '#FFF', paddingVertical: 10, marginBottom: 5, elevation: 1 },
+    letterButton: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginHorizontal: 4, backgroundColor: '#F0F0F0' },
+    letterButtonActive: { backgroundColor: PRIMARY_COLOR },
+    letterText: { fontSize: 14, fontWeight: '600', color: '#555' },
+    letterTextActive: { color: '#FFF', fontWeight: 'bold' },
 
     contentContainer: { flex: 1 },
     listContent: { paddingHorizontal: 15, paddingBottom: 20, paddingTop: 5 },
@@ -261,7 +309,7 @@ const styles = StyleSheet.create({
     langBadge: { paddingVertical: 2, paddingHorizontal: 6, borderRadius: 4, marginRight: 10, marginTop: 2 },
     langText: { fontSize: 10, fontWeight: 'bold' },
     definitionText: { fontSize: 15, color: '#37474F', flex: 1, lineHeight: 22 },
-    teluguText: { fontSize: 16, color: '#2E7D32' }, // Specific style for Telugu
+    teluguText: { fontSize: 16, color: '#2E7D32' },
 
     centerView: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50 },
     emptyText: { marginTop: 10, color: '#90A4AE', fontSize: 16 },
