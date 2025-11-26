@@ -8236,6 +8236,76 @@ app.delete('/api/sports/messages/:id', verifyToken, async (req, res) => {
 
 
 
+// ==========================================================
+// --- DICTIONARY API ROUTES ---
+// ==========================================================
+
+// 1. Search Dictionary (Open to All Authenticated Users)
+app.get('/api/dictionary/search', verifyToken, async (req, res) => {
+    const { query } = req.query;
+
+    if (!query) {
+        return res.json([]);
+    }
+
+    try {
+        // Search for words starting with the query
+        const sql = `
+            SELECT id, word, part_of_speech, definition_en, definition_te 
+            FROM dictionary 
+            WHERE word LIKE ? 
+            ORDER BY word ASC 
+            LIMIT 50
+        `;
+        const [results] = await db.query(sql, [`${query}%`]);
+        res.status(200).json(results);
+    } catch (error) {
+        console.error("Dictionary Search Error:", error);
+        res.status(500).json({ message: "Error searching dictionary." });
+    }
+});
+
+// 2. Add Word (Restricted to Admin & Teacher)
+app.post('/api/dictionary/add', verifyToken, isTeacherOrAdmin, async (req, res) => {
+    const { word, part_of_speech, definition_en, definition_te } = req.body;
+    const added_by = req.user.id; // From the token
+
+    if (!word || !part_of_speech || !definition_en || !definition_te) {
+        return res.status(400).json({ message: "All fields are required." });
+    }
+
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        // Check if word already exists to prevent duplicates
+        const [existing] = await connection.query('SELECT id FROM dictionary WHERE word = ?', [word]);
+        if (existing.length > 0) {
+            connection.release();
+            return res.status(409).json({ message: `The word "${word}" already exists.` });
+        }
+
+        const sql = `
+            INSERT INTO dictionary (word, part_of_speech, definition_en, definition_te, added_by) 
+            VALUES (?, ?, ?, ?, ?)
+        `;
+        await connection.query(sql, [word, part_of_speech, definition_en, definition_te, added_by]);
+
+        await connection.commit();
+        res.status(201).json({ message: "Word added successfully!" });
+
+    } catch (error) {
+        await connection.rollback();
+        console.error("Dictionary Add Error:", error);
+        res.status(500).json({ message: "Error adding word." });
+    } finally {
+        connection.release();
+    }
+});
+
+
+
+
 // By using "server.listen", you enable both your API routes and the real-time chat.
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server is running on port ${PORT} and is now accessible on your network.`);

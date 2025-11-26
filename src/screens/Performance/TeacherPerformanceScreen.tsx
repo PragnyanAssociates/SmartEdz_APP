@@ -554,7 +554,7 @@ const TeacherPerformanceScreen = () => {
                         {userRole === 'admin' && (
                             <TouchableOpacity style={styles.compareBtn} onPress={() => setIsCompareVisible(true)}>
                                 <Icon name="scale-balance" size={14} color="#fff" />
-                                <Text style={styles.compareBtnText}>COMPARE</Text>
+                                <Text style={styles.compareBtnText}>OVERALL</Text>
                             </TouchableOpacity>
                         )}
                     </View>
@@ -705,7 +705,7 @@ const styles = StyleSheet.create({
     headerContainer: { backgroundColor: '#FFF', padding: 15, paddingBottom: 10, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, elevation: 4, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.1, shadowRadius: 4 },
     headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.primary, letterSpacing: 0.5 },
-    compareBtn: { flexDirection: 'row', backgroundColor: '#D81B60', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 25, alignItems: 'center', elevation: 3 },
+    compareBtn: { flexDirection: 'row', backgroundColor: '#39b56aff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 25, alignItems: 'center', elevation: 3 },
     compareBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 10, marginLeft: 5, letterSpacing: 0.5 },
     filterContainer: { flexDirection: 'row', gap: 12 },
     filterBox: { flex: 1, backgroundColor: '#F0F2F5', borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#E0E0E0', height: 45, justifyContent: 'center' },
