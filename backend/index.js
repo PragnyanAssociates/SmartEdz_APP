@@ -8467,9 +8467,21 @@ app.get('/api/transport/routes/:id', verifyToken, async (req, res) => {
         const [route] = await db.query('SELECT * FROM transport_routes WHERE id = ?', [req.params.id]);
         if (route.length === 0) return res.status(404).json({ message: 'Route not found' });
         
+        // Join driver/conductor info for map card
+        const [details] = await db.query(`
+            SELECT 
+                tr.*, 
+                d.full_name as driver_name,
+                c.full_name as conductor_name
+            FROM transport_routes tr
+            LEFT JOIN users d ON tr.driver_id = d.id
+            LEFT JOIN users c ON tr.conductor_id = c.id
+            WHERE tr.id = ?
+        `, [req.params.id]);
+
         const [stops] = await db.query('SELECT * FROM transport_stops WHERE route_id = ? ORDER BY stop_order ASC', [req.params.id]);
         
-        res.json({ ...route[0], stops });
+        res.json({ ...details[0], stops });
     } catch (e) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -8542,11 +8554,22 @@ app.get('/api/transport/student/my-route', verifyToken, async (req, res) => {
         }
         
         const routeId = pass[0].route_id;
-        // Reuse logic to get route details
-        const [route] = await db.query('SELECT * FROM transport_routes WHERE id = ?', [routeId]);
+        
+        // Get route details
+        const [details] = await db.query(`
+             SELECT 
+                tr.*, 
+                d.full_name as driver_name,
+                c.full_name as conductor_name
+            FROM transport_routes tr
+            LEFT JOIN users d ON tr.driver_id = d.id
+            LEFT JOIN users c ON tr.conductor_id = c.id
+            WHERE tr.id = ?
+        `, [routeId]);
+
         const [stops] = await db.query('SELECT * FROM transport_stops WHERE route_id = ? ORDER BY stop_order ASC', [routeId]);
         
-        res.json({ ...route[0], stops });
+        res.json({ ...details[0], stops });
     } catch (e) {
         res.status(500).json({ message: 'Server error' });
     }
