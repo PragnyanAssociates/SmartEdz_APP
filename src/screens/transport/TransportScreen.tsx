@@ -62,6 +62,13 @@ const transportModules: TransportModule[] = [
         imageSource: 'https://cdn-icons-png.flaticon.com/128/14969/14969652.png',
         navigateTo: 'VehicalDetails', 
     },
+    {
+        id: 'trans7',
+        title: 'Bus Staff Details',
+        // Icon representing Feedback/Alerts
+        imageSource: 'https://cdn-icons-png.flaticon.com/128/2798/2798177.png',
+        navigateTo: 'BusStaffDetails', 
+    },
 ];
 
 // Main Transport Screen Component

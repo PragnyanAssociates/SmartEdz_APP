@@ -136,20 +136,17 @@ const VehicalDetails = () => {
         ]);
     };
 
-    // --- REAL FILE PICKER (Updated) ---
+    // --- REAL FILE PICKER ---
     const pickFiles = async () => {
         try {
             const results = await pick({
                 allowMultiSelection: true,
-                type: [types.images, types.pdf], // Using types from the new library
+                type: [types.images, types.pdf], 
             });
-
-            // Append new selections to existing ones
             setSelectedFiles([...selectedFiles, ...results]);
-            
         } catch (err) {
             if (isCancel(err)) {
-                // User cancelled the picker, ignore
+                // User cancelled
             } else {
                 Alert.alert('Error', 'Unknown Error: ' + JSON.stringify(err));
             }
@@ -219,8 +216,8 @@ const VehicalDetails = () => {
         );
     };
 
-    // 3. VEHICLE CARD
-    const renderVehicleCard = ({ item }: { item: Vehicle }) => {
+    // 3. VEHICLE CARD (UPDATED WITH S.NO)
+    const renderVehicleCard = ({ item, index }: { item: Vehicle, index: number }) => {
         let files: string[] = [];
         if (Array.isArray(item.bus_photos)) files = item.bus_photos;
         else if (typeof item.bus_photos === 'string') {
@@ -230,10 +227,20 @@ const VehicalDetails = () => {
         return (
             <View style={styles.card}>
                 <View style={styles.cardHeader}>
-                    <View>
-                        <Text style={styles.busNo}>{item.bus_number}</Text>
-                        <Text style={styles.busName}>{item.bus_name}</Text>
+                    {/* LEFT SIDE: S.No + Bus Details */}
+                    <View style={styles.headerLeftContent}>
+                        {/* SERIAL NUMBER BADGE */}
+                        <View style={styles.sNoBadge}>
+                            <Text style={styles.sNoText}>{index + 1}</Text>
+                        </View>
+
+                        <View>
+                            <Text style={styles.busNo}>{item.bus_number}</Text>
+                            <Text style={styles.busName}>{item.bus_name}</Text>
+                        </View>
                     </View>
+
+                    {/* RIGHT SIDE: DELETE BUTTON */}
                     <TouchableOpacity onPress={() => handleDeleteVehicle(item.id)}>
                         <Image source={{ uri: TRASH_ICON }} style={styles.trashIcon} />
                     </TouchableOpacity>
@@ -245,9 +252,7 @@ const VehicalDetails = () => {
                         {files.map((fileUrl, index) => {
                             const fullUrl = getFileUrl(fileUrl);
                             if(!fullUrl) return null;
-                            
                             const fileIsPdf = isPdf(fileUrl);
-
                             return (
                                 <TouchableOpacity key={index} onPress={() => openFile(fullUrl)}>
                                     <View style={styles.fileWrapper}>
@@ -291,7 +296,8 @@ const VehicalDetails = () => {
             ) : (
                 <FlatList
                     data={vehicles}
-                    renderItem={renderVehicleCard}
+                    // Pass index explicitly to renderVehicleCard
+                    renderItem={({ item, index }) => renderVehicleCard({ item, index })}
                     keyExtractor={(item) => item.id.toString()}
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
@@ -329,7 +335,6 @@ const VehicalDetails = () => {
                         <View style={styles.imagePickerContainer}>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                                 {selectedFiles.map((file, i) => renderSelectedFilePreview(file, i))}
-                                
                                 <TouchableOpacity style={styles.pickBtn} onPress={pickFiles}>
                                     <Text style={styles.pickBtnText}>+</Text>
                                     <Text style={styles.pickBtnSubText}>Add File</Text>
@@ -381,12 +386,28 @@ const styles = StyleSheet.create({
     // List
     listContent: { padding: 16 },
     card: { backgroundColor: '#FFF', borderRadius: 12, padding: 15, marginBottom: 15, elevation: 3 },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+    
+    // Card Header Layout
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    headerLeftContent: { flexDirection: 'row', alignItems: 'center' },
+    
+    // Serial Number Style
+    sNoBadge: { 
+        backgroundColor: '#E2E8F0', 
+        width: 28, 
+        height: 28, 
+        borderRadius: 14, 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        marginRight: 10 
+    },
+    sNoText: { fontSize: 12, fontWeight: 'bold', color: '#4A5568' },
+
     busNo: { fontSize: 18, fontWeight: 'bold', color: '#2D3748' },
     busName: { fontSize: 14, color: '#718096' },
     trashIcon: { width: 22, height: 22, tintColor: '#E53E3E' },
     
-    // Album in Card
+    // Album
     albumContainer: { marginTop: 10, flexDirection: 'row' },
     fileWrapper: { marginRight: 10, position: 'relative' },
     albumPhoto: { width: 90, height: 90, borderRadius: 8, backgroundColor: '#EDF2F7', borderWidth: 1, borderColor: '#E2E8F0' },
@@ -402,7 +423,6 @@ const styles = StyleSheet.create({
     label: { fontSize: 14, fontWeight: '600', marginBottom: 5, color: '#4A5568' },
     input: { borderWidth: 1, borderColor: '#CBD5E0', borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
     
-    // Picker in Modal
     imagePickerContainer: { flexDirection: 'row', marginBottom: 5, height: 80 },
     previewContainer: { marginRight: 10, position: 'relative' },
     previewImage: { width: 70, height: 70, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
@@ -415,7 +435,6 @@ const styles = StyleSheet.create({
     pickBtnSubText: { fontSize: 10, color: '#3182CE' },
     hintText: { fontSize: 12, color: '#718096', marginBottom: 20 },
     
-    // Modal Buttons
     modalButtons: { flexDirection: 'row', justifyContent: 'space-between' },
     cancelBtn: { padding: 12, flex: 1, alignItems: 'center' },
     cancelText: { color: '#E53E3E', fontWeight: 'bold' },

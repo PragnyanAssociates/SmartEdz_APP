@@ -8259,6 +8259,125 @@ app.delete('/api/transport/vehicles/:id', verifyToken, async (req, res) => {
     }
 });
 
+// ==========================================================
+// --- TRANSPORT STAFF API ROUTES ---
+// ==========================================================
+
+// 1. GET: Fetch All Assigned Staff (ADMIN ONLY)
+app.get('/api/transport/staff', verifyToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Access Denied.' });
+        }
+
+        const query = `
+            SELECT 
+                ts.id, 
+                ts.user_id, 
+                ts.staff_type, 
+                u.full_name, 
+                up.phone, 
+                up.profile_image_url
+            FROM transport_staff ts
+            JOIN users u ON ts.user_id = u.id
+            LEFT JOIN user_profiles up ON u.id = up.user_id
+            ORDER BY ts.staff_type ASC, u.full_name ASC
+        `;
+        const [rows] = await db.query(query);
+        res.json(rows);
+    } catch (error) {
+        console.error("Fetch Staff Error:", error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// 2. GET: Fetch Available 'Others' Users (Who are NOT yet staff) (ADMIN ONLY)
+app.get('/api/transport/staff-available', verifyToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Access Denied.' });
+        }
+
+        const query = `
+            SELECT 
+                u.id, 
+                u.full_name, 
+                up.phone, 
+                up.profile_image_url
+            FROM users u
+            LEFT JOIN user_profiles up ON u.id = up.user_id
+            LEFT JOIN transport_staff ts ON u.id = ts.user_id
+            WHERE u.role = 'others' 
+            AND ts.id IS NULL
+            ORDER BY u.full_name ASC
+        `;
+        const [rows] = await db.query(query);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// 3. POST: Assign Staff (Driver/Conductor) (ADMIN ONLY)
+app.post('/api/transport/staff', verifyToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Access Denied.' });
+        }
+
+        const { user_id, staff_type } = req.body; // staff_type = 'Driver' or 'Conductor'
+
+        if (!user_id || !staff_type) {
+            return res.status(400).json({ message: 'User and Staff Type required.' });
+        }
+
+        await db.query('INSERT INTO transport_staff (user_id, staff_type) VALUES (?, ?)', [user_id, staff_type]);
+        res.json({ message: 'Staff assigned successfully' });
+    } catch (error) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ message: 'User is already assigned.' });
+        }
+        res.status(500).json({ message: 'Failed to assign staff' });
+    }
+});
+
+// 4. DELETE: Remove Staff (ADMIN ONLY)
+app.delete('/api/transport/staff/:id', verifyToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Access Denied.' });
+        }
+        // Deletes from transport_staff table, DOES NOT delete the user
+        await db.query('DELETE FROM transport_staff WHERE id = ?', [req.params.id]);
+        res.json({ message: 'Staff removed successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to remove staff' });
+    }
+});
+
+// 5. GET: Check My Status (For Role = 'others')
+app.get('/api/transport/my-staff-status', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const query = `
+            SELECT ts.staff_type, u.full_name, up.profile_image_url
+            FROM transport_staff ts
+            JOIN users u ON ts.user_id = u.id
+            LEFT JOIN user_profiles up ON u.id = up.user_id
+            WHERE ts.user_id = ?
+        `;
+        const [rows] = await db.query(query, [userId]);
+        
+        if (rows.length > 0) {
+            res.json({ isStaff: true, data: rows[0] });
+        } else {
+            res.json({ isStaff: false, data: null });
+        }
+    } catch (error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 
 
 
