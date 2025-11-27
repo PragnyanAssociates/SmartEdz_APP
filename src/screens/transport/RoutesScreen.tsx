@@ -38,22 +38,24 @@ const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
     const [busBearing, setBusBearing] = useState(0);
     const mapRef = useRef(null);
 
+    // 1. Fetch Route Data
     useEffect(() => {
         const fetchInitialData = async () => {
             try {
+                // Determine API endpoint
                 let url = routeId ? `/transport/routes/${routeId}` : '/transport/student/my-route';
                 const res = await apiClient.get(url);
                 setRouteData(res.data);
 
-                // Set initial bus location from DB
-                if (res.data.current_lat) {
+                // Set initial bus location from DB (if exists)
+                if (res.data.current_lat && res.data.current_lng) {
                     setBusLocation({
                         latitude: parseFloat(res.data.current_lat),
                         longitude: parseFloat(res.data.current_lng),
                     });
                 }
 
-                // Get Blue Road Path
+                // Calculate Blue Road Path (Polyline)
                 if (res.data.stops && res.data.stops.length > 0) {
                     const path = await getRoadPath(res.data.stops);
                     setRoadCoords(path);
@@ -66,35 +68,50 @@ const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
         fetchInitialData();
     }, [routeId]);
 
-    // Socket Listener
+    // 2. Socket Listener (Listen for Driver Updates)
     useEffect(() => {
         if (!routeData) return;
+        
         const rId = routeData.id;
         
+        // Join the specific route room
         socket.emit('join_route', rId);
 
         const handleReceiveLocation = (data) => {
-            // Animate map smoothly
-            if (mapRef.current) {
+            const newLat = parseFloat(data.lat);
+            const newLng = parseFloat(data.lng);
+            const newBearing = parseFloat(data.bearing || 0);
+
+            // Animate map camera smoothly to new location
+            if (mapRef.current && !isNaN(newLat) && !isNaN(newLng)) {
                 mapRef.current.animateCamera({
-                    center: { latitude: parseFloat(data.lat), longitude: parseFloat(data.lng) },
-                    heading: data.bearing || 0,
+                    center: { latitude: newLat, longitude: newLng },
+                    heading: newBearing,
                     pitch: 0,
                     zoom: 17
                 }, { duration: 1000 });
             }
-            setBusLocation({ latitude: parseFloat(data.lat), longitude: parseFloat(data.lng) });
-            setBusBearing(data.bearing || 0);
+
+            setBusLocation({ latitude: newLat, longitude: newLng });
+            setBusBearing(newBearing);
         };
 
         socket.on('receive_location', handleReceiveLocation);
 
+        // Cleanup on unmount
         return () => {
             socket.off('receive_location', handleReceiveLocation);
         };
     }, [routeData]);
 
     if (!routeData) return <ActivityIndicator size="large" color="#008080" style={{marginTop: 50}} />;
+
+    const initialRegion = {
+        latitude: parseFloat(routeData.stops?.[0]?.stop_lat || 17.385),
+        longitude: parseFloat(routeData.stops?.[0]?.stop_lng || 78.486),
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+    };
 
     return (
         <View style={{ flex: 1 }}>
@@ -108,17 +125,14 @@ const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
                 ref={mapRef}
                 style={StyleSheet.absoluteFill}
                 provider={PROVIDER_DEFAULT}
-                initialRegion={{
-                    latitude: parseFloat(routeData.stops?.[0]?.stop_lat || 17.385),
-                    longitude: parseFloat(routeData.stops?.[0]?.stop_lng || 78.486),
-                    latitudeDelta: 0.05,
-                    longitudeDelta: 0.05,
-                }}
+                initialRegion={initialRegion}
             >
+                {/* Draw Route Path */}
                 {roadCoords.length > 0 && (
                     <Polyline coordinates={roadCoords} strokeColor="#3182CE" strokeWidth={4} />
                 )}
 
+                {/* Draw Bus Stops */}
                 {routeData.stops && routeData.stops.map((stop, i) => (
                     <Marker
                         key={i}
@@ -129,13 +143,14 @@ const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
                     </Marker>
                 ))}
 
+                {/* Draw Live Bus */}
                 {busLocation && (
                     <Marker
                         coordinate={busLocation}
                         rotation={busBearing}
-                        anchor={{ x: 0.5, y: 0.5 }}
-                        title="Bus"
-                        flat={true} // Ensures icon rotates flat with map
+                        anchor={{ x: 0.5, y: 0.5 }} // Centers the icon
+                        title="Live Bus"
+                        flat={true} // Ensures icon rotates flat with the map (Android)
                     >
                         <Image source={{ uri: BUS_ICON }} style={{ width: 45, height: 45 }} />
                     </Marker>
@@ -158,6 +173,7 @@ const DriverTracker = () => {
     const [routeInfo, setRouteInfo] = useState(null);
     const watchId = useRef(null);
 
+    // Fetch assigned route on load
     useEffect(() => {
         const fetchRoute = async () => {
             try {
@@ -194,6 +210,7 @@ const DriverTracker = () => {
                 const { latitude, longitude, heading } = position.coords;
                 console.log("📤 Sending Location:", latitude, longitude);
 
+                // Emit location to Socket Server
                 socket.emit('driver_location_update', {
                     routeId: routeInfo.id,
                     lat: latitude,
@@ -207,9 +224,11 @@ const DriverTracker = () => {
             },
             { 
                 enableHighAccuracy: true, 
-                distanceFilter: 10, 
-                interval: 3000, 
-                fastestInterval: 2000 
+                distanceFilter: 10,  // Update every 10 meters
+                interval: 3000,      // Or every 3 seconds
+                fastestInterval: 2000,
+                showLocationDialog: true,
+                forceRequestLocation: true
             }
         );
     };
@@ -255,6 +274,7 @@ const RoutesScreen = () => {
     const [selectedAdminRouteId, setSelectedAdminRouteId] = useState(null);
 
     // ✅ CASE 1: Driver/Conductor (Role: 'others')
+    // 'others' usually implies staff like drivers/conductors
     if (user?.role === 'others') {
         return <DriverTracker />;
     }
@@ -265,16 +285,21 @@ const RoutesScreen = () => {
     }
 
     // ✅ CASE 3: Admin / Teacher
+    // Fetch routes list for selection
     useEffect(() => {
         if (user?.role === 'admin' || user?.role === 'teacher') {
-            apiClient.get('/transport/routes').then(res => setAdminRoutes(res.data)).catch(e => console.log(e));
+            apiClient.get('/transport/routes')
+                .then(res => setAdminRoutes(res.data))
+                .catch(e => console.log(e));
         }
     }, [user]);
 
+    // If Admin clicks a route, show the Live Map for that route
     if (selectedAdminRouteId) {
         return <LiveMapRoute routeId={selectedAdminRouteId} onBack={() => setSelectedAdminRouteId(null)} isAdmin={true} />;
     }
 
+    // Default: Admin/Teacher List View
     return (
         <SafeAreaView style={{flex: 1, padding: 16}}>
             <Text style={styles.header}>Transport Routes</Text>

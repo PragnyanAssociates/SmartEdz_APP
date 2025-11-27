@@ -6,13 +6,12 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const multer = require('multer');
-const jwt = require('jsonwebtoken'); // 👈 ADD THIS LINE
+const jwt = require('jsonwebtoken'); 
 const path = require('path');
 const sharp = require('sharp'); 
-// ... after const path = require('path');
 const crypto = require('crypto');
 const { sendPasswordResetCode } = require('./mailer');
-const fs = require('fs'); // Import the file system module at the top of your file
+const fs = require('fs'); 
 const { Client } = require("@googlemaps/google-maps-services-js");
 const googleMapsClient = new Client({});
 
@@ -8379,36 +8378,50 @@ app.get('/api/transport/my-staff-status', verifyToken, async (req, res) => {
 });
 
 // ==========================================================
-// --- 🚌 TRANSPORT SOCKET LOGIC (Inside io.on) ---
+// --- 🚌 SOCKET.IO LOGIC (FIXED) ---
 // ==========================================================
-socket.on('join_route', (routeId) => {
-    socket.join(`route_${routeId}`);
-    console.log(`📍 Socket ${socket.id} joined tracking for Route #${routeId}`);
-});
+// The transport logic MUST be inside this block to access 'socket'
+io.on('connection', (socket) => {
+    console.log(`⚡ A user connected: ${socket.id}`);
 
-socket.on('driver_location_update', async (data) => {
-    const { routeId, lat, lng, bearing } = data;
-
-    // Broadcast to everyone watching this route
-    io.to(`route_${routeId}`).emit('receive_location', {
-        lat,
-        lng,
-        bearing // Send bearing for icon rotation
+    // --- TRANSPORT LOGIC STARTS HERE ---
+    
+    // 1. Join Route Room (For Students/Admins to listen)
+    socket.on('join_route', (routeId) => {
+        socket.join(`route_${routeId}`);
+        console.log(`📍 Socket ${socket.id} joined tracking for Route #${routeId}`);
     });
 
-    // Save to DB (Ideally, don't await this if high frequency to prevent blocking)
-    try {
-        db.query(
-            'UPDATE transport_routes SET current_lat = ?, current_lng = ? WHERE id = ?', 
-            [lat, lng, routeId]
-        );
-    } catch (err) {
-        console.error("DB Update Error:", err);
-    }
+    // 2. Driver Sends Location (For Drivers to emit)
+    socket.on('driver_location_update', async (data) => {
+        const { routeId, lat, lng, bearing } = data;
+
+        // Broadcast to everyone watching this route
+        io.to(`route_${routeId}`).emit('receive_location', {
+            lat,
+            lng,
+            bearing // Send bearing for icon rotation
+        });
+
+        // Save to DB (Optional: Update last known location)
+        try {
+            await db.query(
+                'UPDATE transport_routes SET current_lat = ?, current_lng = ? WHERE id = ?', 
+                [lat, lng, routeId]
+            );
+        } catch (err) {
+            console.error("DB Update Error:", err);
+        }
+    });
+
+    // Handle Disconnect
+    socket.on('disconnect', () => {
+        console.log(`❌ User disconnected: ${socket.id}`);
+    });
 });
 
 // ==========================================================
-// --- 🚌 API ROUTES ---
+// --- 🚌 TRANSPORT API ROUTES ---
 // ==========================================================
 
 // 1. GET: Fetch All Routes (Admin/Teacher view)
@@ -8428,7 +8441,6 @@ app.get('/api/transport/routes', verifyToken, async (req, res) => {
         `;
         const [routes] = await db.query(query);
 
-        // Fetch stops for each route
         for (let route of routes) {
             const [stops] = await db.query('SELECT * FROM transport_stops WHERE route_id = ? ORDER BY stop_order ASC', [route.id]);
             route.stops = stops;
@@ -8512,7 +8524,7 @@ app.get('/api/transport/routes/:id', verifyToken, async (req, res) => {
     }
 });
 
-// 5. GET: Driver/Conductor View (FIXED JOINS)
+// 5. GET: Driver/Conductor View
 app.get('/api/transport/conductor/students', verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -8530,7 +8542,6 @@ app.get('/api/transport/conductor/students', verifyToken, async (req, res) => {
 
         const [stops] = await db.query('SELECT * FROM transport_stops WHERE route_id = ? ORDER BY stop_order ASC', [routeId]);
 
-        // Changed to LEFT JOIN for user_profiles so users without photos still show up
         const [students] = await db.query(`
             SELECT 
                 tp.id as passenger_id, tp.user_id, tp.stop_id, tp.boarding_status,

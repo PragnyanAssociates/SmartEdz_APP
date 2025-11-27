@@ -13,6 +13,7 @@
     "@flyerhq/react-native-chat-ui": "^1.4.3",
     "@flyerhq/react-native-link-preview": "^1.6.0",
     "@googlemaps/polyline-codec": "^1.0.28",
+    "@mapbox/polyline": "^1.2.1",
     "@maplibre/maplibre-react-native": "^10.2.0",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-camera-roll/camera-roll": "^7.10.2",
