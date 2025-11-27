@@ -91,26 +91,28 @@ const VehicalDetails = () => {
         selectedFiles.forEach((file) => {
             formData.append('files', {
                 uri: file.uri,
-                type: file.type, // Ensure your picker returns 'type' or 'mimeType'
-                name: file.name,
+                type: file.type || 'image/jpeg', // Fallback type if missing
+                name: file.name || `upload_${Date.now()}.jpg`, // Fallback name
             } as any);
         });
 
         setLoading(true);
         try {
             await apiClient.post('/transport/vehicles', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
+                headers: { 
+                    'Content-Type': 'multipart/form-data' 
+                },
             });
             Alert.alert("Success", "Vehicle Added!");
-            // Reset Form
             setShowAddModal(false);
             setBusName('');
             setBusNumber('');
             setSelectedFiles([]);
             fetchVehicles();
-        } catch (error) {
-            console.error("Add Error", error);
-            Alert.alert("Error", "Failed to add vehicle.");
+        } catch (error: any) {
+            console.error("Add Error", error?.response?.data || error);
+            const errMsg = error?.response?.data?.message || "Failed to add vehicle.";
+            Alert.alert("Error", errMsg);
         } finally {
             setLoading(false);
         }
