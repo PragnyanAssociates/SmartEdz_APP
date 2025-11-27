@@ -8181,6 +8181,29 @@ app.get('/api/transport/my-status', verifyToken, async (req, res) => {
 // --- VEHICLE / BUS DETAILS API ROUTES ---
 // ==========================================================
 
+const vehicleStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, '/data/uploads'); // Your uploads folder
+    },
+    filename: (req, file, cb) => {
+        // Keep original extension or detect it
+        const ext = path.extname(file.originalname);
+        cb(null, `vehicle-doc-${Date.now()}${ext}`);
+    }
+});
+
+const vehicleUpload = multer({ 
+    storage: vehicleStorage,
+    fileFilter: (req, file, cb) => {
+        // Accept Images AND PDFs
+        if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only Images and PDFs are allowed.'), false);
+        }
+    }
+});
+
 // 1. GET: Fetch All Vehicles (STRICT: ADMIN ONLY)
 app.get('/api/transport/vehicles', verifyToken, async (req, res) => {
     try {

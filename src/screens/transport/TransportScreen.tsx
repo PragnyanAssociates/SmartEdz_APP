@@ -59,7 +59,7 @@ const transportModules: TransportModule[] = [
         id: 'trans6',
         title: 'Vehical Details',
         // Icon representing Feedback/Alerts
-        imageSource: 'https://cdn-icons-png.flaticon.com/128/2016/2016314.png',
+        imageSource: 'https://cdn-icons-png.flaticon.com/128/14969/14969652.png',
         navigateTo: 'VehicalDetails', 
     },
 ];
