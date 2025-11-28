@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import Geolocation from 'react-native-geolocation-service';
-import io from 'socket.io-client';
+import { io } from 'socket.io-client';
 import { getRoadPath } from '../../utils/routeHelper';
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
@@ -28,8 +28,16 @@ const BUS_ICON = 'https://cdn-icons-png.flaticon.com/128/3448/3448339.png';
 const STOP_ICON = 'https://cdn-icons-png.flaticon.com/128/684/684908.png';
 const BACK_ICON = 'https://cdn-icons-png.flaticon.com/128/271/271220.png';
 
+// --- HELPER: STRICT DATA PARSING ---
+// This function guarantees a valid number or NULL. It never returns NaN.
+const safeFloat = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const num = parseFloat(value);
+    return (isNaN(num) || !isFinite(num)) ? null : num;
+};
+
 // ==========================================================
-// 1. LIVE MAP COMPONENT (Receiver: Student/Admin)
+// 1. LIVE MAP COMPONENT (CRASH PROOF)
 // ==========================================================
 const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
     const [routeData, setRouteData] = useState(null);
@@ -42,23 +50,28 @@ const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
     useEffect(() => {
         const fetchInitialData = async () => {
             try {
-                // Determine API endpoint
                 let url = routeId ? `/transport/routes/${routeId}` : '/transport/student/my-route';
                 const res = await apiClient.get(url);
                 setRouteData(res.data);
 
-                // Set initial bus location from DB (if exists)
-                if (res.data.current_lat && res.data.current_lng) {
-                    setBusLocation({
-                        latitude: parseFloat(res.data.current_lat),
-                        longitude: parseFloat(res.data.current_lng),
-                    });
+                // SAFELY Set initial bus location
+                const lat = safeFloat(res.data.current_lat);
+                const lng = safeFloat(res.data.current_lng);
+
+                if (lat !== null && lng !== null) {
+                    setBusLocation({ latitude: lat, longitude: lng });
                 }
 
                 // Calculate Blue Road Path (Polyline)
                 if (res.data.stops && res.data.stops.length > 0) {
-                    const path = await getRoadPath(res.data.stops);
-                    setRoadCoords(path);
+                    try {
+                        const path = await getRoadPath(res.data.stops);
+                        // Filter out any bad coordinates from the path helper
+                        const validPath = path.filter(p => safeFloat(p.latitude) !== null && safeFloat(p.longitude) !== null);
+                        setRoadCoords(validPath);
+                    } catch (err) {
+                        console.log("Error getting road path", err);
+                    }
                 }
             } catch (e) {
                 console.log("Error loading route data", e);
@@ -68,37 +81,36 @@ const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
         fetchInitialData();
     }, [routeId]);
 
-    // 2. Socket Listener (Listen for Driver Updates)
+    // 2. Socket Listener
     useEffect(() => {
         if (!routeData) return;
         
         const rId = routeData.id;
-        
-        // Join the specific route room
         socket.emit('join_route', rId);
 
         const handleReceiveLocation = (data) => {
-            const newLat = parseFloat(data.lat);
-            const newLng = parseFloat(data.lng);
-            const newBearing = parseFloat(data.bearing || 0);
+            const newLat = safeFloat(data.lat);
+            const newLng = safeFloat(data.lng);
+            const newBearing = safeFloat(data.bearing) || 0;
 
-            // Animate map camera smoothly to new location
-            if (mapRef.current && !isNaN(newLat) && !isNaN(newLng)) {
-                mapRef.current.animateCamera({
-                    center: { latitude: newLat, longitude: newLng },
-                    heading: newBearing,
-                    pitch: 0,
-                    zoom: 17
-                }, { duration: 1000 });
+            // STRICT CHECK: Only update if coordinates are valid numbers
+            if (newLat !== null && newLng !== null) {
+                if (mapRef.current) {
+                    mapRef.current.animateCamera({
+                        center: { latitude: newLat, longitude: newLng },
+                        heading: newBearing,
+                        pitch: 0,
+                        zoom: 17
+                    }, { duration: 1000 });
+                }
+
+                setBusLocation({ latitude: newLat, longitude: newLng });
+                setBusBearing(newBearing);
             }
-
-            setBusLocation({ latitude: newLat, longitude: newLng });
-            setBusBearing(newBearing);
         };
 
         socket.on('receive_location', handleReceiveLocation);
 
-        // Cleanup on unmount
         return () => {
             socket.off('receive_location', handleReceiveLocation);
         };
@@ -106,9 +118,14 @@ const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
 
     if (!routeData) return <ActivityIndicator size="large" color="#008080" style={{marginTop: 50}} />;
 
+    // Calculate initial region safely
+    const firstStopLat = safeFloat(routeData.stops?.[0]?.stop_lat);
+    const firstStopLng = safeFloat(routeData.stops?.[0]?.stop_lng);
+    
+    // Fallback to Hyderabad default if stop data is bad
     const initialRegion = {
-        latitude: parseFloat(routeData.stops?.[0]?.stop_lat || 17.385),
-        longitude: parseFloat(routeData.stops?.[0]?.stop_lng || 78.486),
+        latitude: firstStopLat !== null ? firstStopLat : 17.3850,
+        longitude: firstStopLng !== null ? firstStopLng : 78.4867,
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
     };
@@ -127,30 +144,37 @@ const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
                 provider={PROVIDER_DEFAULT}
                 initialRegion={initialRegion}
             >
-                {/* Draw Route Path */}
+                {/* 1. Draw Route Path - Only if coords are valid */}
                 {roadCoords.length > 0 && (
                     <Polyline coordinates={roadCoords} strokeColor="#3182CE" strokeWidth={4} />
                 )}
 
-                {/* Draw Bus Stops */}
-                {routeData.stops && routeData.stops.map((stop, i) => (
-                    <Marker
-                        key={i}
-                        coordinate={{ latitude: parseFloat(stop.stop_lat), longitude: parseFloat(stop.stop_lng) }}
-                        title={stop.stop_name}
-                    >
-                        <Image source={{ uri: STOP_ICON }} style={{ width: 30, height: 30 }} />
-                    </Marker>
-                ))}
+                {/* 2. Draw Bus Stops - Filter inside map to prevent crash */}
+                {routeData.stops && routeData.stops.map((stop, i) => {
+                    const lat = safeFloat(stop.stop_lat);
+                    const lng = safeFloat(stop.stop_lng);
+                    
+                    if (lat === null || lng === null) return null; // Skip invalid stops to prevent crash
 
-                {/* Draw Live Bus */}
-                {busLocation && (
+                    return (
+                        <Marker
+                            key={i}
+                            coordinate={{ latitude: lat, longitude: lng }}
+                            title={stop.stop_name}
+                        >
+                            <Image source={{ uri: STOP_ICON }} style={{ width: 30, height: 30 }} />
+                        </Marker>
+                    )
+                })}
+
+                {/* 3. Draw Live Bus - Only if location is valid */}
+                {busLocation && busLocation.latitude !== null && busLocation.longitude !== null && (
                     <Marker
                         coordinate={busLocation}
                         rotation={busBearing}
-                        anchor={{ x: 0.5, y: 0.5 }} // Centers the icon
+                        anchor={{ x: 0.5, y: 0.5 }}
                         title="Live Bus"
-                        flat={true} // Ensures icon rotates flat with the map (Android)
+                        flat={true}
                     >
                         <Image source={{ uri: BUS_ICON }} style={{ width: 45, height: 45 }} />
                     </Marker>
@@ -274,7 +298,6 @@ const RoutesScreen = () => {
     const [selectedAdminRouteId, setSelectedAdminRouteId] = useState(null);
 
     // ✅ CASE 1: Driver/Conductor (Role: 'others')
-    // 'others' usually implies staff like drivers/conductors
     if (user?.role === 'others') {
         return <DriverTracker />;
     }

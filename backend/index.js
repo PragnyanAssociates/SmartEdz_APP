@@ -8378,23 +8378,23 @@ app.get('/api/transport/my-staff-status', verifyToken, async (req, res) => {
 });
 
 // ==========================================================
-// --- 🚌 SOCKET.IO LOGIC (FIXED) ---
+// --- 🚌 SOCKET.IO LOGIC (SAFE VERSION) ---
 // ==========================================================
-// The transport logic MUST be inside this block to access 'socket'
 io.on('connection', (socket) => {
     console.log(`⚡ A user connected: ${socket.id}`);
 
-    // --- TRANSPORT LOGIC STARTS HERE ---
-    
-    // 1. Join Route Room (For Students/Admins to listen)
+    // 1. Join Route Room
     socket.on('join_route', (routeId) => {
         socket.join(`route_${routeId}`);
         console.log(`📍 Socket ${socket.id} joined tracking for Route #${routeId}`);
     });
 
-    // 2. Driver Sends Location (For Drivers to emit)
+    // 2. Driver Sends Location
     socket.on('driver_location_update', async (data) => {
         const { routeId, lat, lng, bearing } = data;
+
+        // SAFETY CHECK: Do not broadcast if data is invalid
+        if (!routeId || lat === null || lng === null) return;
 
         // Broadcast to everyone watching this route
         io.to(`route_${routeId}`).emit('receive_location', {
@@ -8403,7 +8403,7 @@ io.on('connection', (socket) => {
             bearing // Send bearing for icon rotation
         });
 
-        // Save to DB (Optional: Update last known location)
+        // Save to DB
         try {
             await db.query(
                 'UPDATE transport_routes SET current_lat = ?, current_lng = ? WHERE id = ?', 
