@@ -8679,6 +8679,82 @@ app.delete('/api/proofs/folders/:id', verifyToken, isAdmin, async (req, res) => 
     }
 });
 
+// ==========================================================
+// --- 📢 COMPLAINTS MODULE ---
+// ==========================================================
+
+// 1. POST: Create a Complaint (Students & Others ONLY)
+app.post('/api/complaints', verifyToken, async (req, res) => {
+    const { subject, description } = req.body;
+    const { id, role } = req.user;
+
+    // Strict Restriction: Teachers cannot raise complaints
+    if (role === 'teacher') {
+        return res.status(403).json({ message: 'Teachers are not allowed to raise complaints.' });
+    }
+
+    if (!subject || !description) {
+        return res.status(400).json({ message: 'Subject and description are required.' });
+    }
+
+    try {
+        await db.query(
+            'INSERT INTO complaints (user_id, subject, description) VALUES (?, ?, ?)',
+            [id, subject, description]
+        );
+        res.json({ message: 'Complaint submitted successfully.' });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Failed to submit complaint.' });
+    }
+});
+
+// 2. GET: Fetch Complaints (Dynamic based on Role)
+app.get('/api/complaints', verifyToken, async (req, res) => {
+    const { id, role } = req.user;
+
+    if (role === 'teacher') {
+        return res.status(403).json({ message: 'Access Denied' });
+    }
+
+    try {
+        let query;
+        let params = [];
+
+        if (role === 'admin') {
+            // Admin sees ALL complaints with User Details
+            query = `
+                SELECT c.*, u.full_name, u.role as user_role, u.username
+                FROM complaints c
+                JOIN users u ON c.user_id = u.id
+                ORDER BY c.created_at DESC
+            `;
+        } else {
+            // Students/Others see ONLY their own complaints
+            query = `SELECT * FROM complaints WHERE user_id = ? ORDER BY created_at DESC`;
+            params = [id];
+        }
+
+        const [results] = await db.query(query, params);
+        res.json(results);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error fetching complaints' });
+    }
+});
+
+// 3. PUT: Update Complaint Status (Admin ONLY)
+app.put('/api/complaints/:id/status', verifyToken, isAdmin, async (req, res) => {
+    const { status } = req.body; // 'pending', 'resolved', 'dismissed'
+    
+    try {
+        await db.query('UPDATE complaints SET status = ? WHERE id = ?', [status, req.params.id]);
+        res.json({ message: `Complaint marked as ${status}` });
+    } catch (e) {
+        res.status(500).json({ message: 'Update failed' });
+    }
+});
+
 
 
 
