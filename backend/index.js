@@ -8755,6 +8755,117 @@ app.put('/api/complaints/:id/status', verifyToken, isAdmin, async (req, res) => 
     }
 });
 
+// ==========================================================
+// --- 🚛 VEHICLE LOG MODULE ---
+// ==========================================================
+
+// 1. GET: List all Vehicles (For Dropdowns)
+app.get('/api/vehicles', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const [vehicles] = await db.query('SELECT * FROM vehicles ORDER BY vehicle_no ASC');
+        res.json(vehicles);
+    } catch (e) {
+        res.status(500).json({ message: 'Error fetching vehicles' });
+    }
+});
+
+// 2. POST: Add a New Vehicle (Master List)
+app.post('/api/vehicles', verifyToken, isAdmin, async (req, res) => {
+    const { vehicle_no, vehicle_name } = req.body;
+    try {
+        await db.query('INSERT INTO vehicles (vehicle_no, vehicle_name) VALUES (?, ?)', [vehicle_no, vehicle_name]);
+        res.json({ message: 'Vehicle added' });
+    } catch (e) {
+        res.status(500).json({ message: 'Error adding vehicle' });
+    }
+});
+
+// 3. POST: Add Daily Log
+app.post('/api/vehicles/daily', verifyToken, isAdmin, async (req, res) => {
+    const { vehicle_id, log_date, distance_km, fuel_consumed, notes } = req.body;
+    try {
+        await db.query(
+            'INSERT INTO vehicle_daily_logs (vehicle_id, log_date, distance_km, fuel_consumed, notes) VALUES (?, ?, ?, ?, ?)',
+            [vehicle_id, log_date, distance_km, fuel_consumed, notes]
+        );
+        res.json({ message: 'Daily log saved' });
+    } catch (e) {
+        res.status(500).json({ message: 'Error saving log' });
+    }
+});
+
+// 4. GET: Fetch Logs (Dynamic Type: Daily, Monthly, Overall)
+app.get('/api/vehicles/logs/:type', verifyToken, isAdmin, async (req, res) => {
+    const { type } = req.params;
+    try {
+        let query = "";
+        
+        if (type === 'daily') {
+            // Raw list of logs
+            query = `SELECT l.*, v.vehicle_no, v.vehicle_name 
+                     FROM vehicle_daily_logs l 
+                     JOIN vehicles v ON l.vehicle_id = v.id 
+                     ORDER BY l.log_date DESC`;
+        } 
+        else if (type === 'monthly') {
+            // Sum of logs grouped by Month and Vehicle
+            query = `SELECT v.vehicle_no, v.vehicle_name, 
+                            DATE_FORMAT(l.log_date, '%Y-%m') as month,
+                            SUM(l.distance_km) as total_distance,
+                            SUM(l.fuel_consumed) as total_fuel
+                     FROM vehicle_daily_logs l 
+                     JOIN vehicles v ON l.vehicle_id = v.id 
+                     GROUP BY v.id, month 
+                     ORDER BY month DESC`;
+        } 
+        else if (type === 'overall') {
+            // Sum of logs grouped by Vehicle (All time)
+            query = `SELECT v.vehicle_no, v.vehicle_name, 
+                            SUM(l.distance_km) as total_distance,
+                            SUM(l.fuel_consumed) as total_fuel,
+                            COUNT(l.id) as total_trips
+                     FROM vehicle_daily_logs l 
+                     JOIN vehicles v ON l.vehicle_id = v.id 
+                     GROUP BY v.id 
+                     ORDER BY total_distance DESC`;
+        }
+
+        const [results] = await db.query(query);
+        res.json(results);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Error fetching logs' });
+    }
+});
+
+// 5. POST: Add Service Log
+app.post('/api/vehicles/service', verifyToken, isAdmin, async (req, res) => {
+    const { vehicle_id, service_date, prev_service_date, service_details, cost } = req.body;
+    try {
+        await db.query(
+            'INSERT INTO vehicle_service_logs (vehicle_id, service_date, prev_service_date, service_details, cost) VALUES (?, ?, ?, ?, ?)',
+            [vehicle_id, service_date, prev_service_date, service_details, cost]
+        );
+        res.json({ message: 'Service log saved' });
+    } catch (e) {
+        res.status(500).json({ message: 'Error saving service log' });
+    }
+});
+
+// 6. GET: Fetch Service Logs
+app.get('/api/vehicles/service', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const query = `SELECT s.*, v.vehicle_no, v.vehicle_name 
+                       FROM vehicle_service_logs s
+                       JOIN vehicles v ON s.vehicle_id = v.id 
+                       ORDER BY s.service_date DESC`;
+        const [results] = await db.query(query);
+        res.json(results);
+    } catch (e) {
+        res.status(500).json({ message: 'Error fetching service logs' });
+    }
+});
+
 
 
 

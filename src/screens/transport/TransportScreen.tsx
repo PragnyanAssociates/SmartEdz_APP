@@ -39,7 +39,7 @@ const transportModules: TransportModule[] = [
         title: 'Vehicle Log',
         // Icon representing Bus Maintenance/Logbook
         imageSource: 'https://cdn-icons-png.flaticon.com/128/15342/15342094.png',
-        navigateTo: 'VehicalLog', 
+        navigateTo: 'VehicleLogScreen', 
     },
     {
         id: 'trans4',
