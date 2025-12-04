@@ -7,484 +7,396 @@ import {
     Image,
     TouchableOpacity,
     SafeAreaView,
+    Modal,
+    TextInput,
     Alert,
     ActivityIndicator,
-    PermissionsAndroid,
     Platform,
-    ScrollView
+    ScrollView,
+    Switch
 } from 'react-native';
 import MapLibreGL from '@maplibre/maplibre-react-native';
 import Geolocation from 'react-native-geolocation-service';
 import { io } from 'socket.io-client';
-// ✅ IMPORT YOUR HELPER
 import { getRoadPath } from '../../utils/routeHelper'; 
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { SERVER_URL } from '../../../apiConfig';
 
-// ==========================================================
-// 🔑 CONFIGURATION
-// ==========================================================
-// 🔴 REPLACE WITH YOUR MAPTILER KEY
+// --- CONFIG ---
 const MAPTILER_KEY = 'X6chcXQ64ffLsmvUuEMz'; 
-
-// We use the "streets" style to avoid black screens
 const STYLE_URL = `https://api.maptiler.com/maps/streets-v4/{z}/{x}/{y}.png?key=${MAPTILER_KEY}`;
-
-// Fix for Android TextureView issues
-MapLibreGL.setAccessToken(null); 
-
+MapLibreGL.setAccessToken(null);
 const socket = io(SERVER_URL);
 
 // --- ASSETS ---
 const BUS_ICON = 'https://cdn-icons-png.flaticon.com/128/3448/3448339.png';
-const DRIVER_ICON = 'https://cdn-icons-png.flaticon.com/128/2684/2684218.png';
-const CONDUCTOR_ICON = 'https://cdn-icons-png.flaticon.com/128/1533/1533506.png';
-const BACK_ICON = 'https://cdn-icons-png.flaticon.com/128/271/271220.png';
+const STOP_ICON = 'https://cdn-icons-png.flaticon.com/128/3180/3180149.png'; // Pin
+const CHECK_ICON = 'https://cdn-icons-png.flaticon.com/128/190/190411.png'; // Tick
 
-// --- HELPER: SAFE FLOAT PARSING ---
-const safeFloat = (value) => {
-    if (value === null || value === undefined || value === '') return null;
-    const num = parseFloat(value);
-    return (isNaN(num) || !isFinite(num)) ? null : num;
-};
+const RoutesScreen = () => {
+    const { user } = useAuth();
+    const navigation = useNavigation();
 
-// ==========================================================
-// 1. LIVE MAP COMPONENT (FIXED ZOOM & LINE)
-// ==========================================================
-const LiveMapRoute = ({ routeId, onBack, isAdmin }) => {
-    const [routeData, setRouteData] = useState(null);
-    const [routeShape, setRouteShape] = useState(null); 
-    const [busLocation, setBusLocation] = useState(null); 
-    const [busBearing, setBusBearing] = useState(0);
-    
-    // State to hold camera settings (Bounds OR Center)
-    const [cameraState, setCameraState] = useState({
-        centerCoordinate: [78.4867, 17.3850], // Default Hyderabad
-        zoomLevel: 10,
-    });
+    // Roles
+    const isAdmin = user?.role === 'admin';
+    const isDriver = user?.role === 'others'; // Assuming Driver/Conductor is 'others'
+    const isStudent = user?.role === 'student' || user?.role === 'teacher';
 
-    const cameraRef = useRef(null);
+    // State
+    const [routes, setRoutes] = useState([]);
+    const [selectedRoute, setSelectedRoute] = useState<any>(null);
+    const [routeShape, setRouteShape] = useState<any>(null);
+    const [loading, setLoading] = useState(false);
 
+    // Admin Specific State
+    const [modalVisible, setModalVisible] = useState(false);
+    const [stopModalVisible, setStopModalVisible] = useState(false);
+    const [newRouteName, setNewRouteName] = useState('');
+    const [newStopName, setNewStopName] = useState('');
+    const [tempCoordinate, setTempCoordinate] = useState<number[] | null>(null);
+
+    // Driver Specific State
+    const [attendanceModal, setAttendanceModal] = useState(false);
+    const [currentStopPassengers, setCurrentStopPassengers] = useState([]);
+    const [currentStopId, setCurrentStopId] = useState(null);
+
+    // Live Tracking
+    const [busLocation, setBusLocation] = useState<number[] | null>(null);
+    const cameraRef = useRef<MapLibreGL.Camera>(null);
+
+    // --- 1. INITIAL FETCH ---
     useEffect(() => {
-        const fetchInitialData = async () => {
-            try {
-                let url = routeId ? `/transport/routes/${routeId}` : '/transport/student/my-route';
-                const res = await apiClient.get(url);
-                setRouteData(res.data);
-
-                // 1. Setup Bus Location
-                const lat = safeFloat(res.data.current_lat);
-                const lng = safeFloat(res.data.current_lng);
-                if (lat && lng) {
-                    setBusLocation([lng, lat]);
-                }
-
-                // 2. Calculate Bounds & Route Path
-                if (res.data.stops && res.data.stops.length > 0) {
-                    
-                    // --- A. CALCULATE BOUNDS (Fixes the black/zoomed out screen) ---
-                    const lats = res.data.stops.map(s => safeFloat(s.stop_lat)).filter(l => l !== null);
-                    const lngs = res.data.stops.map(s => safeFloat(s.stop_lng)).filter(l => l !== null);
-                    
-                    if (lats.length > 0 && lngs.length > 0) {
-                        const minLat = Math.min(...lats);
-                        const maxLat = Math.max(...lats);
-                        const minLng = Math.min(...lngs);
-                        const maxLng = Math.max(...lngs);
-
-                        // Update Camera to look at these bounds
-                        setCameraState({
-                            bounds: {
-                                ne: [maxLng, maxLat], // North East
-                                sw: [minLng, minLat], // South West
-                            },
-                            padding: { top: 50, bottom: 50, left: 50, right: 50 },
-                            animationDuration: 1000,
-                        });
-                    }
-
-                    // --- B. DRAW ROUTE LINE (Using Helper) ---
-                    try {
-                        // helper returns [{latitude, longitude}]
-                        const pathObjects = await getRoadPath(res.data.stops);
-                        
-                        // Convert to MapLibre format [[lng, lat]]
-                        const coordinates = pathObjects.map(p => [p.longitude, p.latitude]);
-
-                        if (coordinates.length > 0) {
-                            setRouteShape({
-                                type: 'Feature',
-                                properties: {},
-                                geometry: {
-                                    type: 'LineString',
-                                    coordinates: coordinates,
-                                },
-                            });
-                        }
-                    } catch (err) {
-                        console.log("Error fetching road path", err);
-                    }
-                }
-            } catch (e) {
-                console.log("Error loading route", e);
-                Alert.alert("Error", "Could not load route details");
-            }
-        };
-        fetchInitialData();
-    }, [routeId]);
-
-    // Socket Listener
-    useEffect(() => {
-        if (!routeData) return;
-        
-        socket.emit('join_route', routeData.id);
-
-        const handleReceiveLocation = (data) => {
-            const lat = safeFloat(data.lat);
-            const lng = safeFloat(data.lng);
-            const bearing = safeFloat(data.bearing) || 0;
-
-            if (lat && lng) {
-                const newLoc = [lng, lat];
-                setBusLocation(newLoc);
-                setBusBearing(bearing);
-            }
-        };
-
-        socket.on('receive_location', handleReceiveLocation);
-        return () => socket.off('receive_location', handleReceiveLocation);
-    }, [routeData]);
-
-    if (!routeData) return <ActivityIndicator size="large" color="#008080" style={{marginTop: 50}} />;
-
-    return (
-        <View style={styles.container}>
-            {/* --- MAP SECTION --- */}
-            <View style={styles.mapContainer}>
-                {isAdmin && (
-                    <TouchableOpacity onPress={onBack} style={styles.backOverlay}>
-                        <Image source={{ uri: BACK_ICON }} style={{ width: 24, height: 24 }} />
-                    </TouchableOpacity>
-                )}
-                
-                <MapLibreGL.MapView
-                    style={StyleSheet.absoluteFill}
-                    styleURL={STYLE_URL}
-                    logoEnabled={false}
-                    attributionEnabled={false}
-                >
-                    {/* 
-                       ✅ FIX: We spread the cameraState here.
-                       It will contain EITHER 'centerCoordinate' OR 'bounds', never both.
-                    */}
-                    <MapLibreGL.Camera
-                        ref={cameraRef}
-                        {...cameraState}
-                    />
-
-                    {/* 1. The Red Route Line (Road Path) */}
-                    {routeShape && (
-                        <MapLibreGL.ShapeSource id="routeSource" shape={routeShape}>
-                            <MapLibreGL.LineLayer
-                                id="routeFill"
-                                style={{
-                                    lineColor: '#E53E3E', // Red
-                                    lineWidth: 4,
-                                    lineCap: 'round',
-                                    lineJoin: 'round',
-                                }}
-                            />
-                        </MapLibreGL.ShapeSource>
-                    )}
-
-                    {/* 2. Stop Markers */}
-                    {routeData.stops && routeData.stops.map((stop, i) => {
-                        const lat = safeFloat(stop.stop_lat);
-                        const lng = safeFloat(stop.stop_lng);
-                        if (!lat || !lng) return null;
-
-                        return (
-                            <MapLibreGL.PointAnnotation
-                                key={`stop-${i}`}
-                                id={`stop-${i}`}
-                                coordinate={[lng, lat]}
-                            >
-                                <View style={styles.stopMarker}>
-                                    <Text style={styles.stopMarkerText}>{i + 1}</Text>
-                                </View>
-                            </MapLibreGL.PointAnnotation>
-                        );
-                    })}
-
-                    {/* 3. Live Bus */}
-                    {busLocation && (
-                        <MapLibreGL.PointAnnotation id="bus" coordinate={busLocation}>
-                            <View style={{ transform: [{ rotate: `${busBearing}deg` }] }}>
-                                <Image source={{ uri: BUS_ICON }} style={{ width: 45, height: 45 }} />
-                            </View>
-                        </MapLibreGL.PointAnnotation>
-                    )}
-                </MapLibreGL.MapView>
-            </View>
-
-            {/* --- DETAILS SECTION --- */}
-            <ScrollView style={styles.infoContainer}>
-                
-                <View style={styles.headerRow}>
-                    <Text style={styles.routeTitle}>{routeData.route_name}</Text>
-                    <View style={styles.statusBadge}>
-                        <View style={styles.dot} />
-                        <Text style={styles.statusText}>Live</Text>
-                    </View>
-                </View>
-
-                {/* Staff Cards */}
-                <View style={styles.staffRow}>
-                    <View style={[styles.staffCard, { backgroundColor: '#FEFCBF' }]}> 
-                        <View style={styles.staffHeader}>
-                            <Image source={{ uri: DRIVER_ICON }} style={styles.staffIcon} />
-                            <Text style={styles.staffLabel}>Driver</Text>
-                        </View>
-                        <Text style={styles.staffName}>
-                            {routeData.driver_name || 'Unassigned'}
-                        </Text>
-                    </View>
-
-                    <View style={[styles.staffCard, { backgroundColor: '#C6F6D5' }]}>
-                        <View style={styles.staffHeader}>
-                            <Image source={{ uri: CONDUCTOR_ICON }} style={styles.staffIcon} />
-                            <Text style={styles.staffLabel}>Conductor</Text>
-                        </View>
-                        <Text style={styles.staffName}>
-                            {routeData.conductor_name || 'Unassigned'}
-                        </Text>
-                    </View>
-                </View>
-
-                {/* Stops List */}
-                <View style={styles.stopsSection}>
-                    <Text style={styles.stopsHeader}>Stops:</Text>
-                    <View style={styles.divider} />
-                    
-                    {routeData.stops && routeData.stops.map((stop, index) => (
-                        <View key={index} style={styles.stopItem}>
-                            <View style={styles.stopIndexCircle}>
-                                <Text style={styles.stopIndexText}>{index + 1}</Text>
-                            </View>
-                            <View>
-                                <Text style={styles.stopName}>{stop.stop_name}</Text>
-                            </View>
-                        </View>
-                    ))}
-                    
-                    {(!routeData.stops || routeData.stops.length === 0) && (
-                        <Text style={{color: '#999', fontStyle: 'italic'}}>No stops added yet.</Text>
-                    )}
-                </View>
-                
-                <View style={{height: 40}} />
-            </ScrollView>
-        </View>
-    );
-};
-
-// ==========================================================
-// 2. DRIVER TRACKER
-// ==========================================================
-const DriverTracker = () => {
-    const [isTracking, setIsTracking] = useState(false);
-    const [routeInfo, setRouteInfo] = useState(null);
-    const watchId = useRef(null);
-
-    useEffect(() => {
-        const fetchRoute = async () => {
-            try {
-                const res = await apiClient.get('/transport/conductor/students');
-                setRouteInfo(res.data.route);
-            } catch (e) { }
-        };
-        fetchRoute();
+        if (isAdmin) fetchRoutes();
+        if (isDriver) fetchDriverData();
+        if (isStudent) fetchStudentRoute();
     }, []);
 
-    const requestPermission = async () => {
-        if (Platform.OS === 'android') {
-            const granted = await PermissionsAndroid.request(
-                PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-            );
-            return granted === PermissionsAndroid.RESULTS.GRANTED;
-        }
-        return true;
+    // --- API CALLS ---
+
+    const fetchRoutes = async () => {
+        setLoading(true);
+        try {
+            const res = await apiClient.get('/transport/routes');
+            setRoutes(res.data);
+        } catch (e) { console.error(e); }
+        finally { setLoading(false); }
     };
 
-    const startTrip = async () => {
-        const hasPermission = await requestPermission();
-        if (!hasPermission) return Alert.alert("Permission denied");
-        if (!routeInfo) return;
+    const fetchRouteDetails = async (routeId: number) => {
+        setLoading(true);
+        try {
+            const res = await apiClient.get(`/transport/routes/${routeId}/stops`);
+            const stops = res.data;
+            
+            // Draw path
+            if (stops.length > 1) {
+                const coordinates = await getRoadPath(stops);
+                if (coordinates.length > 0) {
+                    setRouteShape({
+                        type: 'Feature',
+                        geometry: { type: 'LineString', coordinates: coordinates }
+                    });
+                }
+            }
+            setSelectedRoute({ ...selectedRoute, id: routeId, stops });
+        } catch (e) { console.error(e); }
+        finally { setLoading(false); }
+    };
 
-        setIsTracking(true);
+    const fetchDriverData = async () => {
+        setLoading(true);
+        try {
+            const res = await apiClient.get('/transport/driver/data');
+            const { route, stops } = res.data;
+            setSelectedRoute({ ...route, stops });
+            
+            // Draw path
+            if (stops.length > 1) {
+                const coordinates = await getRoadPath(stops);
+                setRouteShape({
+                    type: 'Feature',
+                    geometry: { type: 'LineString', coordinates: coordinates }
+                });
+            }
+            
+            // Start Tracking
+            startLocationUpdates(route.id);
+        } catch (e) { Alert.alert("Notice", "No route assigned yet."); }
+        finally { setLoading(false); }
+    };
 
-        watchId.current = Geolocation.watchPosition(
+    const fetchStudentRoute = async () => {
+        try {
+            const res = await apiClient.get('/transport/student/my-route');
+            setSelectedRoute(res.data);
+            
+            // Listen for bus
+            socket.emit('join_route', res.data.id);
+            socket.on('receive_location', (data) => {
+                setBusLocation([parseFloat(data.lng), parseFloat(data.lat)]);
+            });
+
+            // Draw path
+            if (res.data.stops) {
+                const coordinates = await getRoadPath(res.data.stops);
+                setRouteShape({
+                    type: 'Feature',
+                    geometry: { type: 'LineString', coordinates: coordinates }
+                });
+            }
+        } catch (e) { console.log("Student route error", e); }
+    };
+
+    // --- ADMIN ACTIONS ---
+
+    const handleAddRoute = async () => {
+        if(!newRouteName) return;
+        try {
+            await apiClient.post('/transport/routes', { route_name: newRouteName });
+            setModalVisible(false);
+            setNewRouteName('');
+            fetchRoutes();
+        } catch(e) { Alert.alert("Error"); }
+    };
+
+    const handleMapPress = (e: any) => {
+        if (!isAdmin || !selectedRoute) return;
+        setTempCoordinate(e.geometry.coordinates);
+        setStopModalVisible(true);
+    };
+
+    const handleAddStop = async () => {
+        if (!newStopName || !tempCoordinate) return;
+        try {
+            await apiClient.post('/transport/stops', {
+                route_id: selectedRoute.id,
+                stop_name: newStopName,
+                stop_lng: tempCoordinate[0],
+                stop_lat: tempCoordinate[1],
+                stop_order: (selectedRoute.stops?.length || 0) + 1
+            });
+            setStopModalVisible(false);
+            setNewStopName('');
+            fetchRouteDetails(selectedRoute.id);
+        } catch(e) { Alert.alert("Error adding stop"); }
+    };
+
+    // --- DRIVER ACTIONS ---
+
+    const startLocationUpdates = (routeId: number) => {
+        Geolocation.watchPosition(
             (position) => {
                 const { latitude, longitude, heading } = position.coords;
-                socket.emit('driver_location_update', {
-                    routeId: routeInfo.id,
-                    lat: latitude,
-                    lng: longitude,
-                    bearing: heading || 0
-                });
+                setBusLocation([longitude, latitude]);
+                socket.emit('driver_location_update', { routeId, lat: latitude, lng: longitude, bearing: heading });
             },
             (error) => console.log(error),
-            { enableHighAccuracy: true, distanceFilter: 10, interval: 3000 }
+            { enableHighAccuracy: true, distanceFilter: 10, interval: 5000 }
         );
     };
 
-    const stopTrip = () => {
-        if (watchId.current !== null) {
-            Geolocation.clearWatch(watchId.current);
-            watchId.current = null;
+    const handleStopPress = (stop: any) => {
+        if (isDriver) {
+            setCurrentStopId(stop.id);
+            setCurrentStopPassengers(stop.passengers || []);
+            setAttendanceModal(true);
         }
-        setIsTracking(false);
     };
 
-    if (!routeInfo) return <View style={styles.center}><ActivityIndicator color="#008080" /></View>;
+    const markAttendance = async (passengerId: number, status: string) => {
+        try {
+            await apiClient.post('/transport/attendance', {
+                passenger_id: passengerId,
+                status: status, // 'present' or 'absent'
+                stop_id: currentStopId,
+                route_id: selectedRoute.id
+            });
+            // Update local UI
+            setCurrentStopPassengers(prev => prev.map(p => 
+                p.id === passengerId ? { ...p, status_marked: status } : p
+            ));
+        } catch(e) { Alert.alert("Error marking"); }
+    };
 
-    return (
-        <View style={styles.center}>
-            <Image source={{ uri: BUS_ICON }} style={{ width: 100, height: 100, marginBottom: 20 }} />
-            <Text style={styles.title}>{routeInfo.route_name}</Text>
-            <Text style={{color: '#666', marginBottom: 30}}>Driver Console</Text>
+    // --- RENDERS ---
 
-            {!isTracking ? (
-                <TouchableOpacity style={styles.btnStart} onPress={startTrip}>
-                    <Text style={styles.btnText}>START TRIP</Text>
-                </TouchableOpacity>
-            ) : (
-                <View style={{alignItems:'center'}}>
-                    <Text style={{color:'green', fontSize:16, marginBottom:10, fontWeight:'bold'}}>Broadcasting Location...</Text>
-                    <TouchableOpacity style={styles.btnStop} onPress={stopTrip}>
-                        <Text style={styles.btnText}>END TRIP</Text>
+    // 1. ADMIN LIST VIEW
+    if (isAdmin && !selectedRoute) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>Manage Routes</Text>
+                    <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.addBtn}>
+                        <Text style={{color:'white', fontWeight:'bold'}}>+ Route</Text>
                     </TouchableOpacity>
                 </View>
-            )}
-        </View>
-    );
-};
-
-// ==========================================================
-// 3. MAIN SCREEN
-// ==========================================================
-const RoutesScreen = () => {
-    const { user } = useAuth();
-    const [adminRoutes, setAdminRoutes] = useState([]);
-    const [selectedAdminRouteId, setSelectedAdminRouteId] = useState(null);
-
-    if (user?.role === 'others') return <DriverTracker />;
-    if (user?.role === 'student') return <LiveMapRoute />;
-
-    useEffect(() => {
-        if (user?.role === 'admin' || user?.role === 'teacher') {
-            apiClient.get('/transport/routes').then(res => setAdminRoutes(res.data));
-        }
-    }, [user]);
-
-    if (selectedAdminRouteId) {
-        return <LiveMapRoute routeId={selectedAdminRouteId} onBack={() => setSelectedAdminRouteId(null)} isAdmin={true} />;
+                <FlatList 
+                    data={routes}
+                    keyExtractor={(item:any) => item.id.toString()}
+                    renderItem={({item}) => (
+                        <TouchableOpacity style={styles.card} onPress={() => { setSelectedRoute(item); fetchRouteDetails(item.id); }}>
+                            <Text style={styles.cardTitle}>{item.route_name}</Text>
+                            <Text style={{color:'#718096'}}>Driver: {item.driver_name || 'N/A'}</Text>
+                        </TouchableOpacity>
+                    )}
+                />
+                {/* Add Route Modal */}
+                <Modal visible={modalVisible} transparent animationType="slide">
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <Text style={styles.modalTitle}>New Route</Text>
+                            <TextInput placeholder="Route Name" style={styles.input} value={newRouteName} onChangeText={setNewRouteName} />
+                            <View style={styles.row}>
+                                <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}><Text>Cancel</Text></TouchableOpacity>
+                                <TouchableOpacity onPress={handleAddRoute} style={styles.saveBtn}><Text style={{color:'white'}}>Create</Text></TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+            </SafeAreaView>
+        );
     }
 
+    // 2. MAP VIEW (Shared by Admin, Driver, Student)
     return (
-        <SafeAreaView style={{flex: 1, padding: 16}}>
-            <Text style={styles.mainHeader}>Transport Routes</Text>
-            <FlatList 
-                data={adminRoutes}
-                keyExtractor={item => item.id.toString()}
-                renderItem={({item}) => (
-                    <TouchableOpacity style={styles.card} onPress={() => setSelectedAdminRouteId(item.id)}>
-                        <View>
-                            <Text style={styles.cardTitle}>{item.route_name}</Text>
-                            <Text style={{color:'#666'}}>{item.driver_name || 'No Driver'}</Text>
-                        </View>
-                        <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                             <Text style={{color: '#3182CE', fontWeight:'bold', marginRight: 5}}>Track</Text>
-                             <Image source={{uri: 'https://cdn-icons-png.flaticon.com/128/684/684908.png'}} style={{width:16, height:16, tintColor:'#E53E3E'}} />
-                        </View>
-                    </TouchableOpacity>
+        <View style={styles.container}>
+            {isAdmin && (
+                <TouchableOpacity style={styles.backOverlay} onPress={() => setSelectedRoute(null)}>
+                    <Text style={{fontWeight:'bold'}}>← Back</Text>
+                </TouchableOpacity>
+            )}
+
+            <MapLibreGL.MapView 
+                style={StyleSheet.absoluteFill} 
+                styleURL={STYLE_URL}
+                onPress={handleMapPress}
+            >
+                <MapLibreGL.Camera 
+                    defaultSettings={{ centerCoordinate: [78.4867, 17.3850], zoomLevel: 10 }}
+                    followUserLocation={isDriver}
+                />
+
+                {/* Route Line */}
+                {routeShape && (
+                    <MapLibreGL.ShapeSource id="routeSource" shape={routeShape}>
+                        <MapLibreGL.LineLayer id="routeFill" style={{ lineColor: '#3182CE', lineWidth: 5 }} />
+                    </MapLibreGL.ShapeSource>
                 )}
-            />
-        </SafeAreaView>
+
+                {/* Stops */}
+                {selectedRoute?.stops?.map((stop: any, index: number) => (
+                    <MapLibreGL.PointAnnotation 
+                        key={stop.id} 
+                        id={`stop-${stop.id}`} 
+                        coordinate={[parseFloat(stop.stop_lng), parseFloat(stop.stop_lat)]}
+                        onSelected={() => handleStopPress(stop)}
+                    >
+                        <View style={styles.stopMarker}>
+                            <Text style={styles.stopText}>{index + 1}</Text>
+                        </View>
+                    </MapLibreGL.PointAnnotation>
+                ))}
+
+                {/* Live Bus Icon */}
+                {busLocation && (
+                    <MapLibreGL.PointAnnotation id="bus" coordinate={busLocation}>
+                        <Image source={{ uri: BUS_ICON }} style={{ width: 40, height: 40 }} />
+                    </MapLibreGL.PointAnnotation>
+                )}
+            </MapLibreGL.MapView>
+
+            {/* Admin: Info Panel to add stops */}
+            {isAdmin && (
+                <View style={styles.adminHint}>
+                    <Text>Tap map to add a stop. Drag markers to move (Feature WIP).</Text>
+                </View>
+            )}
+
+            {/* Admin: Add Stop Modal */}
+            <Modal visible={stopModalVisible} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Add Stop</Text>
+                        <TextInput placeholder="Stop Name" style={styles.input} value={newStopName} onChangeText={setNewStopName} />
+                        <View style={styles.row}>
+                            <TouchableOpacity onPress={() => setStopModalVisible(false)} style={styles.cancelBtn}><Text>Cancel</Text></TouchableOpacity>
+                            <TouchableOpacity onPress={handleAddStop} style={styles.saveBtn}><Text style={{color:'white'}}>Add</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Driver: Attendance Modal */}
+            <Modal visible={attendanceModal} animationType="slide" onRequestClose={() => setAttendanceModal(false)}>
+                <SafeAreaView style={{flex: 1, backgroundColor:'white'}}>
+                    <View style={styles.header}>
+                        <Text style={styles.headerTitle}>Passenger List</Text>
+                        <TouchableOpacity onPress={() => setAttendanceModal(false)}><Text style={{fontSize:18}}>✕</Text></TouchableOpacity>
+                    </View>
+                    <FlatList 
+                        data={currentStopPassengers}
+                        keyExtractor={(item:any) => item.id.toString()}
+                        renderItem={({item}) => (
+                            <View style={styles.passengerRow}>
+                                <Text style={styles.passengerName}>{item.full_name}</Text>
+                                <View style={{flexDirection:'row'}}>
+                                    <TouchableOpacity 
+                                        onPress={() => markAttendance(item.id, 'present')}
+                                        style={[styles.attBtn, {backgroundColor: item.status_marked === 'present' ? '#48BB78' : '#E2E8F0'}]}
+                                    >
+                                        <Text>Present</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        onPress={() => markAttendance(item.id, 'absent')}
+                                        style={[styles.attBtn, {backgroundColor: item.status_marked === 'absent' ? '#F56565' : '#E2E8F0', marginLeft: 10}]}
+                                    >
+                                        <Text>Absent</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
+                        ListEmptyComponent={<Text style={{textAlign:'center', marginTop:20}}>No passengers at this stop.</Text>}
+                    />
+                </SafeAreaView>
+            </Modal>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f8f9fa' },
-    center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
-    mainHeader: { fontSize: 22, fontWeight: 'bold', marginBottom: 15, color: '#2D3748' },
-    card: { 
-        padding: 20, 
-        backgroundColor: 'white', 
-        marginBottom: 12, 
-        borderRadius: 12, 
-        elevation: 2, 
-        flexDirection:'row', 
-        justifyContent:'space-between', 
-        alignItems:'center',
-        borderLeftWidth: 5,
-        borderLeftColor: '#3182CE'
-    },
-    cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#2D3748' },
+    container: { flex: 1, backgroundColor: '#F7FAFC' },
     
-    // Map & Layout
-    mapContainer: {
-        height: '45%', 
-        width: '100%',
-        backgroundColor: '#e2e8f0' // Light grey instead of black if tiles fail
-    },
-    backOverlay: {
-        position: 'absolute', top: 40, left: 20, zIndex: 10,
-        backgroundColor: 'white', padding: 10, borderRadius: 25, elevation: 5
-    },
-    infoContainer: {
-        flex: 1,
-        backgroundColor: 'white',
-        borderTopLeftRadius: 25,
-        borderTopRightRadius: 25,
-        marginTop: -20,
-        padding: 20,
-    },
-    
-    // Header Info
-    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-    routeTitle: { fontSize: 24, fontWeight: 'bold', color: '#1A202C' },
-    statusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#C6F6D5', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'green', marginRight: 6 },
-    statusText: { color: 'green', fontWeight: 'bold', fontSize: 12 },
-    
-    // Staff Cards
-    staffRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-    staffCard: { width: '48%', padding: 15, borderRadius: 15, elevation: 1, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
-    staffHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-    staffIcon: { width: 20, height: 20, marginRight: 8 },
-    staffLabel: { fontSize: 14, fontWeight: 'bold', color: '#4A5568', textTransform: 'uppercase' },
-    staffName: { fontSize: 16, fontWeight: '600', color: '#2D3748' },
+    // Header
+    header: { padding: 20, flexDirection:'row', justifyContent:'space-between', alignItems:'center', backgroundColor:'white', borderBottomWidth:1, borderColor:'#E2E8F0' },
+    headerTitle: { fontSize: 20, fontWeight:'bold', color:'#2D3748' },
+    addBtn: { backgroundColor: '#3182CE', padding: 10, borderRadius: 5 },
 
-    // Stops
-    stopsSection: { marginTop: 10 },
-    stopsHeader: { fontSize: 20, fontWeight: 'bold', color: '#2D3748', marginBottom: 5, textDecorationLine: 'underline', textDecorationColor: '#E53E3E' },
-    divider: { height: 1, backgroundColor: '#E2E8F0', marginBottom: 15 },
-    stopItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, paddingHorizontal: 5 },
-    stopIndexCircle: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#3182CE', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-    stopIndexText: { color: 'white', fontWeight: 'bold' },
-    stopName: { fontSize: 16, color: '#4A5568', fontWeight: '500' },
+    // Card
+    card: { backgroundColor:'white', margin: 10, padding: 15, borderRadius: 10, elevation: 2 },
+    cardTitle: { fontSize: 18, fontWeight:'bold', color:'#2D3748' },
+
+    // Map Overlays
+    backOverlay: { position: 'absolute', top: 50, left: 20, zIndex: 10, backgroundColor: 'white', padding: 10, borderRadius: 5, elevation: 5 },
+    adminHint: { position: 'absolute', bottom: 20, alignSelf:'center', backgroundColor:'rgba(255,255,255,0.9)', padding: 10, borderRadius: 20 },
 
     // Markers
-    stopMarker: { backgroundColor: 'white', padding: 5, borderRadius: 5, borderWidth: 1, borderColor: '#3182CE', elevation: 3 },
-    stopMarkerText: { fontSize: 10, fontWeight: 'bold', color: '#3182CE' },
+    stopMarker: { backgroundColor:'white', borderRadius: 15, width: 30, height: 30, alignItems:'center', justifyContent:'center', borderWidth: 2, borderColor:'#3182CE' },
+    stopText: { fontWeight:'bold', color:'#3182CE' },
 
-    // Buttons
-    title: { fontSize: 22, fontWeight: 'bold', marginBottom: 10, color: '#2D3748' },
-    btnStart: { backgroundColor: '#38A169', padding: 15, borderRadius: 30, width: 200, alignItems:'center' },
-    btnStop: { backgroundColor: '#E53E3E', padding: 15, borderRadius: 30, width: 200, alignItems:'center' },
-    btnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+    // Modals
+    modalOverlay: { flex: 1, backgroundColor:'rgba(0,0,0,0.5)', justifyContent:'center', padding: 20 },
+    modalContent: { backgroundColor:'white', padding: 20, borderRadius: 10 },
+    modalTitle: { fontSize: 18, fontWeight:'bold', marginBottom: 15 },
+    input: { borderWidth: 1, borderColor: '#CBD5E0', padding: 10, borderRadius: 5, marginBottom: 15 },
+    row: { flexDirection:'row', justifyContent:'space-between' },
+    cancelBtn: { padding: 10 },
+    saveBtn: { backgroundColor:'#3182CE', padding: 10, borderRadius: 5 },
+
+    // Passenger Row
+    passengerRow: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', padding: 15, borderBottomWidth: 1, borderColor:'#EDF2F7' },
+    passengerName: { fontSize: 16, color:'#2D3748' },
+    attBtn: { padding: 8, borderRadius: 5 }
 });
 
 export default RoutesScreen;
