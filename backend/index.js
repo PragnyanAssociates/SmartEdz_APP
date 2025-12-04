@@ -8209,34 +8209,36 @@ app.get('/api/transport/my-status', verifyToken, async (req, res) => {
 // --- VEHICLE / BUS DETAILS API ROUTES ---
 // ==========================================================
 
-// 1. Configure Storage (Keep this as you had it)
+// 1. Configure Storage & Upload (Keep existing configuration)
 const vehicleStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, '/data/uploads'); 
-    },
+    destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => {
         const ext = path.extname(file.originalname);
         cb(null, `vehicle-doc-${Date.now()}${ext}`);
     }
 });
 
-// 2. Configure Upload Filter (Images + PDFs)
 const vehicleUpload = multer({ 
     storage: vehicleStorage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit per file
+    limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
             cb(null, true);
         } else {
-            cb(new Error('Invalid file type. Only Images and PDFs are allowed.'), false);
+            cb(new Error('Invalid file type.'), false);
         }
     }
 });
 
-// 3. GET Route
+// 2. GET Route (UPDATED PERMISSION)
+// Allow Admin, Teacher, Others. Block Student.
 app.get('/api/transport/vehicles', verifyToken, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') return res.status(403).json({ message: 'Access Denied.' });
+        const allowedRoles = ['admin', 'teacher', 'others'];
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({ message: 'Access Denied.' });
+        }
+        
         const [rows] = await db.query('SELECT * FROM transport_vehicles ORDER BY created_at DESC');
         res.json(rows);
     } catch (error) {
@@ -8245,21 +8247,13 @@ app.get('/api/transport/vehicles', verifyToken, async (req, res) => {
     }
 });
 
-// 4. POST Route (FIXED HERE)
-// Changed 'upload' to 'vehicleUpload'
-// Changed 'photos' to 'files' (to match frontend)
+// 3. POST Route (Create - Admin Only)
 app.post('/api/transport/vehicles', verifyToken, vehicleUpload.array('files', 10), async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ message: 'Access Denied.' });
-        }
+        if (req.user.role !== 'admin') return res.status(403).json({ message: 'Access Denied.' });
 
         const { bus_number, bus_name } = req.body;
         
-        // Debugging: Log what the server received
-        // console.log("Body:", req.body);
-        // console.log("Files:", req.files);
-
         let fileUrls = [];
         if (req.files && req.files.length > 0) {
             fileUrls = req.files.map(file => `/uploads/${file.filename}`);
@@ -8270,12 +8264,47 @@ app.post('/api/transport/vehicles', verifyToken, vehicleUpload.array('files', 10
 
         res.status(201).json({ message: 'Vehicle added successfully' });
     } catch (error) {
-        console.error("Add Vehicle Error:", error);
         res.status(500).json({ message: 'Failed to add vehicle' });
     }
 });
 
-// 5. DELETE Route
+// 4. PUT Route (Edit - Admin Only) ★ NEW ★
+app.put('/api/transport/vehicles/:id', verifyToken, vehicleUpload.array('files', 10), async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ message: 'Access Denied.' });
+
+        const vehicleId = req.params.id;
+        const { bus_number, bus_name } = req.body;
+
+        // 1. Get existing photos to append new ones
+        const [existing] = await db.query('SELECT bus_photos FROM transport_vehicles WHERE id = ?', [vehicleId]);
+        if (existing.length === 0) return res.status(404).json({ message: 'Vehicle not found' });
+
+        let currentPhotos = [];
+        try {
+            // Handle if it's already an object or a string
+            const photosRaw = existing[0].bus_photos;
+            currentPhotos = typeof photosRaw === 'string' ? JSON.parse(photosRaw) : (photosRaw || []);
+        } catch (e) { currentPhotos = []; }
+
+        // 2. Add new files if uploaded
+        if (req.files && req.files.length > 0) {
+            const newUrls = req.files.map(file => `/uploads/${file.filename}`);
+            currentPhotos = [...currentPhotos, ...newUrls];
+        }
+
+        // 3. Update DB
+        const query = 'UPDATE transport_vehicles SET bus_number = ?, bus_name = ?, bus_photos = ? WHERE id = ?';
+        await db.query(query, [bus_number, bus_name, JSON.stringify(currentPhotos), vehicleId]);
+
+        res.json({ message: 'Vehicle updated successfully' });
+    } catch (error) {
+        console.error("Update Error:", error);
+        res.status(500).json({ message: 'Failed to update vehicle' });
+    }
+});
+
+// 5. DELETE Route (Admin Only)
 app.delete('/api/transport/vehicles/:id', verifyToken, async (req, res) => {
     try {
         if (req.user.role !== 'admin') return res.status(403).json({ message: 'Access Denied.' });

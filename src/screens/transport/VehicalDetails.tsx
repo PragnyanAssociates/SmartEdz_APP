@@ -19,7 +19,7 @@ import apiClient from '../../api/client';
 import { SERVER_URL } from '../../../apiConfig';
 import { useAuth } from '../../context/AuthContext';
 
-// ★★★ NEW LIBRARY IMPORT ★★★
+// Library
 import { pick, types, isCancel } from '@react-native-documents/picker';
 
 // Icons
@@ -27,6 +27,7 @@ const PDF_ICON = 'https://cdn-icons-png.flaticon.com/128/337/337946.png';
 const BACK_ICON = 'https://cdn-icons-png.flaticon.com/128/271/271220.png';
 const DENIED_ICON = 'https://cdn-icons-png.flaticon.com/128/3967/3967261.png';
 const TRASH_ICON = 'https://cdn-icons-png.flaticon.com/128/6861/6861362.png';
+const EDIT_ICON = 'https://cdn-icons-png.flaticon.com/128/1159/1159633.png'; // Pencil Icon
 
 interface Vehicle {
     id: number;
@@ -38,22 +39,25 @@ interface Vehicle {
 const VehicalDetails = () => {
     const navigation = useNavigation();
     const { user } = useAuth();
-    const userRole = user?.role;
+    const userRole = user?.role; // 'admin', 'teacher', 'others', 'student'
 
     // State
     const [vehicles, setVehicles] = useState<Vehicle[]>([]);
     const [loading, setLoading] = useState(false);
 
-    // Add Modal State
-    const [showAddModal, setShowAddModal] = useState(false);
+    // Modal State
+    const [showModal, setShowModal] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
+
+    // Form Data
     const [busNumber, setBusNumber] = useState('');
     const [busName, setBusName] = useState('');
-    
-    // Selected Files (Images + PDFs)
     const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
 
     useEffect(() => {
-        if (userRole === 'admin') {
+        // Allow Admin, Teacher, Others
+        if (userRole && userRole !== 'student') {
             fetchVehicles();
         }
     }, [userRole]);
@@ -77,7 +81,7 @@ const VehicalDetails = () => {
         }
     };
 
-    const handleAddVehicle = async () => {
+    const handleSaveVehicle = async () => {
         if (!busNumber || !busName) {
             Alert.alert("Required", "Please enter Bus Number and Bus Name");
             return;
@@ -91,27 +95,32 @@ const VehicalDetails = () => {
         selectedFiles.forEach((file) => {
             formData.append('files', {
                 uri: file.uri,
-                type: file.type || 'image/jpeg', // Fallback type if missing
-                name: file.name || `upload_${Date.now()}.jpg`, // Fallback name
+                type: file.type || 'image/jpeg',
+                name: file.name || `upload_${Date.now()}.jpg`,
             } as any);
         });
 
         setLoading(true);
         try {
-            await apiClient.post('/transport/vehicles', formData, {
-                headers: { 
-                    'Content-Type': 'multipart/form-data' 
-                },
-            });
-            Alert.alert("Success", "Vehicle Added!");
-            setShowAddModal(false);
-            setBusName('');
-            setBusNumber('');
-            setSelectedFiles([]);
+            if (isEditing && selectedVehicleId) {
+                // EDIT MODE
+                await apiClient.put(`/transport/vehicles/${selectedVehicleId}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                Alert.alert("Success", "Vehicle Updated!");
+            } else {
+                // ADD MODE
+                await apiClient.post('/transport/vehicles', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                Alert.alert("Success", "Vehicle Added!");
+            }
+            
+            closeModal();
             fetchVehicles();
         } catch (error: any) {
-            console.error("Add Error", error?.response?.data || error);
-            const errMsg = error?.response?.data?.message || "Failed to add vehicle.";
+            console.error("Save Error", error?.response?.data || error);
+            const errMsg = error?.response?.data?.message || "Operation failed.";
             Alert.alert("Error", errMsg);
         } finally {
             setLoading(false);
@@ -136,7 +145,34 @@ const VehicalDetails = () => {
         ]);
     };
 
-    // --- REAL FILE PICKER ---
+    // --- ACTIONS ---
+
+    const openAddModal = () => {
+        setIsEditing(false);
+        setBusName('');
+        setBusNumber('');
+        setSelectedFiles([]);
+        setShowModal(true);
+    };
+
+    const openEditModal = (item: Vehicle) => {
+        setIsEditing(true);
+        setSelectedVehicleId(item.id);
+        setBusName(item.bus_name);
+        setBusNumber(item.bus_number);
+        setSelectedFiles([]); // Reset new files
+        setShowModal(true);
+    };
+
+    const closeModal = () => {
+        setShowModal(false);
+        setBusName('');
+        setBusNumber('');
+        setSelectedFiles([]);
+        setIsEditing(false);
+        setSelectedVehicleId(null);
+    };
+
     const pickFiles = async () => {
         try {
             const results = await pick({
@@ -145,9 +181,7 @@ const VehicalDetails = () => {
             });
             setSelectedFiles([...selectedFiles, ...results]);
         } catch (err) {
-            if (isCancel(err)) {
-                // User cancelled
-            } else {
+            if (!isCancel(err)) {
                 Alert.alert('Error', 'Unknown Error: ' + JSON.stringify(err));
             }
         }
@@ -169,10 +203,10 @@ const VehicalDetails = () => {
         Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
     };
 
-    // --- RENDER HELPERS ---
+    // --- RENDER ---
 
-    // 1. ACCESS DENIED
-    if (userRole !== 'admin') {
+    // 1. ACCESS DENIED (STUDENT)
+    if (userRole === 'student') {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.header}>
@@ -185,7 +219,7 @@ const VehicalDetails = () => {
                 <View style={styles.accessDeniedContainer}>
                     <Image source={{ uri: DENIED_ICON }} style={styles.deniedIcon} />
                     <Text style={styles.deniedTitle}>Access Restricted</Text>
-                    <Text style={styles.deniedText}>You have no access for this Module.</Text>
+                    <Text style={styles.deniedText}>Students cannot view vehicle details.</Text>
                     <TouchableOpacity style={styles.goBackBtn} onPress={() => navigation.goBack()}>
                         <Text style={styles.goBackText}>Go Back</Text>
                     </TouchableOpacity>
@@ -194,29 +228,7 @@ const VehicalDetails = () => {
         );
     }
 
-    // 2. FILE PREVIEW ITEM (For Modal)
-    const renderSelectedFilePreview = (file: any, index: number) => {
-        const isPdfFile = file.type === 'application/pdf' || file.name?.endsWith('.pdf');
-        
-        return (
-            <View key={index} style={styles.previewContainer}>
-                <Image 
-                    source={{ uri: isPdfFile ? PDF_ICON : file.uri }} 
-                    style={styles.previewImage} 
-                    resizeMode="cover"
-                />
-                <TouchableOpacity 
-                    style={styles.removeFileBtn} 
-                    onPress={() => setSelectedFiles(selectedFiles.filter((_, i) => i !== index))}
-                >
-                    <Text style={styles.removeFileText}>✕</Text>
-                </TouchableOpacity>
-                {isPdfFile && <Text style={styles.pdfLabel}>PDF</Text>}
-            </View>
-        );
-    };
-
-    // 3. VEHICLE CARD (UPDATED WITH S.NO)
+    // 2. VEHICLE CARD
     const renderVehicleCard = ({ item, index }: { item: Vehicle, index: number }) => {
         let files: string[] = [];
         if (Array.isArray(item.bus_photos)) files = item.bus_photos;
@@ -229,21 +241,26 @@ const VehicalDetails = () => {
                 <View style={styles.cardHeader}>
                     {/* LEFT SIDE: S.No + Bus Details */}
                     <View style={styles.headerLeftContent}>
-                        {/* SERIAL NUMBER BADGE */}
                         <View style={styles.sNoBadge}>
                             <Text style={styles.sNoText}>{index + 1}</Text>
                         </View>
-
                         <View>
                             <Text style={styles.busNo}>{item.bus_number}</Text>
                             <Text style={styles.busName}>{item.bus_name}</Text>
                         </View>
                     </View>
 
-                    {/* RIGHT SIDE: DELETE BUTTON */}
-                    <TouchableOpacity onPress={() => handleDeleteVehicle(item.id)}>
-                        <Image source={{ uri: TRASH_ICON }} style={styles.trashIcon} />
-                    </TouchableOpacity>
+                    {/* RIGHT SIDE: EDIT & DELETE (Admin Only) */}
+                    {userRole === 'admin' && (
+                        <View style={styles.actionRow}>
+                            <TouchableOpacity onPress={() => openEditModal(item)} style={styles.iconBtn}>
+                                <Image source={{ uri: EDIT_ICON }} style={styles.editIcon} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeleteVehicle(item.id)} style={styles.iconBtn}>
+                                <Image source={{ uri: TRASH_ICON }} style={styles.trashIcon} />
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </View>
 
                 {/* Album Scroll */}
@@ -274,7 +291,6 @@ const VehicalDetails = () => {
         );
     };
 
-    // --- MAIN RENDER ---
     return (
         <SafeAreaView style={styles.container}>
             {/* Header */}
@@ -285,9 +301,13 @@ const VehicalDetails = () => {
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Vehicle Details</Text>
                 </View>
-                <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
-                    <Text style={styles.addButtonText}>+ Add Bus</Text>
-                </TouchableOpacity>
+                
+                {/* Add Button (Admin Only) */}
+                {userRole === 'admin' && (
+                    <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
+                        <Text style={styles.addButtonText}>+ Add Bus</Text>
+                    </TouchableOpacity>
+                )}
             </View>
 
             {/* List */}
@@ -296,7 +316,6 @@ const VehicalDetails = () => {
             ) : (
                 <FlatList
                     data={vehicles}
-                    // Pass index explicitly to renderVehicleCard
                     renderItem={({ item, index }) => renderVehicleCard({ item, index })}
                     keyExtractor={(item) => item.id.toString()}
                     contentContainerStyle={styles.listContent}
@@ -308,11 +327,11 @@ const VehicalDetails = () => {
                 />
             )}
 
-            {/* Add Modal */}
-            <Modal visible={showAddModal} animationType="slide" transparent>
+            {/* Add/Edit Modal */}
+            <Modal visible={showModal} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Add School Bus</Text>
+                        <Text style={styles.modalTitle}>{isEditing ? "Edit Bus Details" : "Add School Bus"}</Text>
                         
                         <Text style={styles.label}>Bus Number</Text>
                         <TextInput 
@@ -331,25 +350,40 @@ const VehicalDetails = () => {
                         />
 
                         {/* File Picker */}
-                        <Text style={styles.label}>Album (Images & PDFs):</Text>
+                        <Text style={styles.label}>
+                            {isEditing ? "Add New Photos/Docs:" : "Album (Images & PDFs):"}
+                        </Text>
                         <View style={styles.imagePickerContainer}>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                {selectedFiles.map((file, i) => renderSelectedFilePreview(file, i))}
+                                {selectedFiles.map((file, i) => (
+                                    <View key={i} style={styles.previewContainer}>
+                                        <Image 
+                                            source={{ uri: (file.type === 'application/pdf' || file.name?.endsWith('.pdf')) ? PDF_ICON : file.uri }} 
+                                            style={styles.previewImage} 
+                                        />
+                                        <TouchableOpacity 
+                                            style={styles.removeFileBtn} 
+                                            onPress={() => setSelectedFiles(selectedFiles.filter((_, idx) => idx !== i))}
+                                        >
+                                            <Text style={styles.removeFileText}>✕</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
                                 <TouchableOpacity style={styles.pickBtn} onPress={pickFiles}>
                                     <Text style={styles.pickBtnText}>+</Text>
                                     <Text style={styles.pickBtnSubText}>Add File</Text>
                                 </TouchableOpacity>
                             </ScrollView>
                         </View>
-                        <Text style={styles.hintText}>{selectedFiles.length} files selected</Text>
+                        <Text style={styles.hintText}>{selectedFiles.length} new files selected</Text>
 
                         {/* Actions */}
                         <View style={styles.modalButtons}>
-                            <TouchableOpacity style={styles.cancelBtn} onPress={() => setShowAddModal(false)}>
+                            <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
                                 <Text style={styles.cancelText}>Cancel</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.saveBtn} onPress={handleAddVehicle}>
-                                <Text style={styles.saveText}>Save Vehicle</Text>
+                            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveVehicle}>
+                                <Text style={styles.saveText}>{isEditing ? "Update Bus" : "Save Bus"}</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
@@ -405,6 +439,11 @@ const styles = StyleSheet.create({
 
     busNo: { fontSize: 18, fontWeight: 'bold', color: '#2D3748' },
     busName: { fontSize: 14, color: '#718096' },
+    
+    // Actions
+    actionRow: { flexDirection: 'row', alignItems: 'center' },
+    iconBtn: { marginLeft: 10, padding: 5 },
+    editIcon: { width: 22, height: 22, tintColor: '#3182CE' },
     trashIcon: { width: 22, height: 22, tintColor: '#E53E3E' },
     
     // Album
@@ -428,7 +467,6 @@ const styles = StyleSheet.create({
     previewImage: { width: 70, height: 70, borderRadius: 8, borderWidth: 1, borderColor: '#E2E8F0' },
     removeFileBtn: { position: 'absolute', top: -5, right: -5, backgroundColor: '#E53E3E', width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
     removeFileText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
-    pdfLabel: { position: 'absolute', bottom: 10, left: 0, right: 0, textAlign: 'center', backgroundColor: 'rgba(0,0,0,0.5)', color: '#FFF', fontSize: 10 },
     
     pickBtn: { width: 70, height: 70, borderRadius: 8, borderWidth: 1, borderColor: '#3182CE', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
     pickBtnText: { fontSize: 24, color: '#3182CE' },
