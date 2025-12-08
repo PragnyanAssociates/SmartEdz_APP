@@ -92,7 +92,7 @@ const OthersDashboard = ({ navigation }) => {
     { id: 'qa5', title: 'About Us', imageSource: 'https://cdn-icons-png.flaticon.com/128/3815/3815523.png', navigateToTab: 'AboutUs' },
     { id: 'qa9', title: 'Lunch Menu', imageSource: 'https://cdn-icons-png.flaticon.com/128/561/561611.png', navigateToTab: 'FoodScreen' },
     { id: 'qa16', title: 'Kitchen', imageSource: 'https://cdn-icons-png.flaticon.com/128/1698/1698742.png', navigateToTab: 'KitchenScreen' },
-    { id: 'qa31', title: 'Transport', imageSource: 'https://cdn-icons-png.flaticon.com/128/3124/3124263.png', navigateToTab: 'TransportScreen' },
+    // { id: 'qa31', title: 'Transport', imageSource: 'https://cdn-icons-png.flaticon.com/128/3124/3124263.png', navigateToTab: 'TransportScreen' },
 
   ];
 

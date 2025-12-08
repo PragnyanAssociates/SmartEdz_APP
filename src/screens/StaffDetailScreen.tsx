@@ -1,6 +1,7 @@
 /**
  * File: src/screens/staff/StaffDetailScreen.js
  * Purpose: Staff Details with Professional, Timetable, Attendance, and Graphical Performance Analysis.
+ * Updated: Aligned with 20/25 Max Marks logic and Strict Color Grading.
  */
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
@@ -25,9 +26,12 @@ const COLORS = {
     cardBg: '#FFFFFF',
     textMain: '#263238',
     textSub: '#546E7A',
-    success: '#43A047',    // Green
-    average: '#1E88E5',    // Blue
-    poor: '#E53935',       // Red
+    
+    // Strict Logic Colors
+    success: '#43A047',    // Green (> 90%)
+    average: '#1E88E5',    // Blue (60% - 90%)
+    poor: '#E53935',       // Red (< 60%)
+    
     track: '#ECEFF1',      // Light Grey
     border: '#CFD8DC'
 };
@@ -49,7 +53,16 @@ const getCurrentAcademicYear = () => {
     return currentMonth >= 5 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
 };
 
-// --- COMPONENT: ANIMATED BAR (From Performance Screen) ---
+// --- HELPER: Strict Status Color ---
+const getStatusColor = (percentage) => {
+    const val = parseFloat(percentage);
+    if (isNaN(val)) return COLORS.textMain;
+    if (val > 90) return COLORS.success; // Green
+    if (val >= 60) return COLORS.average; // Blue
+    return COLORS.poor; // Red
+};
+
+// --- COMPONENT: ANIMATED BAR ---
 const AnimatedBar = ({ percentage, marks, label, color, height = 200 }) => {
     const animatedHeight = useRef(new Animated.Value(0)).current;
 
@@ -197,12 +210,6 @@ const StaffDetailScreen = ({ route }) => {
         setIsGraphVisible(true);
     };
 
-    const getBarColor = (perc) => {
-        if (perc >= 75) return COLORS.success;
-        if (perc >= 50) return COLORS.average;
-        return COLORS.poor;
-    };
-
     // --- ATTENDANCE LOGIC ---
     const fetchAttendanceReport = useCallback(async () => {
         if (!staffId) return;
@@ -298,7 +305,7 @@ const StaffDetailScreen = ({ route }) => {
                                             <Text style={styles.teacherNameHeader}>{staffDetails.full_name}</Text>
                                             <View style={styles.teacherStatsContainer}>
                                                 <Text style={styles.overallStat}>Marks: <Text style={styles.overallValue}>{Math.round(overallStats.totalObtained)}</Text></Text>
-                                                <Text style={styles.overallStat}>Perf: <Text style={styles.averageValue}>{overallStats.percentage.toFixed(2)}%</Text></Text>
+                                                <Text style={styles.overallStat}>Perf: <Text style={[styles.averageValue, { color: getStatusColor(overallStats.percentage) }]}>{overallStats.percentage.toFixed(2)}%</Text></Text>
                                             </View>
                                         </View>
                                         
@@ -318,8 +325,8 @@ const StaffDetailScreen = ({ route }) => {
                                                                 <Icon name="chart-bar" size={16} color="#FFF" />
                                                             </TouchableOpacity>
                                                         </View>
-                                                        <Text style={styles.detailColumnTotal}>{detail.total_marks}/{detail.max_possible_marks}</Text>
-                                                        <Text style={styles.detailColumnAverage}>{parseFloat(detail.average_marks).toFixed(2)}%</Text>
+                                                        <Text style={styles.detailColumnTotal}>{Math.round(detail.total_marks)}/{Math.round(detail.max_possible_marks)}</Text>
+                                                        <Text style={[styles.detailColumnAverage, { color: getStatusColor(detail.average_marks) }]}>{parseFloat(detail.average_marks).toFixed(2)}%</Text>
                                                     </View>
                                                 ))}
                                             </>
@@ -408,7 +415,7 @@ const StaffDetailScreen = ({ route }) => {
                                         percentage={parseFloat(exam.percentage)} 
                                         marks={`${Math.round(exam.total_obtained)}/${Math.round(exam.total_possible)}`}
                                         label={exam.exam_type} 
-                                        color={getBarColor(parseFloat(exam.percentage))}
+                                        color={getStatusColor(parseFloat(exam.percentage))}
                                         height={240}
                                     />
                                 )) : <Text style={styles.noDataText}>No exam data found.</Text>}
@@ -417,9 +424,9 @@ const StaffDetailScreen = ({ route }) => {
 
                         {/* Legend */}
                         <View style={styles.legendRow}>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>Excellent</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>Average</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>Poor</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>{">"} 90% (Good)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>60% - 90% (Avg)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>{"<"} 60% (Poor)</Text></View>
                         </View>
                     </View>
                 </View>
@@ -479,7 +486,7 @@ const styles = StyleSheet.create({
     barBackground: { width: 30, height: '80%', backgroundColor: COLORS.track, borderRadius: 15, overflow: 'hidden', justifyContent: 'flex-end', position: 'relative' },
     barFill: { width: '100%', borderRadius: 15 },
     barTextContainer: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
-    barInnerText: { fontSize: 10, fontWeight: 'bold', color: '#455A64', transform: [{ rotate: '-90deg' }], width: 120, textAlign: 'center' },
+    barInnerText: { fontSize: 10, fontWeight: 'bold', color: '#0e0e0eff', transform: [{ rotate: '-90deg' }], width: 120, textAlign: 'center' },
     barLabelBottom: { marginTop: 8, fontSize: 11, fontWeight: '600', color: COLORS.textMain, textAlign: 'center', width: '100%' },
     
     // Legend

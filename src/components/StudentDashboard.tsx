@@ -99,8 +99,8 @@ const StudentDashboard = ({ navigation }) => {
   const allQuickAccessItems = [
     { id: 'qa2', title: 'Timetable', imageSource: 'https://cdn-icons-png.flaticon.com/128/1254/1254275.png', navigateToTab: 'Timetable' },
     { id: 'qa3', title: 'Attendance', imageSource: 'https://cdn-icons-png.flaticon.com/128/10293/10293877.png', navigateToTab: 'Attendance' },
-    { id: 'qa31', title: 'Transport', imageSource: 'https://cdn-icons-png.flaticon.com/128/3124/3124263.png', navigateToTab: 'TransportScreen' },
-    { id: 'qa28', title: 'Extracurricular Activities', imageSource: 'https://cdn-icons-png.flaticon.com/128/12693/12693554.png', navigateToTab: 'ActivitiesScreen' },
+    // { id: 'qa31', title: 'Transport', imageSource: 'https://cdn-icons-png.flaticon.com/128/3124/3124263.png', navigateToTab: 'TransportScreen' },
+    // { id: 'qa28', title: 'Extracurricular Activities', imageSource: 'https://cdn-icons-png.flaticon.com/128/12693/12693554.png', navigateToTab: 'ActivitiesScreen' },
     { id: 'qa14', title: 'Home Work', imageSource: 'https://cdn-icons-png.flaticon.com/128/11647/11647336.png', navigateTo: 'StudentHomework' },
     { id: 'qa18', title: 'Gallery', imageSource: 'https://cdn-icons-png.flaticon.com/128/8418/8418513.png', navigateTo: 'Gallery' },
     { id: 'qa19', title: 'About Us', imageSource: 'https://cdn-icons-png.flaticon.com/128/3815/3815523.png', navigateToTab: 'AboutUs' },
@@ -118,7 +118,7 @@ const StudentDashboard = ({ navigation }) => {
     { id: 'qa15', title: 'Study Materials', imageSource: 'https://cdn-icons-png.flaticon.com/128/3273/3273259.png', navigateToTab: 'StudentMaterialsScreen' },
     { id: 'qa20', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'StudentSyllabusNavigator' },
     { id: 'qa22', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'StudentResourcesScreen' },
-    { id: 'qa-ads-create', title: 'Create Ad', imageSource: 'https://cdn-icons-png.flaticon.com/128/4944/4944482.png', navigateTo: 'CreateAdScreen' },
+    // { id: 'qa-ads-create', title: 'Create Ad', imageSource: 'https://cdn-icons-png.flaticon.com/128/4944/4944482.png', navigateTo: 'CreateAdScreen' },
     
 
   ];

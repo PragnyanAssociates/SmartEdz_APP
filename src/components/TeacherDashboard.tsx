@@ -112,11 +112,11 @@ const TeacherDashboard = ({ navigation }) => {
   const allQuickAccessItems = [
     { id: 'qa23', title: 'My Attendence', imageSource: 'https://cdn-icons-png.flaticon.com/128/12404/12404284.png', navigateToTab: 'TeacherAttendanceReportScreen' },
     { id: 'qa24', title: 'My Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/939/939354.png', navigateToTab: 'TeacherPerformanceScreen' },
-    { id: 'qa31', title: 'Transport', imageSource: 'https://cdn-icons-png.flaticon.com/128/3124/3124263.png', navigateToTab: 'TransportScreen' },
+    // { id: 'qa31', title: 'Transport', imageSource: 'https://cdn-icons-png.flaticon.com/128/3124/3124263.png', navigateToTab: 'TransportScreen' },
     { id: 'qa2', title: 'Timetable', imageSource: 'https://cdn-icons-png.flaticon.com/128/1254/1254275.png', navigateToTab: 'Timetable' },
     { id: 'qa3', title: 'Student Attendance', imageSource: 'https://cdn-icons-png.flaticon.com/128/10293/10293877.png', navigateToTab: 'Attendance' },
     { id: 'qa4', title: 'Home Work', imageSource: 'https://cdn-icons-png.flaticon.com/128/11647/11647336.png', navigateToTab: 'TeacherAdminHomeworkScreen' },
-    { id: 'qa28', title: 'Extracurricular Activities', imageSource: 'https://cdn-icons-png.flaticon.com/128/12693/12693554.png', navigateToTab: 'ActivitiesScreen' },
+    // { id: 'qa28', title: 'Extracurricular Activities', imageSource: 'https://cdn-icons-png.flaticon.com/128/12693/12693554.png', navigateToTab: 'ActivitiesScreen' },
     { id: 'qa18', title: 'Gallery', imageSource: 'https://cdn-icons-png.flaticon.com/128/8418/8418513.png', navigateTo: 'Gallery' },
     { id: 'qa21', title: 'About Us', imageSource: 'https://cdn-icons-png.flaticon.com/128/3815/3815523.png', navigateToTab: 'AboutUs' },
     { id: 'qa4', title: 'Exams', imageSource: 'https://cdn-icons-png.flaticon.com/128/12886/12886027.png', navigateToTab: 'TeacherAdminExamsScreen' },
@@ -133,7 +133,7 @@ const TeacherDashboard = ({ navigation }) => {
     { id: 'qa15', title: 'Study Materials', imageSource: 'https://cdn-icons-png.flaticon.com/128/3273/3273259.png', navigateToTab: 'TeacherAdminMaterialsScreen' },
     { id: 'qa20', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'TeacherSyllabusScreen' },
     { id: 'qa22', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'TeacherAdminResourcesScreen' },
-    { id: 'qa-ads-create', title: 'Create Ad', imageSource: 'https://cdn-icons-png.flaticon.com/128/4944/4944482.png', navigateTo: 'CreateAdScreen' },
+    // { id: 'qa-ads-create', title: 'Create Ad', imageSource: 'https://cdn-icons-png.flaticon.com/128/4944/4944482.png', navigateTo: 'CreateAdScreen' },
   ];
 
   const [filteredItems, setFilteredItems] = useState(allQuickAccessItems);

@@ -33,6 +33,9 @@ const CLASS_SUBJECTS = { 'LKG': ['All Subjects'], 'UKG': ['All Subjects'], 'Clas
 const EXAM_MAPPING = { 'AT1': 'Assignment-1', 'UT1': 'Unitest-1', 'AT2': 'Assignment-2', 'UT2': 'Unitest-2', 'AT3': 'Assignment-3', 'UT3': 'Unitest-3', 'AT4': 'Assignment-4', 'UT4': 'Unitest-4', 'SA1': 'SA1', 'SA2': 'SA2', 'Total': 'Overall' };
 const DISPLAY_EXAM_ORDER = ['AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'AT4', 'UT4','SA1', 'SA2', 'Total'];
 
+// ★★★ NEW: Define Senior Classes for 20 Marks Logic ★★★
+const SENIOR_CLASSES = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
+
 // --- Helper: Date Formatter (DD/MM/YYYY) ---
 const formatDate = (date) => {
     if (!date) return '';
@@ -45,7 +48,7 @@ const formatDate = (date) => {
 
 const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
-// --- ★★★ NEW: Attendance Constants & Components ★★★ ---
+// --- Attendance Constants & Components ---
 const PRIMARY_COLOR = '#008080'; 
 const GREEN = '#43A047';
 const RED = '#E53935';
@@ -64,9 +67,13 @@ const StudentTimetable = ({ classGroup }) => {
     return (<View style={styles.ttContainer}><View style={styles.ttHeaderRow}>{tableHeaders.map(h => (<View key={h.name} style={[styles.ttHeaderCell, { backgroundColor: h.color, width: h.width }]}><Text style={[styles.ttHeaderText, { color: h.textColor }]}>{h.name}</Text></View>))}</View>{scheduleData.map((row, rowIndex) => (<View key={rowIndex} style={styles.ttRow}><View style={[styles.ttCell, styles.ttTimeCell, { width: tableHeaders[0].width }]}><Text style={styles.ttTimeText}>{row.time}</Text></View>{row.periods.map((period, periodIndex) => (<View key={periodIndex} style={[styles.ttCell, period.isBreak ? styles.ttBreakCell : { backgroundColor: getSubjectColor(period.subject) }, { width: tableHeaders[periodIndex + 1].width },]}>{period.isBreak ? (<Text style={styles.ttBreakTextSubject}>{period.subject}</Text>) : (<><Text style={styles.ttSubjectText} numberOfLines={2}>{period.subject || ''}</Text>{period.teacher && <Text style={styles.ttTeacherText} numberOfLines={1}>{period.teacher}</Text>}</>)}</View>))}</View>))}</View>);
 };
 
-// Embedded Report Card Component - UPDATED WITH MAX MARKS
+// Embedded Report Card Component - UPDATED WITH MAX MARKS LOGIC
 const EmbeddedReportCard = ({ studentInfo, academicYear, marksData, attendanceData }) => {
     const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
+    
+    // Check if senior class
+    const isSeniorClass = SENIOR_CLASSES.includes(studentInfo.class_group);
+
     return (
         <View style={rcStyles.card}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -77,7 +84,9 @@ const EmbeddedReportCard = ({ studentInfo, academicYear, marksData, attendanceDa
                         {DISPLAY_EXAM_ORDER.map(exam => {
                             let label = exam;
                             if (exam.startsWith('AT') || exam.startsWith('UT')) {
-                                label = `${exam}\n(25)`;
+                                // ★★★ LOGIC CHANGE HERE ★★★
+                                const maxMarks = isSeniorClass ? '20' : '25';
+                                label = `${exam}\n(${maxMarks})`;
                             } else if (exam.startsWith('SA')) {
                                 label = `${exam}\n(100)`;
                             }
@@ -150,7 +159,7 @@ const DailyStatusCard = ({ record, date }) => {
     );
 };
 
-// --- EMBEDDED ATTENDANCE VIEW (UPDATED) ---
+// --- EMBEDDED ATTENDANCE VIEW ---
 const EmbeddedAttendanceView = ({ studentId }) => {
     const [viewMode, setViewMode] = useState('daily'); // Default to Daily
     const [data, setData] = useState(null);
@@ -289,8 +298,6 @@ const EmbeddedAttendanceView = ({ studentId }) => {
                             <SummaryCard label="Days Absent" value={summary.absent_days || 0} color={RED} delay={300} />
                         </View>
                     )}
-                    
-                    {/* No Detailed History List here, as requested */}
                 </>
             )}
         </SafeAreaView>
@@ -415,7 +422,7 @@ const rcStyles = StyleSheet.create({
     totalRow: { backgroundColor: '#f1f3f5' },
 });
 
-// --- ★★★ NEW: Attendance Styles ★★★ ---
+// --- Attendance Styles ---
 const attStyles = StyleSheet.create({
     container: { flex: 1, backgroundColor: WHITE },
     noDataText: { textAlign: 'center', marginTop: 20, color: '#566573', fontSize: 16 },
