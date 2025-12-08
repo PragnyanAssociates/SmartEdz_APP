@@ -13,7 +13,7 @@ import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import Feather from 'react-native-vector-icons/Feather';
 import apiClient from '../../api/client';
 
-// --- Constants remain the same ---
+// --- Constants ---
 const CLASS_SUBJECTS = {
     'LKG': ['All Subjects'], 'UKG': ['All Subjects'], 'Class 1': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
     'Class 2': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], 'Class 3': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'],
@@ -22,13 +22,18 @@ const CLASS_SUBJECTS = {
     'Class 8': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], 'Class 9': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
     'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
+
 const EXAM_MAPPING = {
     'AT1': 'Assignment-1', 'UT1': 'Unitest-1', 'AT2': 'Assignment-2', 'UT2': 'Unitest-2',
     'AT3': 'Assignment-3', 'UT3': 'Unitest-3', 'AT4': 'Assignment-4', 'UT4': 'Unitest-4',
     'SA1': 'SA1', 'SA2': 'SA2', 'Total': 'Overall'
 };
+
 const DISPLAY_EXAM_ORDER = ['AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'AT4', 'UT4', 'SA1', 'SA2', 'Total'];
 const MONTHS = ['June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March', 'April', 'May'];
+
+// ★★★ NEW: Define which classes are out of 20 marks for AT/UT ★★★
+const SENIOR_CLASSES = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 
 /**
  * @name ReportCardContent
@@ -38,6 +43,9 @@ const MONTHS = ['June', 'July', 'August', 'September', 'October', 'November', 'D
 const ReportCardContent = ({ studentInfo, academicYear, marksData, attendanceData, isForCapture = false }) => {
     const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
     const formatMonthForDisplay = (month) => { if (month === 'September') return 'Sept'; return month.substring(0, 3); };
+
+    // ★★★ NEW: Determine max marks based on class group ★★★
+    const isSeniorClass = SENIOR_CLASSES.includes(studentInfo.class_group);
 
     // Use different styles based on whether we are capturing for download
     const s = isForCapture ? printStyles : styles;
@@ -62,14 +70,16 @@ const ReportCardContent = ({ studentInfo, academicYear, marksData, attendanceDat
             <Text style={s.sectionTitle}>PROGRESS CARD</Text>
             <ScrollView horizontal={!isForCapture} showsHorizontalScrollIndicator={false}>
                 <View style={s.table}>
-                    {/* UPDATED HEADER ROW WITH TOTAL MARKS DISPLAY */}
+                    {/* UPDATED HEADER ROW WITH DYNAMIC MARKS DISPLAY */}
                     <View style={s.tableRow}>
                         <Text style={[s.tableHeader, s.subjectCol]}>Subjects</Text>
                         {DISPLAY_EXAM_ORDER.map(exam => {
                             let label = exam;
-                            // Append max marks based on exam type
+                            // Append max marks based on exam type AND class group
                             if (exam.startsWith('AT') || exam.startsWith('UT')) {
-                                label = `${exam}\n(25)`;
+                                // ★★★ LOGIC CHANGE HERE ★★★
+                                const maxMarks = isSeniorClass ? '20' : '25';
+                                label = `${exam}\n(${maxMarks})`;
                             } else if (exam.startsWith('SA')) {
                                 label = `${exam}\n(100)`;
                             }

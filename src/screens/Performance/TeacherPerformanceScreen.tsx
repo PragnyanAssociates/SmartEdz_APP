@@ -1,11 +1,12 @@
 /**
  * File: src/screens/report/TeacherPerformanceScreen.js
- * Purpose: Teacher Performance Analytics with Table View, No Numbering, and Strict Color Logic.
+ * Purpose: Teacher Performance Analytics with Table View and Class-wise Max Mark Logic (20/25).
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     View, Text, StyleSheet, ActivityIndicator,
-    FlatList, TouchableOpacity, RefreshControl, LayoutAnimation, Platform, UIManager, Modal, ScrollView, Animated, Easing, Dimensions, Alert
+    FlatList, TouchableOpacity, RefreshControl, LayoutAnimation, 
+    Platform, UIManager, Modal, ScrollView, Animated, Easing, Dimensions, Alert
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -30,17 +31,19 @@ const ACADEMIC_YEARS = (() => {
     }
     return years;
 })();
-const EXAM_TYPES = ['Overall', 'AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'SA1', 'SA2', 'Pre-Final'];
+
+// Mapping for consistency with Backend
+const EXAM_TYPES = ['Overall', 'AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'AT4', 'UT4', 'SA1', 'SA2', 'Pre-Final'];
 
 // --- COLORS ---
 const COLORS = {
     primary: '#00897B',    // Teal (Header/Rank 2)
     background: '#F5F7FA', // Light Grey-Blue
     cardBg: '#FFFFFF',
-    textMain: '#263238',   // Dark Slate (Blackish)
+    textMain: '#263238',   // Dark Slate
     textSub: '#546E7A',    // Slate Grey
     
-    // --- STATUS COLORS (Updated Logic) ---
+    // --- STATUS COLORS (Strict Logic) ---
     success: '#43A047',    // Green (> 90%)
     average: '#1E88E5',    // Blue (60% - 90%)
     poor: '#E53935',       // Red (< 60%)
@@ -232,6 +235,8 @@ const TeacherPerformanceScreen = () => {
     };
 
     // --- COMPARISON LOGIC ---
+    // Note: The Backend now provides the correct 'total_possible' (20 or 25).
+    // The Frontend simply sums up these values from the API response.
     const getComparisonData = () => {
         if (!performanceData) return [];
 
@@ -246,10 +251,12 @@ const TeacherPerformanceScreen = () => {
                 if (teacher.detailed_performance) {
                     teacher.detailed_performance.forEach(detail => {
                         if (compareClass !== 'All Classes' && detail.class_group !== compareClass) return;
+                        
+                        // Find the specific exam in the detailed breakdown
                         const exam = detail.exam_breakdown.find(e => e.exam_type === compareExam);
                         if (exam) {
                             totalObtained += exam.total_obtained;
-                            totalPossible += exam.total_possible;
+                            totalPossible += exam.total_possible; // This comes pre-calculated (20 or 25) from backend
                         }
                     });
                 }
@@ -311,8 +318,6 @@ const TeacherPerformanceScreen = () => {
     }, [performanceData, sortBy, userRole]);
 
     // --- HELPER FOR RANK STRIP COLOR ONLY ---
-    // (Still keeping rank colors for the left strip to show position, 
-    // but actual performance indicators will use getStatusColor)
     const getRankColor = (rank) => {
         if (rank === 1) return COLORS.success; 
         if (rank === 2) return COLORS.primary;
@@ -320,7 +325,7 @@ const TeacherPerformanceScreen = () => {
         return COLORS.textSub;
     };
 
-    // --- RENDER TABLE VIEW (UPDATED) ---
+    // --- RENDER TABLE VIEW ---
     const renderTableView = () => {
         if (loadingAttendance && Object.keys(attendanceData).length === 0) {
             return (
@@ -347,45 +352,30 @@ const TeacherPerformanceScreen = () => {
                     <ScrollView showsVerticalScrollIndicator={false}>
                         {processedData.map((item, index) => {
                             const attPercentageStr = attendanceData[item.id] ? `${attendanceData[item.id]}%` : '-';
-                            
-                            // Attendance Color
                             const attVal = parseFloat(attendanceData[item.id]);
                             const attColor = getStatusColor(attVal);
 
                             return (
                                 <View key={item.uniqueKey} style={[styles.tableRow, index % 2 === 1 && styles.tableRowAlt]}>
-                                    
-                                    {/* Column 1: S.No */}
                                     <View style={{ width: 45, justifyContent: 'center', alignItems: 'center' }}>
                                         <Text style={styles.tableCell}>{index + 1}</Text>
                                     </View>
-
-                                    {/* Column 2: Name */}
                                     <View style={{ width: 120, justifyContent: 'center', paddingLeft: 5 }}>
                                         <Text style={[styles.tableCell, { fontWeight: 'bold' }]} numberOfLines={2}>
                                             {item.name}
                                         </Text>
                                     </View>
-
-                                    {/* Column 3: Subject / Class (No Numbers) */}
                                     <View style={{ width: 170, justifyContent: 'center' }}>
                                         {item.details && item.details.length > 0 ? (
                                             item.details.map((d, i) => (
                                                 <View key={i} style={styles.detailRowItem}>
-                                                    {/* REMOVED {i+1}. NUMBERING */}
-                                                    <Text style={styles.detailRowText}>
-                                                        {d.class_group} - {d.subject}
-                                                    </Text>
+                                                    <Text style={styles.detailRowText}>{d.class_group} - {d.subject}</Text>
                                                 </View>
                                             ))
                                         ) : (
-                                            <View style={styles.detailRowItem}>
-                                                <Text style={styles.detailRowText}>N/A</Text>
-                                            </View>
+                                            <View style={styles.detailRowItem}><Text style={styles.detailRowText}>N/A</Text></View>
                                         )}
                                     </View>
-
-                                    {/* Column 4: Performance (Colors Applied) */}
                                     <View style={{ width: 90, justifyContent: 'center', alignItems: 'center' }}>
                                         {item.details && item.details.length > 0 ? (
                                             item.details.map((d, i) => (
@@ -396,13 +386,9 @@ const TeacherPerformanceScreen = () => {
                                                 </View>
                                             ))
                                         ) : (
-                                            <View style={styles.detailRowItem}>
-                                                <Text style={{ fontSize: 12, fontWeight: 'bold', color: COLORS.poor }}>0%</Text>
-                                            </View>
+                                            <View style={styles.detailRowItem}><Text style={{ fontSize: 12, fontWeight: 'bold', color: COLORS.poor }}>0%</Text></View>
                                         )}
                                     </View>
-
-                                    {/* Column 5: Attendance (Colors Applied) */}
                                     <View style={{ width: 90, justifyContent: 'center', alignItems: 'center' }}>
                                         <Text style={{ fontWeight: 'bold', color: attColor }}>{attPercentageStr}</Text>
                                     </View>
@@ -417,12 +403,8 @@ const TeacherPerformanceScreen = () => {
 
     // --- RENDER CARD LIST VIEW ---
     const renderItem = ({ item }) => {
-        // Rank strip stays rank-based for visual position
         const rankStripColor = getRankColor(item.performanceRank);
-        
-        // Performance indicators use the new Strict Logic (<60 Red, 60-90 Blue, >90 Green)
         const performanceColor = getStatusColor(item.percentage);
-        
         const isExpanded = expandedId === item.uniqueKey;
         const percentage = item.percentage.toFixed(2);
 
@@ -433,7 +415,6 @@ const TeacherPerformanceScreen = () => {
                     onPress={() => toggleExpand(item.uniqueKey)}
                     activeOpacity={0.8}
                 >
-                    {/* Rank Strip (Left) */}
                     <View style={[styles.rankStrip, { backgroundColor: rankStripColor }]}>
                         <Text style={styles.rankText}>#{item.performanceRank}</Text>
                     </View>
@@ -444,8 +425,6 @@ const TeacherPerformanceScreen = () => {
                                 <Text style={styles.teacherName}>{item.name}</Text>
                                 {item.subName && <Text style={styles.subName}>{item.subName}</Text>}
                             </View>
-                            
-                            {/* Circle Badge (Uses Percentage Color) */}
                             <View style={[styles.circleBadge, { borderColor: performanceColor }]}>
                                 <Text style={[styles.circleText, { color: performanceColor }]}>{Math.round(item.percentage)}%</Text>
                             </View>
@@ -455,7 +434,6 @@ const TeacherPerformanceScreen = () => {
                             Total Marks: <Text style={styles.marksValue}>{Math.round(item.totalManaged)} / {Math.round(item.maxPossible)}</Text>
                         </Text>
                         
-                        {/* Progress Bar (Uses Percentage Color) */}
                         <View style={styles.progressTrack}>
                             <View style={[styles.progressFill, { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: performanceColor }]} />
                         </View>
@@ -539,7 +517,6 @@ const TeacherPerformanceScreen = () => {
                     <Text style={[styles.headerTitle, { flex: 1 }]} numberOfLines={1}>
                         {userRole === 'admin' ? 'Teacher Performance' : 'Class Performance'}
                     </Text>
-                    
                     <View style={{flexDirection: 'row'}}>
                         {userRole === 'admin' && (
                             <TouchableOpacity 
@@ -550,7 +527,6 @@ const TeacherPerformanceScreen = () => {
                                 <Text style={styles.compareBtnText}>{isTableView ? "CARDS" : "TABLE"}</Text>
                             </TouchableOpacity>
                         )}
-
                         {userRole === 'admin' && (
                             <TouchableOpacity style={styles.compareBtn} onPress={() => setIsCompareVisible(true)}>
                                 <Icon name="scale-balance" size={14} color="#fff" />
@@ -578,9 +554,7 @@ const TeacherPerformanceScreen = () => {
                 <View style={styles.loadingContainer}><ActivityIndicator size="large" color={COLORS.primary} /></View>
             ) : (
                 isTableView ? (
-                    <View style={{ flex: 1, backgroundColor: '#fff' }}>
-                        {renderTableView()}
-                    </View>
+                    <View style={{ flex: 1, backgroundColor: '#fff' }}>{renderTableView()}</View>
                 ) : (
                     <FlatList
                         data={processedData}
@@ -593,7 +567,7 @@ const TeacherPerformanceScreen = () => {
                 )
             )}
 
-            {/* --- MODAL: INDIVIDUAL GRAPH --- */}
+            {/* Modal: Individual Graph */}
             <Modal visible={isGraphVisible} transparent={true} animationType="fade" onRequestClose={() => setIsGraphVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.graphModalCard}>
@@ -603,9 +577,7 @@ const TeacherPerformanceScreen = () => {
                                 <Icon name="close-circle-outline" size={28} color={COLORS.textSub} />
                             </TouchableOpacity>
                         </View>
-                        
                         <Text style={styles.graphSubTitle}>{individualGraphData?.title}</Text>
-
                         <View style={styles.graphViewArea}>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, alignItems: 'flex-end' }}>
                                 {individualGraphData?.exams && individualGraphData.exams.map((exam, idx) => (
@@ -620,7 +592,6 @@ const TeacherPerformanceScreen = () => {
                                 ))}
                             </ScrollView>
                         </View>
-
                         <View style={styles.legendRow}>
                             <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>{">"} 90% (Good)</Text></View>
                             <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>60% - 90% (Avg)</Text></View>
@@ -630,7 +601,7 @@ const TeacherPerformanceScreen = () => {
                 </View>
             </Modal>
 
-            {/* --- MODAL: GLOBAL COMPARISON --- */}
+            {/* Modal: Global Comparison */}
             <Modal visible={isCompareVisible} animationType="slide" onRequestClose={() => setIsCompareVisible(false)}>
                 <View style={styles.fullScreenContainer}>
                     <View style={styles.fsHeader}>
@@ -639,7 +610,6 @@ const TeacherPerformanceScreen = () => {
                             <Icon name="close" size={24} color="#333" />
                         </TouchableOpacity>
                     </View>
-
                     <View style={styles.compareControls}>
                         <View style={styles.compareControlRow}>
                             <Text style={styles.controlLabel}>Exam Type:</Text>
@@ -660,11 +630,8 @@ const TeacherPerformanceScreen = () => {
                             </View>
                         )}
                     </View>
-
                     <View style={styles.compareGraphArea}>
-                        <Text style={styles.compareGraphTitle}>
-                            Ranking by {compareExam} {compareClass !== 'All Classes' ? `(${compareClass})` : ''}
-                        </Text>
+                        <Text style={styles.compareGraphTitle}>Ranking by {compareExam} {compareClass !== 'All Classes' ? `(${compareClass})` : ''}</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, alignItems: 'flex-end' }}>
                             {getComparisonData().length > 0 ? (
                                 getComparisonData().map((item, idx) => {
@@ -695,13 +662,10 @@ const TeacherPerformanceScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    // --- Layout & Basic ---
     container: { flex: 1, backgroundColor: COLORS.background },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     listPadding: { padding: 15, paddingBottom: 40 },
     emptyText: { textAlign: 'center', color: COLORS.textSub, marginTop: 30, fontStyle: 'italic' },
-
-    // --- Header ---
     headerContainer: { backgroundColor: '#FFF', padding: 15, paddingBottom: 10, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, elevation: 4, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.1, shadowRadius: 4 },
     headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
     headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.primary, letterSpacing: 0.5 },
@@ -710,20 +674,14 @@ const styles = StyleSheet.create({
     filterContainer: { flexDirection: 'row', gap: 12 },
     filterBox: { flex: 1, backgroundColor: '#F0F2F5', borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#E0E0E0', height: 45, justifyContent: 'center' },
     picker: { width: '100%', color: COLORS.textMain },
-
-    // --- Table Styles ---
     tableContainer: { padding: 10 },
     tableHeaderRow: { flexDirection: 'row', backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 5, marginBottom: 5 },
     tableHeaderCell: { color: '#FFF', fontWeight: 'bold', fontSize: 11, textAlign: 'center' },
     tableRow: { flexDirection: 'row', backgroundColor: '#FFF', paddingVertical: 0, paddingHorizontal: 5, borderBottomWidth: 1, borderBottomColor: '#EEE', alignItems: 'center', minHeight: 50 },
     tableRowAlt: { backgroundColor: '#F9FAFB' },
     tableCell: { fontSize: 12, color: COLORS.textMain, textAlign: 'center' },
-    
-    // Detail Lines
     detailRowItem: { height: 30, justifyContent: 'center', borderBottomWidth: 0.5, borderBottomColor: '#f0f0f0', width: '100%' },
     detailRowText: { fontSize: 11, color: COLORS.textSub, textAlign: 'center' },
-
-    // --- Card Styles ---
     card: { backgroundColor: COLORS.cardBg, borderRadius: 12, marginBottom: 15, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 3, overflow: 'hidden' },
     cardContent: { flexDirection: 'row' },
     rankStrip: { width: 36, justifyContent: 'center', alignItems: 'center' },
@@ -740,8 +698,6 @@ const styles = StyleSheet.create({
     progressFill: { height: '100%', borderRadius: 3 },
     expandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     perfLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textSub },
-
-    // --- Expanded Details ---
     expandedSection: { backgroundColor: '#FAFAFA', borderTopWidth: 1, borderTopColor: '#EEE', padding: 15 },
     detailBlock: { marginBottom: 20, backgroundColor: '#FFF', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#F0F0F0' },
     detailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
@@ -755,8 +711,6 @@ const styles = StyleSheet.create({
     bdTxt: { fontSize: 12, color: COLORS.textMain },
     percentagePill: { paddingVertical: 2, paddingHorizontal: 8, borderRadius: 10 },
     pillText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
-
-    // --- Graph Modal ---
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     graphModalCard: { width: '100%', backgroundColor: '#FFF', borderRadius: 16, padding: 20, elevation: 10 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -775,8 +729,6 @@ const styles = StyleSheet.create({
     compareGraphTitle: { textAlign: 'center', fontSize: 16, fontWeight: 'bold', color: COLORS.primary, marginBottom: 20 },
     noDataContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH },
     noDataTxt: { marginTop: 10, color: COLORS.textSub },
-
-    // --- Animated Bar Styles ---
     barWrapper: { width: 55, alignItems: 'center', justifyContent: 'flex-end', marginHorizontal: 8 },
     barLabelTop: { marginBottom: 4, fontSize: 12, fontWeight: 'bold', textAlign: 'center', color: COLORS.textMain },
     barBackground: { width: 30, height: '80%', backgroundColor: COLORS.track, borderRadius: 15, overflow: 'hidden', justifyContent: 'flex-end', position: 'relative' },

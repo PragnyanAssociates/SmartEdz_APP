@@ -1,7 +1,8 @@
 /**
  * File: src/screens/report/StudentPerformance.tsx
  * Purpose: View class-wise student performance.
- * Logic: Calculates percentage based ONLY on completed exams (exams with entered marks).
+ * Logic: Calculates percentage based ONLY on completed exams.
+ * Updated Logic: AT/UT Max marks are 20 for Classes 6-10, and 25 for others.
  * Updated: Strict Color Logic (<60 Red, 60-90 Blue, >90 Green).
  * Added: Subject Filter in Comparison Modal.
  */
@@ -39,12 +40,8 @@ const CLASS_SUBJECTS: any = {
     'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
-// Max marks per subject for each exam type
-const EXAM_MAX_SCORES: any = {
-    'AT1': 25, 'UT1': 25, 'AT2': 25, 'UT2': 25,
-    'AT3': 25, 'UT3': 25, 'AT4': 25, 'UT4': 25,
-    'SA1': 100, 'SA2': 100, 'Pre-Final': 100
-};
+// ★★★ NEW: Define which classes use 20 marks for AT/UT ★★★
+const SENIOR_CLASSES = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 
 // Map API exam names to short codes
 const EXAM_NAME_TO_CODE: any = {
@@ -131,7 +128,7 @@ const StudentPerformance = () => {
     
     // Comparison State
     const [compareExam, setCompareExam] = useState('Overall');
-    const [compareSubject, setCompareSubject] = useState('All Subjects'); // New Subject State
+    const [compareSubject, setCompareSubject] = useState('All Subjects');
 
     // --- 1. Fetch Classes ---
     useEffect(() => {
@@ -187,12 +184,15 @@ const StudentPerformance = () => {
         setIsGraphVisible(true);
     };
 
-    // --- 3. Process Data (UPDATED LOGIC) ---
+    // --- 3. Process Data (UPDATED LOGIC FOR 20/25 MARKS) ---
     const processedData = useMemo(() => {
         if (!selectedClass || students.length === 0) return [];
 
         const subjects = CLASS_SUBJECTS[selectedClass] || [];
         const subjectCount = subjects.length;
+
+        // ★ Determine if this is a senior class (6-10)
+        const isSeniorClass = SENIOR_CLASSES.includes(selectedClass);
 
         // 1. Map Marks: student_id -> exam_code -> subject -> marks
         const marksMap: any = {};
@@ -225,7 +225,20 @@ const StudentPerformance = () => {
                 });
 
                 if (hasExamData) {
-                    const examMax = (EXAM_MAX_SCORES[examCode] || 0) * subjectCount;
+                    // ★★★ DYNAMIC MAX MARKS LOGIC ★★★
+                    let maxMarksPerSubject = 0;
+                    
+                    if (['SA1', 'SA2', 'Pre-Final'].includes(examCode)) {
+                        // SA exams are always 100
+                        maxMarksPerSubject = 100;
+                    } else {
+                        // AT / UT Exams
+                        // If senior class (6-10) -> 20 marks, else -> 25 marks
+                        maxMarksPerSubject = isSeniorClass ? 20 : 25;
+                    }
+
+                    const examMax = maxMarksPerSubject * subjectCount;
+                    
                     studentTotalObtained += examObtained;
                     studentMaxTotal += examMax;
 
@@ -283,9 +296,11 @@ const StudentPerformance = () => {
     const studentList = processedData.students || [];
     const availableExams = ['Overall', ...(processedData.activeExams || [])];
 
-    // --- Comparison Data Logic (Includes Subject Filter) ---
+    // --- Comparison Data Logic (Includes Subject Filter & Dynamic Max Marks) ---
     const getComparisonData = () => {
         if (studentList.length === 0) return [];
+
+        const isSeniorClass = SENIOR_CLASSES.includes(selectedClass);
 
         return studentList.map(student => {
             let ob = 0; let max = 0; let perc = 0;
@@ -318,7 +333,13 @@ const StudentPerformance = () => {
                              const val = parseFloat(markEntry.marks_obtained);
                              if (!isNaN(val)) {
                                  ob += val;
-                                 max += (EXAM_MAX_SCORES[examCode] || 0);
+                                 
+                                 // ★ Logic for Max Marks for specific subject comparison
+                                 if (['SA1', 'SA2', 'Pre-Final'].includes(examCode)) {
+                                     max += 100;
+                                 } else {
+                                     max += isSeniorClass ? 20 : 25;
+                                 }
                              }
                         }
                     });
@@ -329,7 +350,12 @@ const StudentPerformance = () => {
                         const val = parseFloat(markEntry.marks_obtained);
                          if (!isNaN(val)) {
                              ob = val;
-                             max = EXAM_MAX_SCORES[compareExam] || 0;
+                             // ★ Logic for Max Marks for specific exam & subject
+                             if (['SA1', 'SA2', 'Pre-Final'].includes(compareExam)) {
+                                 max = 100;
+                             } else {
+                                 max = isSeniorClass ? 20 : 25;
+                             }
                          }
                     }
                 }

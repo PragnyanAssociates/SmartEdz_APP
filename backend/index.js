@@ -3395,25 +3395,15 @@ app.get('/api/study-materials/student/:classGroup', async (req, res) => {
 
 
 // ===============================================================
-// --- TEACHER PERFORMANCE MODULE API ROUTES (UPDATED) ---
+// --- TEACHER PERFORMANCE MODULE API ROUTES (UPDATED WITH 20/25 LOGIC) ---
 // ===============================================================
 
-// Constants for Max Marks per student per exam
-const EXAM_MAX_SCORES = {
-    'AT1': 25, 'Assignment-1': 25,
-    'UT1': 25, 'Unitest-1': 25,
-    'AT2': 25, 'Assignment-2': 25,
-    'UT2': 25, 'Unitest-2': 25,
-    'AT3': 25, 'Assignment-3': 25,
-    'UT3': 25, 'Unitest-3': 25,
-    'AT4': 25, 'Assignment-4': 25,
-    'UT4': 25, 'Unitest-4': 25,
-    'SA1': 100,
-    'SA2': 100,
-    'Pre-Final': 100
-};
+// Constants
+const SENIOR_CLASSES = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
+const SA_EXAMS = ['SA1', 'SA2', 'Pre-Final'];
 
 // Helper function to calculate accurate percentage and Exam-wise breakdown
+// NOW SUPPORTS DYNAMIC MAX MARKS (20 for Senior, 25 for Junior, 100 for SA)
 const calculateTeacherPerformance = async (db, teacherId, academicYear) => {
     // 1. Fetch raw marks, EXCLUDING 'Total'/'Overall'
     const query = `
@@ -3454,7 +3444,20 @@ const calculateTeacherPerformance = async (db, teacherId, academicYear) => {
         }
 
         const marks = parseFloat(row.marks_obtained);
-        const maxScore = EXAM_MAX_SCORES[row.exam_type] || 0;
+        
+        // ★★★ DYNAMIC MAX MARKS LOGIC ★★★
+        let maxScore = 0;
+        
+        // Check for 100-mark exams first (SA/Pre-Final)
+        // Checks if the exam type is SA1, SA2 or Pre-Final (handle case sensitivity if needed)
+        if (SA_EXAMS.some(sa => row.exam_type.toUpperCase().includes(sa.toUpperCase()))) {
+             maxScore = 100;
+        } else {
+             // It is an AT or UT exam.
+             // Check if class is Senior (20 marks) or Junior (25 marks)
+             const isSenior = SENIOR_CLASSES.includes(row.class_group);
+             maxScore = isSenior ? 20 : 25;
+        }
 
         if (!isNaN(marks) && maxScore > 0) {
             performanceMap[key].total_obtained += marks;
@@ -3491,9 +3494,13 @@ const calculateTeacherPerformance = async (db, teacherId, academicYear) => {
             };
         });
 
-        const examOrder = ['AT1', 'UT1', 'SA1', 'AT2', 'UT2', 'SA2'];
+        // Sort exams logically
+        const examOrder = ['AT1', 'UT1', 'AT2', 'UT2', 'SA1', 'AT3', 'UT3', 'AT4', 'UT4', 'SA2', 'Pre-Final'];
         exam_breakdown.sort((a, b) => {
-            return examOrder.indexOf(a.exam_type) - examOrder.indexOf(b.exam_type);
+            // Flexible sorting in case of naming variations like "Assignment-1"
+            const indexA = examOrder.findIndex(key => a.exam_type.includes(key) || key.includes(a.exam_type));
+            const indexB = examOrder.findIndex(key => b.exam_type.includes(key) || key.includes(b.exam_type));
+            return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
         });
 
         return {
@@ -3510,11 +3517,11 @@ const calculateTeacherPerformance = async (db, teacherId, academicYear) => {
     return results;
 };
 
-// --- ADMIN ROUTE (UPDATED) ---
+// --- ADMIN ROUTE ---
 app.get('/api/performance/admin/all-teachers/:academicYear', [verifyToken, isAdmin], async (req, res) => {
     try {
         const { academicYear } = req.params;
-        const [teachers] = await db.query("SELECT id, full_name FROM users WHERE role = 'teacher'");
+        const [teachers] = await db.query("SELECT id, full_name FROM users WHERE role = 'teacher' ORDER BY full_name");
         
         if (teachers.length === 0) return res.json([]);
 
@@ -3536,14 +3543,17 @@ app.get('/api/performance/admin/all-teachers/:academicYear', [verifyToken, isAdm
                 overallAverage = (grandTotalObtained / grandTotalPossible) * 100;
             }
             
-            allPerformanceData.push({
-                teacher_id: teacher.id,
-                teacher_name: teacher.full_name,
-                overall_average: overallAverage.toFixed(2),
-                overall_total: grandTotalObtained,
-                overall_possible: grandTotalPossible, // <--- ADDED THIS FIELD
-                detailed_performance: performance
-            });
+            // Only push if there is data or if you want to show teachers with 0 performance too
+            if (grandTotalPossible > 0) {
+                allPerformanceData.push({
+                    teacher_id: teacher.id,
+                    teacher_name: teacher.full_name,
+                    overall_average: overallAverage.toFixed(2),
+                    overall_total: grandTotalObtained,
+                    overall_possible: grandTotalPossible,
+                    detailed_performance: performance
+                });
+            }
         }
 
         res.json(allPerformanceData);
