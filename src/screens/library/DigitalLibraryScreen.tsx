@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, FlatList, TouchableOpacity, 
-    Linking, ActivityIndicator, Image, TextInput, RefreshControl 
+    ActivityIndicator, Image, TextInput, RefreshControl 
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import apiClient from '../../api/client';
@@ -44,12 +44,16 @@ const DigitalLibraryScreen = () => {
     const renderCard = ({ item }) => {
         const coverUrl = item.cover_image_url 
             ? `${SERVER_URL}${item.cover_image_url}` 
-            : 'https://via.placeholder.com/150/CCCCCC/FFFFFF?text=PDF';
+            : 'https://via.placeholder.com/150/CCCCCC/FFFFFF?text=E-Book';
 
         return (
-            <TouchableOpacity style={styles.card} onPress={() => Linking.openURL(`${SERVER_URL}${item.file_url}`)} activeOpacity={0.8}>
+            <TouchableOpacity 
+                style={styles.card} 
+                onPress={() => navigation.navigate('DigitalResourceDetailsScreen', { resource: item })} 
+                activeOpacity={0.9}
+            >
                 <View style={styles.imageContainer}>
-                    <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode={item.cover_image_url ? "cover" : "center"} />
+                    <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode="cover" />
                     <View style={styles.typeBadge}>
                         <Text style={styles.typeText}>E-BOOK</Text>
                     </View>
@@ -59,12 +63,8 @@ const DigitalLibraryScreen = () => {
                     <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
                     <Text style={styles.author}>by {item.author}</Text>
                     <View style={styles.metaRow}>
-                        {item.category && (
-                            <Text style={styles.category}>{item.category}</Text>
-                        )}
-                        {item.book_no && (
-                            <Text style={styles.bookNo}>{item.book_no}</Text>
-                        )}
+                        {item.category ? <Text style={styles.category}>{item.category}</Text> : <View/>}
+                        <Text style={styles.bookNo}>{item.book_no || '0000'}</Text>
                     </View>
                 </View>
             </TouchableOpacity>
@@ -97,11 +97,7 @@ const DigitalLibraryScreen = () => {
                     columnWrapperStyle={styles.rowWrapper}
                     contentContainerStyle={styles.listContent}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <Text style={styles.emptyText}>No digital resources found.</Text>
-                        </View>
-                    }
+                    ListEmptyComponent={<Text style={styles.emptyText}>No digital resources found.</Text>}
                 />
             )}
 
@@ -135,8 +131,7 @@ const styles = StyleSheet.create({
     bookNo: { fontSize: 10, color: '#94A3B8', fontWeight: 'bold' },
     fab: { position: 'absolute', right: 20, bottom: 20, backgroundColor: '#2563EB', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 5 },
     fabIcon: { color: '#FFF', fontSize: 32, marginTop: -2 },
-    emptyContainer: { alignItems: 'center', marginTop: 50 },
-    emptyText: { color: '#94A3B8', fontSize: 16 }
+    emptyText: { textAlign: 'center', marginTop: 50, color: '#94A3B8', fontSize: 16 }
 });
 
 export default DigitalLibraryScreen;

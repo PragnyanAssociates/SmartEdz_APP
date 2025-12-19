@@ -9427,6 +9427,56 @@ app.get('/api/library/digital', verifyToken, async (req, res) => {
     }
 });
 
+// 3. DELETE RESOURCE (Admin Only)
+app.delete('/api/library/digital/:id', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Optional: Get file path first to delete from filesystem if needed
+        // const [rows] = await db.query('SELECT file_url, cover_image_url FROM library_digital_resources WHERE id = ?', [id]);
+        
+        await db.query('DELETE FROM library_digital_resources WHERE id = ?', [id]);
+        res.status(200).json({ message: 'Resource deleted successfully' });
+    } catch (error) {
+        console.error("Delete Error:", error);
+        res.status(500).json({ message: 'Error deleting resource' });
+    }
+});
+
+// 4. UPDATE RESOURCE (Admin Only)
+app.put('/api/library/digital/:id', verifyToken, isAdmin, libraryUpload.fields([
+    { name: 'file', maxCount: 1 }, 
+    { name: 'cover_image', maxCount: 1 }
+]), async (req, res) => {
+    const { id } = req.params;
+    const { title, author, book_no, category, publisher } = req.body;
+
+    try {
+        // Build Dynamic Query to only update changed fields
+        let fields = ['title = ?', 'author = ?', 'book_no = ?', 'category = ?', 'publisher = ?'];
+        let params = [title, author, book_no, category, publisher];
+
+        if (req.files?.file) {
+            fields.push('file_url = ?');
+            params.push(`/uploads/library/${req.files.file[0].filename}`);
+        }
+
+        if (req.files?.cover_image) {
+            fields.push('cover_image_url = ?');
+            params.push(`/uploads/library/${req.files.cover_image[0].filename}`);
+        }
+
+        params.push(id); // For WHERE clause
+
+        const query = `UPDATE library_digital_resources SET ${fields.join(', ')} WHERE id = ?`;
+        
+        await db.query(query, params);
+        res.status(200).json({ message: 'Resource updated successfully' });
+    } catch (error) {
+        console.error("Update Error:", error);
+        res.status(500).json({ message: 'Error updating resource' });
+    }
+});
+
 // --- 5. ADMIN STATS ---
 app.get('/api/library/stats', verifyToken, isAdmin, async (req, res) => {
     try {
