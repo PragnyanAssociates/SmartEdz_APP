@@ -9136,16 +9136,13 @@ app.put('/api/transport/logs/service/:id', verifyToken, async (req, res) => {
 
 
 // ==========================================================
-// --- 📚 LIBRARY MODULE - COMPLETE BACKEND ---
+// --- 📚 LIBRARY MODULE - UPDATED BACKEND ---
 // ==========================================================
 
-// --- 1. Multer Config (Railway Compatible) ---
+// --- 1. Multer Config (Keep as is) ---
 const libraryStorage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Uses your global ROOT_STORAGE_PATH variable
         const libraryPath = path.join(ROOT_STORAGE_PATH, 'library');
-        
-        // Auto-create folder if it doesn't exist (Fix for Railway volumes)
         if (!fs.existsSync(libraryPath)) { 
             fs.mkdirSync(libraryPath, { recursive: true }); 
         }
@@ -9159,16 +9156,14 @@ const libraryStorage = multer.diskStorage({
 
 const libraryUpload = multer({ 
     storage: libraryStorage, 
-    limits: { fileSize: 50 * 1024 * 1024 } // 50MB Limit
+    limits: { fileSize: 50 * 1024 * 1024 } 
 });
 
 // --- 2. BOOK MANAGEMENT ROUTES ---
 
-// ADD BOOK (Admin/Teacher)
-app.post('/api/library/books', verifyToken, isTeacherOrAdmin, libraryUpload.single('cover_image'), async (req, res) => {
+// ADD BOOK (UPDATED: Changed isTeacherOrAdmin -> isAdmin)
+app.post('/api/library/books', verifyToken, isAdmin, libraryUpload.single('cover_image'), async (req, res) => {
     const { title, author, isbn, category, publisher, edition, language, price, purchase_date, total_copies, rack_no } = req.body;
-    
-    // Create public URL
     const cover_image_url = req.file ? `/uploads/library/${req.file.filename}` : null;
     
     try {
@@ -9177,7 +9172,6 @@ app.post('/api/library/books', verifyToken, isTeacherOrAdmin, libraryUpload.sing
             (title, author, isbn, category, publisher, edition, language, price, purchase_date, total_copies, available_copies, rack_no, cover_image_url) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
             
-        // available_copies starts equal to total_copies
         await db.query(query, [title, author, isbn, category, publisher, edition, language, price, purchase_date, total_copies, total_copies, rack_no, cover_image_url]); 
         res.status(201).json({ message: 'Book added successfully' });
     } catch (error) { 
@@ -9186,7 +9180,7 @@ app.post('/api/library/books', verifyToken, isTeacherOrAdmin, libraryUpload.sing
     }
 });
 
-// GET BOOKS (Search & Filter)
+// GET BOOKS (Available to All Roles)
 app.get('/api/library/books', verifyToken, async (req, res) => {
     try {
         const { search, category, availability } = req.query;
@@ -9216,27 +9210,23 @@ app.get('/api/library/books', verifyToken, async (req, res) => {
 
 // --- 3. ISSUE & RETURN ROUTES ---
 
-// ISSUE BOOK (Admin/Teacher)
-app.post('/api/library/issue', verifyToken, isTeacherOrAdmin, async (req, res) => {
+// ISSUE BOOK (UPDATED: Changed isTeacherOrAdmin -> isAdmin)
+app.post('/api/library/issue', verifyToken, isAdmin, async (req, res) => {
     const { book_id, user_id, due_date } = req.body;
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
         
-        // Check availability
         const [[book]] = await connection.query('SELECT available_copies, title FROM library_books WHERE id = ?', [book_id]);
         if (!book || book.available_copies < 1) throw new Error('Book not available');
 
-        // Create Issue Record
         await connection.query(
             'INSERT INTO library_issues (book_id, user_id, issued_by, due_date, status) VALUES (?, ?, ?, ?, ?)', 
             [book_id, user_id, req.user.id, due_date, 'issued']
         );
         
-        // Decrease Stock
         await connection.query('UPDATE library_books SET available_copies = available_copies - 1 WHERE id = ?', [book_id]);
         
-        // Notification (Ensure createNotification function exists in your server.js)
         if (typeof createNotification === 'function') {
             await createNotification(connection, user_id, "Library", "Book Issued", `You borrowed: ${book.title}. Due: ${due_date}`);
         }
@@ -9251,8 +9241,8 @@ app.post('/api/library/issue', verifyToken, isTeacherOrAdmin, async (req, res) =
     }
 });
 
-// RETURN BOOK (Admin/Teacher)
-app.post('/api/library/return', verifyToken, isTeacherOrAdmin, async (req, res) => {
+// RETURN BOOK (UPDATED: Changed isTeacherOrAdmin -> isAdmin)
+app.post('/api/library/return', verifyToken, isAdmin, async (req, res) => {
     const { issue_id, is_fine_paid } = req.body; 
     const connection = await db.getConnection();
     try {
@@ -9263,7 +9253,7 @@ app.post('/api/library/return', verifyToken, isTeacherOrAdmin, async (req, res) 
         const issue = issues[0];
         if (issue.status === 'returned') throw new Error('Book already returned');
 
-        // Calculate Fine Logic
+        // Fine Calculation
         const today = new Date();
         const due = new Date(issue.due_date);
         let fineAmount = 0;
@@ -9271,18 +9261,16 @@ app.post('/api/library/return', verifyToken, isTeacherOrAdmin, async (req, res) 
         if (today > due) {
             const diffTime = Math.abs(today - due);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-            fineAmount = diffDays * 10; // Example: 10 Currency Units per day
+            fineAmount = diffDays * 10; 
         }
 
         const fineStatus = (fineAmount > 0 && is_fine_paid) ? 'paid' : (fineAmount > 0 ? 'unpaid' : 'paid');
 
-        // Update Issue
         await connection.query(
             'UPDATE library_issues SET return_date = NOW(), status = ?, fine_amount = ?, fine_status = ? WHERE id = ?', 
             ['returned', fineAmount, fineStatus, issue_id]
         );
         
-        // Increase Stock
         await connection.query('UPDATE library_books SET available_copies = available_copies + 1 WHERE id = ?', [issue.book_id]);
 
         await connection.commit();
@@ -9295,13 +9283,12 @@ app.post('/api/library/return', verifyToken, isTeacherOrAdmin, async (req, res) 
     }
 });
 
-// --- 4. RESERVATION ROUTES ---
+// --- 4. RESERVATION & DIGITAL ROUTES ---
 
-// RESERVE BOOK (Student)
+// RESERVE BOOK (Available to Students/Teachers)
 app.post('/api/library/reserve', verifyToken, async (req, res) => {
     const { book_id } = req.body;
     try {
-        // Check duplication
         const [existing] = await db.query('SELECT id FROM library_reservations WHERE book_id = ? AND user_id = ? AND status = ?', [book_id, req.user.id, 'pending']);
         if (existing.length > 0) return res.status(400).json({ message: 'You have already requested this book.' });
 
@@ -9310,7 +9297,7 @@ app.post('/api/library/reserve', verifyToken, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error reserving book' }); }
 });
 
-// GET MY HISTORY (Student)
+// GET HISTORY (Available to All)
 app.get('/api/library/my-books', verifyToken, async (req, res) => {
     try {
         const query = `
@@ -9323,10 +9310,8 @@ app.get('/api/library/my-books', verifyToken, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error fetching history' }); }
 });
 
-// --- 5. DIGITAL LIBRARY ROUTES ---
-
-// UPLOAD RESOURCE (Admin/Teacher)
-app.post('/api/library/digital', verifyToken, isTeacherOrAdmin, libraryUpload.single('file'), async (req, res) => {
+// UPLOAD RESOURCE (UPDATED: Changed isTeacherOrAdmin -> isAdmin)
+app.post('/api/library/digital', verifyToken, isAdmin, libraryUpload.single('file'), async (req, res) => {
     const { title, subject, class_group } = req.body;
     const file_url = req.file ? `/uploads/library/${req.file.filename}` : null;
     try {
@@ -9338,7 +9323,7 @@ app.post('/api/library/digital', verifyToken, isTeacherOrAdmin, libraryUpload.si
     } catch (error) { res.status(500).json({ message: 'Error uploading' }); }
 });
 
-// GET RESOURCES (All Roles)
+// GET RESOURCES (Available to All)
 app.get('/api/library/digital', verifyToken, async (req, res) => {
     try {
         const [rows] = await db.query('SELECT * FROM library_digital_resources ORDER BY id DESC');
@@ -9346,7 +9331,7 @@ app.get('/api/library/digital', verifyToken, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error fetching resources' }); }
 });
 
-// --- 6. ADMIN STATS ---
+// --- 5. ADMIN STATS ---
 app.get('/api/library/stats', verifyToken, isAdmin, async (req, res) => {
     try {
         const [totalBooks] = await db.query('SELECT COUNT(*) as count FROM library_books');
