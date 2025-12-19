@@ -9161,18 +9161,22 @@ const libraryUpload = multer({
 
 // --- 2. BOOK MANAGEMENT ROUTES ---
 
-// ADD BOOK (UPDATED: Changed isTeacherOrAdmin -> isAdmin)
+// ADD BOOK (Admin Only)
 app.post('/api/library/books', verifyToken, isAdmin, libraryUpload.single('cover_image'), async (req, res) => {
-    const { title, author, isbn, category, publisher, edition, language, price, purchase_date, total_copies, rack_no } = req.body;
+    // UPDATED: 'isbn' changed to 'book_no'
+    const { title, author, book_no, category, publisher, edition, language, price, purchase_date, total_copies, rack_no } = req.body;
+    
     const cover_image_url = req.file ? `/uploads/library/${req.file.filename}` : null;
     
     try {
         const query = `
             INSERT INTO library_books 
-            (title, author, isbn, category, publisher, edition, language, price, purchase_date, total_copies, available_copies, rack_no, cover_image_url) 
+            (title, author, book_no, category, publisher, edition, language, price, purchase_date, total_copies, available_copies, rack_no, cover_image_url) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
             
-        await db.query(query, [title, author, isbn, category, publisher, edition, language, price, purchase_date, total_copies, total_copies, rack_no, cover_image_url]); 
+        // available_copies initially equals total_copies
+        await db.query(query, [title, author, book_no, category, publisher, edition, language, price, purchase_date, total_copies, total_copies, rack_no, cover_image_url]); 
+        
         res.status(201).json({ message: 'Book added successfully' });
     } catch (error) { 
         console.error("Add Book Error:", error);
@@ -9180,7 +9184,7 @@ app.post('/api/library/books', verifyToken, isAdmin, libraryUpload.single('cover
     }
 });
 
-// GET BOOKS (Available to All Roles)
+// GET BOOKS (Search via Title, Author, or Book No)
 app.get('/api/library/books', verifyToken, async (req, res) => {
     try {
         const { search, category, availability } = req.query;
@@ -9188,7 +9192,8 @@ app.get('/api/library/books', verifyToken, async (req, res) => {
         let params = [];
 
         if (search) {
-            query += ' AND (title LIKE ? OR author LIKE ? OR isbn LIKE ?)';
+            // UPDATED: Search includes book_no
+            query += ' AND (title LIKE ? OR author LIKE ? OR book_no LIKE ?)';
             const term = `%${search}%`;
             params.push(term, term, term);
         }
@@ -9199,11 +9204,13 @@ app.get('/api/library/books', verifyToken, async (req, res) => {
         if (availability === 'available') {
             query += ' AND available_copies > 0';
         }
+        
         query += ' ORDER BY id DESC';
         
         const [books] = await db.query(query, params);
         res.status(200).json(books);
     } catch (error) { 
+        console.error("Get Books Error:", error);
         res.status(500).json({ message: 'Error fetching books' }); 
     }
 });

@@ -11,38 +11,58 @@ const BookDetailsScreen = ({ route }) => {
         setLoading(true);
         try {
             await apiClient.post('/library/reserve', { book_id: book.id });
-            Alert.alert("Success", "Request sent to Librarian.");
+            Alert.alert("Success", "Reservation request sent to Librarian.");
         } catch (error) {
             Alert.alert("Error", error.response?.data?.message || "Failed to reserve.");
         } finally { setLoading(false); }
     };
 
-    const imageUrl = book.cover_image_url ? `${SERVER_URL}${book.cover_image_url}` : 'https://via.placeholder.com/300';
+    const imageUrl = book.cover_image_url 
+        ? `${SERVER_URL}${book.cover_image_url}` 
+        : 'https://via.placeholder.com/300/CCCCCC/FFFFFF?text=No+Cover';
+
+    const isAvailable = book.available_copies > 0;
 
     return (
-        <ScrollView style={styles.container}>
-            <Image source={{ uri: imageUrl }} style={styles.cover} />
-            <View style={styles.content}>
-                <Text style={styles.title}>{book.title}</Text>
-                <Text style={styles.author}>{book.author}</Text>
-                
-                <View style={styles.grid}>
-                    <DetailItem label="ISBN" value={book.isbn} />
-                    <DetailItem label="Publisher" value={book.publisher} />
-                    <DetailItem label="Category" value={book.category} />
-                    <DetailItem label="Rack No" value={book.rack_no} />
-                    <DetailItem label="Edition" value={book.edition || 'N/A'} />
-                    <DetailItem label="Language" value={book.language || 'English'} />
+        <ScrollView style={styles.container} bounces={false}>
+            {/* Header Image Background */}
+            <View style={styles.imageWrapper}>
+                <Image source={{ uri: imageUrl }} style={styles.cover} resizeMode="contain" />
+            </View>
+
+            <View style={styles.contentContainer}>
+                {/* Title Section */}
+                <View style={styles.headerSection}>
+                    <Text style={styles.title}>{book.title}</Text>
+                    <Text style={styles.author}>by {book.author}</Text>
+                    
+                    <View style={styles.statusRow}>
+                        <View style={[styles.pill, isAvailable ? styles.bgGreen : styles.bgRed]}>
+                            <Text style={styles.pillText}>{isAvailable ? 'Available' : 'Out of Stock'}</Text>
+                        </View>
+                        <Text style={styles.stockText}>{book.available_copies} of {book.total_copies} copies left</Text>
+                    </View>
                 </View>
 
-                {/* Reservation Button */}
+                {/* Details Grid */}
+                <Text style={styles.sectionHeader}>Book Details</Text>
+                <View style={styles.grid}>
+                    <DetailItem label="Book No." value={book.book_no} />
+                    <DetailItem label="Rack No." value={book.rack_no} />
+                    <DetailItem label="Category" value={book.category} />
+                    <DetailItem label="Publisher" value={book.publisher} />
+                    <DetailItem label="Language" value={book.language || 'English'} />
+                    <DetailItem label="Edition" value={book.edition || 'Standard'} />
+                </View>
+
+                {/* Action Button */}
                 <TouchableOpacity 
-                    style={[styles.btn, book.available_copies === 0 && styles.disabledBtn]} 
+                    style={[styles.btn, (!isAvailable || loading) && styles.disabledBtn]} 
                     onPress={handleReserve}
-                    disabled={book.available_copies === 0 || loading}
+                    disabled={!isAvailable || loading}
                 >
                     <Text style={styles.btnText}>
-                        {loading ? "Processing..." : (book.available_copies > 0 ? "Request to Borrow" : "Currently Unavailable")}
+                        {loading ? "Processing..." : (isAvailable ? "Request to Borrow" : "Currently Unavailable")}
                     </Text>
                 </TouchableOpacity>
             </View>
@@ -53,22 +73,35 @@ const BookDetailsScreen = ({ route }) => {
 const DetailItem = ({ label, value }) => (
     <View style={styles.item}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value}>{value}</Text>
+        <Text style={styles.value} numberOfLines={1}>{value || '-'}</Text>
     </View>
 );
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#FFF' },
-    cover: { width: '100%', height: 250, resizeMode: 'contain', backgroundColor: '#F1F5F9' },
-    content: { padding: 20 },
-    title: { fontSize: 24, fontWeight: 'bold', color: '#1E293B' },
-    author: { fontSize: 16, color: '#64748B', marginBottom: 20 },
+    imageWrapper: { backgroundColor: '#F1F5F9', paddingVertical: 20, alignItems: 'center', borderBottomWidth: 1, borderColor: '#E2E8F0' },
+    cover: { width: 160, height: 240, borderRadius: 8, elevation: 5, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10 },
+    
+    contentContainer: { padding: 24 },
+    headerSection: { marginBottom: 24, borderBottomWidth: 1, borderColor: '#F1F5F9', paddingBottom: 20 },
+    title: { fontSize: 22, fontWeight: '800', color: '#1E293B', marginBottom: 4 },
+    author: { fontSize: 16, color: '#64748B', fontWeight: '500' },
+    
+    statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
+    pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, marginRight: 10 },
+    bgGreen: { backgroundColor: '#DCFCE7' }, 
+    bgRed: { backgroundColor: '#FEE2E2' },
+    pillText: { fontSize: 12, fontWeight: 'bold', color: '#1E293B' },
+    stockText: { fontSize: 13, color: '#64748B' },
+
+    sectionHeader: { fontSize: 16, fontWeight: '700', color: '#334155', marginBottom: 12 },
     grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-    item: { width: '48%', marginBottom: 15, padding: 10, backgroundColor: '#F8FAFC', borderRadius: 8 },
-    label: { fontSize: 12, color: '#94A3B8' },
+    item: { width: '48%', backgroundColor: '#F8FAFC', padding: 12, borderRadius: 10, marginBottom: 12 },
+    label: { fontSize: 11, color: '#94A3B8', marginBottom: 4, textTransform: 'uppercase' },
     value: { fontSize: 14, fontWeight: '600', color: '#334155' },
-    btn: { marginTop: 20, backgroundColor: '#2563EB', padding: 15, borderRadius: 8, alignItems: 'center' },
-    disabledBtn: { backgroundColor: '#CBD5E1' },
+
+    btn: { backgroundColor: '#2563EB', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginTop: 20, elevation: 2 },
+    disabledBtn: { backgroundColor: '#94A3B8', elevation: 0 },
     btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 }
 });
 

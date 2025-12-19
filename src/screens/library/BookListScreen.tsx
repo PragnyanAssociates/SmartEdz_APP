@@ -1,43 +1,70 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { 
+    View, Text, StyleSheet, FlatList, TextInput, Image, 
+    TouchableOpacity, ActivityIndicator, RefreshControl 
+} from 'react-native';
 import apiClient from '../../api/client';
-import { SERVER_URL } from '../../../apiConfig';
-import { useNavigation } from '@react-navigation/native';
+import { SERVER_URL } from '../../../apiConfig'; // Ensure this points to your backend base URL (e.g. http://192.168.1.5:3000)
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 const BookListScreen = () => {
     const navigation = useNavigation();
     const [books, setBooks] = useState([]);
     const [search, setSearch] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
-    useEffect(() => {
-        const timeout = setTimeout(() => fetchBooks(), 500);
-        return () => clearTimeout(timeout);
-    }, [search]);
+    // Fetch books when screen focuses or search changes
+    useFocusEffect(
+        useCallback(() => {
+            fetchBooks();
+        }, [search])
+    );
 
     const fetchBooks = async () => {
-        setLoading(true);
         try {
             const res = await apiClient.get('/library/books', { params: { search } });
             setBooks(res.data);
-        } catch (error) { console.error(error); } 
-        finally { setLoading(false); }
+        } catch (error) { 
+            console.error(error); 
+        } finally { 
+            setLoading(false); 
+            setRefreshing(false);
+        }
     };
 
-    const renderBook = ({ item }: {item:any}) => {
-        const imageUrl = item.cover_image_url ? `${SERVER_URL}${item.cover_image_url}` : 'https://via.placeholder.com/150';
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchBooks();
+    };
+
+    const renderBookCard = ({ item }) => {
+        const imageUrl = item.cover_image_url 
+            ? `${SERVER_URL}${item.cover_image_url}` 
+            : 'https://via.placeholder.com/150/CCCCCC/FFFFFF?text=No+Cover';
+        
+        const isAvailable = item.available_copies > 0;
+
         return (
-            <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('BookDetailsScreen' as never, { book: item } as never)}>
-                <Image source={{ uri: imageUrl }} style={styles.cover} />
-                <View style={styles.info}>
-                    <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
-                    <Text style={styles.author}>{item.author}</Text>
-                    <View style={styles.row}>
-                        <View style={[styles.badge, item.available_copies > 0 ? styles.bgGreen : styles.bgRed]}>
-                            <Text style={styles.badgeText}>{item.available_copies > 0 ? 'Available' : 'Out of Stock'}</Text>
-                        </View>
-                        <Text style={styles.rack}>Rack: {item.rack_no}</Text>
+            <TouchableOpacity 
+                style={styles.card} 
+                onPress={() => navigation.navigate('BookDetailsScreen', { book: item })}
+                activeOpacity={0.8}
+            >
+                {/* Book Cover */}
+                <View style={styles.imageContainer}>
+                    <Image source={{ uri: imageUrl }} style={styles.coverImage} resizeMode="cover" />
+                    {/* Status Badge */}
+                    <View style={[styles.badge, isAvailable ? styles.bgGreen : styles.bgRed]}>
+                        <Text style={styles.badgeText}>{isAvailable ? 'Available' : 'Out'}</Text>
                     </View>
+                </View>
+
+                {/* Book Info */}
+                <View style={styles.infoContainer}>
+                    <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+                    <Text style={styles.author} numberOfLines={1}>{item.author}</Text>
+                    <Text style={styles.bookNo}>No: {item.book_no}</Text>
                 </View>
             </TouchableOpacity>
         );
@@ -45,30 +72,81 @@ const BookListScreen = () => {
 
     return (
         <View style={styles.container}>
-            <View style={styles.searchBox}>
-                <TextInput style={styles.input} placeholder="Search books..." value={search} onChangeText={setSearch} />
+            {/* Search Header */}
+            <View style={styles.headerContainer}>
+                <Text style={styles.screenTitle}>Library Collection</Text>
+                <View style={styles.searchBox}>
+                    <Text style={styles.searchIcon}>🔍</Text>
+                    <TextInput 
+                        style={styles.input} 
+                        placeholder="Search by Title, Author, or No..." 
+                        placeholderTextColor="#94A3B8"
+                        value={search} 
+                        onChangeText={setSearch} 
+                    />
+                </View>
             </View>
-            {loading && <ActivityIndicator size="small" color="#2563EB" style={{margin:10}} />}
-            <FlatList data={books} renderItem={renderBook} keyExtractor={(i:any) => i.id.toString()} contentContainerStyle={{ padding: 10 }} />
+
+            {loading && !refreshing ? (
+                <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 50 }} />
+            ) : (
+                <FlatList 
+                    data={books} 
+                    renderItem={renderBookCard} 
+                    keyExtractor={(item) => item.id.toString()} 
+                    numColumns={2} // ★ GRID LAYOUT
+                    columnWrapperStyle={styles.rowWrapper} // Gap between columns
+                    contentContainerStyle={styles.listContent}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                    ListEmptyComponent={
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyText}>No books found.</Text>
+                        </View>
+                    }
+                />
+            )}
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F1F5F9' },
-    searchBox: { padding: 15, backgroundColor: '#FFF' },
-    input: { backgroundColor: '#F8FAFC', borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-    card: { flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 10, marginBottom: 10, padding: 10, elevation: 2 },
-    cover: { width: 70, height: 100, borderRadius: 5, backgroundColor: '#EEE' },
-    info: { flex: 1, marginLeft: 15, justifyContent: 'center' },
-    title: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
-    author: { color: '#64748B', fontSize: 14, marginBottom: 6 },
-    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
-    badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
-    bgGreen: { backgroundColor: '#DCFCE7' }, 
-    bgRed: { backgroundColor: '#FEE2E2' },
-    badgeText: { fontSize: 11, fontWeight: 'bold', color: '#334155' },
-    rack: { fontSize: 12, color: '#94A3B8' }
+    container: { flex: 1, backgroundColor: '#F8FAFC' },
+    headerContainer: { padding: 20, backgroundColor: '#FFF', paddingBottom: 15, elevation: 2 },
+    screenTitle: { fontSize: 24, fontWeight: '800', color: '#1E293B', marginBottom: 15 },
+    searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 10, paddingHorizontal: 12 },
+    searchIcon: { fontSize: 16, marginRight: 8 },
+    input: { flex: 1, paddingVertical: 12, fontSize: 15, color: '#334155' },
+    
+    // List Styles
+    listContent: { padding: 12, paddingBottom: 40 },
+    rowWrapper: { justifyContent: 'space-between' },
+    
+    // Card Styles
+    card: { 
+        width: '48%', 
+        backgroundColor: '#FFF', 
+        borderRadius: 12, 
+        marginBottom: 16, 
+        elevation: 3, 
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 5,
+        overflow: 'hidden'
+    },
+    imageContainer: { height: 180, width: '100%', position: 'relative' },
+    coverImage: { width: '100%', height: '100%' },
+    badge: { position: 'absolute', top: 8, right: 8, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+    bgGreen: { backgroundColor: 'rgba(34, 197, 94, 0.9)' },
+    bgRed: { backgroundColor: 'rgba(239, 68, 68, 0.9)' },
+    badgeText: { fontSize: 10, fontWeight: 'bold', color: '#FFF' },
+    
+    infoContainer: { padding: 10 },
+    title: { fontSize: 14, fontWeight: 'bold', color: '#1E293B', marginBottom: 4, height: 40 }, // Fixed height for alignment
+    author: { fontSize: 12, color: '#64748B', marginBottom: 2 },
+    bookNo: { fontSize: 10, color: '#94A3B8', fontWeight: '600' },
+    
+    emptyState: { alignItems: 'center', marginTop: 50 },
+    emptyText: { color: '#94A3B8', fontSize: 16 }
 });
 
 export default BookListScreen;

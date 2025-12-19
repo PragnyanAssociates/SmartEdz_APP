@@ -1,75 +1,64 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, TouchableOpacity, FlatList, 
-    Image, ActivityIndicator, RefreshControl, Alert 
+    Image, ActivityIndicator, RefreshControl 
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiClient from '../../api/client';
+import apiClient from '../../api/client'; 
+
+// IMPORT YOUR AUTH HOOK (Adjust the path if your context file is in a different folder)
+import { useAuth } from '../../context/AuthContext'; 
 
 const LibraryHomeScreen = () => {
     const navigation = useNavigation();
-    const [role, setRole] = useState(''); // Default empty to prevent wrong flash
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
+    
+    // 1. GET USER DIRECTLY FROM CONTEXT (The Fix)
+    const { user } = useAuth(); 
+    
     const [stats, setStats] = useState(null);
+    const [refreshing, setRefreshing] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-    const init = useCallback(async () => {
-        try {
-            // 1. Get User Data
-            const userData = await AsyncStorage.getItem('userData'); 
-            if (userData) {
-                const user = JSON.parse(userData);
-                console.log("Current Library User Role:", user.role); // DEBUG LOG
-                setRole(user.role);
+    // 2. Determine Role safely
+    const role = user?.role || 'student';
+    const userName = user?.full_name || user?.username || 'User';
 
-                // 2. If Admin, Fetch Stats immediately
-                if (user.role === 'admin') {
-                    fetchStats();
-                }
-            }
-        } catch (e) { 
-            console.error("Library Init Error:", e);
-        } finally { 
-            setLoading(false); 
-            setRefreshing(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        init();
-    }, [init]);
-
-    const fetchStats = async () => {
+    // 3. Fetch Stats if Admin
+    const fetchStats = useCallback(async () => {
+        if (role !== 'admin') return;
+        
         try {
             const res = await apiClient.get('/library/stats');
             setStats(res.data);
         } catch (e) { 
             console.log("Stats Error:", e); 
         }
-    };
+    }, [role]);
 
-    const onRefresh = () => {
+    useEffect(() => {
+        fetchStats();
+    }, [fetchStats]);
+
+    const onRefresh = async () => {
         setRefreshing(true);
-        init();
+        if (role === 'admin') await fetchStats();
+        setRefreshing(false);
     };
 
     const getFeatures = () => {
-        // Modules available to Everyone (Student, Teacher, Others)
         const commonModules = [
             { id: '1', title: 'Search Books', icon: 'https://cdn-icons-png.flaticon.com/128/2232/2232688.png', screen: 'BookListScreen' },
             { id: '2', title: 'My Issued Books', icon: 'https://cdn-icons-png.flaticon.com/128/2232/2232696.png', screen: 'MyIssuedBooksScreen' },
             { id: '3', title: 'Digital Library', icon: 'https://cdn-icons-png.flaticon.com/128/2997/2997235.png', screen: 'DigitalLibraryScreen' },
         ];
 
-        // Modules available ONLY to Admin
         const adminModules = [
             { id: '4', title: 'Issue/Return', icon: 'https://cdn-icons-png.flaticon.com/128/9562/9562689.png', screen: 'IssueBookScreen' },
             { id: '5', title: 'Add Books', icon: 'https://cdn-icons-png.flaticon.com/128/992/992651.png', screen: 'AddBookScreen' },
             { id: '6', title: 'Reports', icon: 'https://cdn-icons-png.flaticon.com/128/2835/2835532.png', screen: 'LibraryReportsScreen' },
         ];
 
-        // LOGIC: If role is exactly 'admin', show everything. Otherwise, show only common.
+        // LOGIC: Use the context role
         if (role === 'admin') {
             return [...commonModules, ...adminModules];
         }
@@ -80,7 +69,9 @@ const LibraryHomeScreen = () => {
         <View style={styles.header}>
             <View>
                 <Text style={styles.headerTitle}>📚 Library Hub</Text>
-                <Text style={styles.subHeader}>Welcome, {role ? role.charAt(0).toUpperCase() + role.slice(1) : 'User'}</Text>
+                <Text style={styles.subHeader}>
+                    Welcome, {userName}
+                </Text>
             </View>
             
             {role === 'admin' && stats && (
@@ -126,7 +117,7 @@ const LibraryHomeScreen = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    header: { padding: 20, backgroundColor: '#FFF', elevation: 2, marginBottom: 10 },
+    header: { padding: 20, backgroundColor: '#FFF', elevation: 2, marginBottom: 10, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
     headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#1E293B' },
     subHeader: { fontSize: 14, color: '#64748B', marginTop: 4 },
     statsContainer: { flexDirection: 'row', marginTop: 20, justifyContent: 'space-between' },

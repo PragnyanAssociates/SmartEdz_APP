@@ -1,19 +1,9 @@
 import React, { useState } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    ScrollView,
-    Alert,
-    Image,
-    ActivityIndicator,
-    Platform
+    View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
+    Alert, Image, ActivityIndicator, Platform, KeyboardAvoidingView
 } from 'react-native';
-// ★ CLI Image Picker Import
 import { launchImageLibrary } from 'react-native-image-picker';
-
 import apiClient from '../../api/client';
 import { useNavigation } from '@react-navigation/native';
 
@@ -22,11 +12,10 @@ const AddBookScreen = () => {
     const [loading, setLoading] = useState(false);
     const [image, setImage] = useState(null);
 
-    // Form State
     const [formData, setFormData] = useState({
         title: '',
         author: '',
-        isbn: '',
+        book_no: '', // Changed from isbn
         category: '',
         publisher: '',
         total_copies: '',
@@ -37,290 +26,125 @@ const AddBookScreen = () => {
         setFormData({ ...formData, [field]: value });
     };
 
-    // ★ CLI Image Picker Logic
     const pickImage = async () => {
-        const options = {
-            mediaType: 'photo',
-            quality: 0.7,
-            selectionLimit: 1,
-        };
-
+        const options = { mediaType: 'photo', quality: 0.7, selectionLimit: 1 };
         try {
             const result = await launchImageLibrary(options);
-
-            if (result.didCancel) {
-                console.log('User cancelled image picker');
-            } else if (result.errorCode) {
-                Alert.alert('Error', result.errorMessage);
-            } else if (result.assets && result.assets.length > 0) {
-                // Save the first asset
+            if (result.assets && result.assets.length > 0) {
                 setImage(result.assets[0]);
             }
         } catch (error) {
-            console.error("Picker Error: ", error);
-            Alert.alert("Error", "Could not open image library");
+            Alert.alert("Error", "Could not access gallery");
         }
     };
 
-    // Submit Function
     const handleSubmit = async () => {
-        if (!formData.title || !formData.author || !formData.total_copies) {
-            Alert.alert('Missing Fields', 'Please fill in Title, Author, and Total Copies.');
+        if (!formData.title || !formData.author || !formData.total_copies || !formData.book_no) {
+            Alert.alert('Validation', 'Please fill Title, Author, Book No, and Total Copies.');
             return;
         }
 
         setLoading(true);
-
         try {
             const data = new FormData();
-            
-            // Append text fields
-            data.append('title', formData.title);
-            data.append('author', formData.author);
-            data.append('isbn', formData.isbn);
-            data.append('category', formData.category);
-            data.append('publisher', formData.publisher);
-            data.append('total_copies', formData.total_copies);
-            data.append('rack_no', formData.rack_no);
+            Object.keys(formData).forEach(key => data.append(key, formData[key]));
 
-            // Append Image if selected
             if (image) {
                 const imageUri = Platform.OS === 'android' ? image.uri : image.uri.replace('file://', '');
-                
                 data.append('cover_image', {
                     uri: imageUri,
                     type: image.type || 'image/jpeg',
-                    name: image.fileName || `book_cover_${Date.now()}.jpg`,
+                    name: image.fileName || `cover_${Date.now()}.jpg`,
                 });
             }
 
-            // API Call using your apiClient
-            // Note: 'Content-Type': 'multipart/form-data' is usually handled automatically,
-            // but explicitly setting it ensures boundaries are correct.
             await apiClient.post('/library/books', data, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
 
-            Alert.alert('Success', 'Book added successfully!', [
-                { text: 'OK', onPress: () => navigation.goBack() }
-            ]);
-
+            Alert.alert('Success', 'Book added successfully!', [{ text: 'OK', onPress: () => navigation.goBack() }]);
         } catch (error) {
             console.error('Add Book Error:', error);
-            Alert.alert('Error', 'Failed to add book. Please try again.');
+            Alert.alert('Error', 'Failed to add book.');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <View style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
+            <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
                 
                 <Text style={styles.header}>Add New Book</Text>
 
-                {/* Image Picker Section */}
                 <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
                     {image ? (
                         <Image source={{ uri: image.uri }} style={styles.previewImage} />
                     ) : (
                         <View style={styles.placeholder}>
-                            <Text style={styles.placeholderIcon}>📷</Text>
-                            <Text style={styles.placeholderText}>Tap to add Cover Image</Text>
+                            <Text style={styles.plusIcon}>+</Text>
+                            <Text style={styles.placeholderText}>Upload Cover</Text>
                         </View>
                     )}
                 </TouchableOpacity>
 
-                {/* Form Fields */}
-                <View style={styles.formGroup}>
-                    <Text style={styles.label}>Book Title *</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="e.g. Harry Potter"
-                        placeholderTextColor="#A0AEC0"
-                        value={formData.title}
-                        onChangeText={(text) => handleInputChange('title', text)}
-                    />
-                </View>
-
-                <View style={styles.formGroup}>
-                    <Text style={styles.label}>Author *</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="e.g. J.K. Rowling"
-                        placeholderTextColor="#A0AEC0"
-                        value={formData.author}
-                        onChangeText={(text) => handleInputChange('author', text)}
-                    />
-                </View>
-
-                <View style={styles.row}>
-                    <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
-                        <Text style={styles.label}>ISBN</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Optional"
-                            placeholderTextColor="#A0AEC0"
-                            value={formData.isbn}
-                            onChangeText={(text) => handleInputChange('isbn', text)}
-                        />
+                <View style={styles.card}>
+                    <InputLabel label="Book Title *" placeholder="e.g. Clean Code" value={formData.title} onChangeText={t => handleInputChange('title', t)} />
+                    <InputLabel label="Author *" placeholder="e.g. Robert C. Martin" value={formData.author} onChangeText={t => handleInputChange('author', t)} />
+                    
+                    <View style={styles.row}>
+                        <InputLabel containerStyle={{flex:1, marginRight:10}} label="Book No. *" placeholder="e.g. BK-101" value={formData.book_no} onChangeText={t => handleInputChange('book_no', t)} />
+                        <InputLabel containerStyle={{flex:1}} label="Category" placeholder="e.g. Tech" value={formData.category} onChangeText={t => handleInputChange('category', t)} />
                     </View>
-                    <View style={[styles.formGroup, { flex: 1 }]}>
-                        <Text style={styles.label}>Category</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="e.g. Fiction"
-                            placeholderTextColor="#A0AEC0"
-                            value={formData.category}
-                            onChangeText={(text) => handleInputChange('category', text)}
-                        />
+
+                    <View style={styles.row}>
+                        <InputLabel containerStyle={{flex:1, marginRight:10}} label="Copies *" placeholder="10" keyboardType="numeric" value={formData.total_copies} onChangeText={t => handleInputChange('total_copies', t)} />
+                        <InputLabel containerStyle={{flex:1}} label="Rack No" placeholder="A-1" value={formData.rack_no} onChangeText={t => handleInputChange('rack_no', t)} />
                     </View>
+
+                    <InputLabel label="Publisher" placeholder="Optional" value={formData.publisher} onChangeText={t => handleInputChange('publisher', t)} />
                 </View>
 
-                <View style={styles.row}>
-                    <View style={[styles.formGroup, { flex: 1, marginRight: 10 }]}>
-                        <Text style={styles.label}>Total Copies *</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="e.g. 10"
-                            placeholderTextColor="#A0AEC0"
-                            keyboardType="numeric"
-                            value={formData.total_copies}
-                            onChangeText={(text) => handleInputChange('total_copies', text)}
-                        />
-                    </View>
-                    <View style={[styles.formGroup, { flex: 1 }]}>
-                        <Text style={styles.label}>Rack No</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="e.g. A-12"
-                            placeholderTextColor="#A0AEC0"
-                            value={formData.rack_no}
-                            onChangeText={(text) => handleInputChange('rack_no', text)}
-                        />
-                    </View>
-                </View>
-
-                <View style={styles.formGroup}>
-                    <Text style={styles.label}>Publisher</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Publisher Name"
-                        placeholderTextColor="#A0AEC0"
-                        value={formData.publisher}
-                        onChangeText={(text) => handleInputChange('publisher', text)}
-                    />
-                </View>
-
-                <TouchableOpacity 
-                    style={[styles.submitButton, loading && styles.disabledButton]} 
-                    onPress={handleSubmit}
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <ActivityIndicator color="#FFF" />
-                    ) : (
-                        <Text style={styles.submitButtonText}>Add Book</Text>
-                    )}
+                <TouchableOpacity style={styles.submitButton} onPress={handleSubmit} disabled={loading}>
+                    {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Save Book</Text>}
                 </TouchableOpacity>
 
             </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
     );
 };
 
+// Helper Component for cleaner code
+const InputLabel = ({ label, placeholder, value, onChangeText, keyboardType, containerStyle }) => (
+    <View style={[styles.inputGroup, containerStyle]}>
+        <Text style={styles.label}>{label}</Text>
+        <TextInput 
+            style={styles.input} 
+            placeholder={placeholder} 
+            placeholderTextColor="#94A3B8"
+            value={value} 
+            onChangeText={onChangeText}
+            keyboardType={keyboardType}
+        />
+    </View>
+);
+
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#F5F7FA',
-    },
-    scrollContainer: {
-        padding: 20,
-        paddingBottom: 40,
-    },
-    header: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#1A202C',
-        marginBottom: 20,
-        textAlign: 'center',
-    },
-    imagePicker: {
-        width: 120,
-        height: 180,
-        backgroundColor: '#E2E8F0',
-        alignSelf: 'center',
-        borderRadius: 8,
-        marginBottom: 25,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#CBD5E0',
-        borderStyle: 'dashed',
-        overflow: 'hidden',
-    },
-    previewImage: {
-        width: '100%',
-        height: '100%',
-    },
-    placeholder: {
-        alignItems: 'center',
-        padding: 10,
-    },
-    placeholderIcon: {
-        fontSize: 30,
-        marginBottom: 5,
-    },
-    placeholderText: {
-        fontSize: 12,
-        color: '#718096',
-        textAlign: 'center',
-    },
-    formGroup: {
-        marginBottom: 15,
-    },
-    row: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    label: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#4A5568',
-        marginBottom: 6,
-    },
-    input: {
-        backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 16,
-        color: '#2D3748',
-    },
-    submitButton: {
-        backgroundColor: '#3182CE',
-        paddingVertical: 14,
-        borderRadius: 8,
-        alignItems: 'center',
-        marginTop: 10,
-        shadowColor: '#3182CE',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-        elevation: 3,
-    },
-    disabledButton: {
-        backgroundColor: '#A0AEC0',
-    },
-    submitButtonText: {
-        color: '#FFFFFF',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
+    container: { flex: 1, backgroundColor: '#F1F5F9' },
+    scrollContainer: { padding: 20 },
+    header: { fontSize: 22, fontWeight: 'bold', color: '#1E293B', marginBottom: 20, textAlign: 'center' },
+    imagePicker: { width: 120, height: 160, backgroundColor: '#E2E8F0', alignSelf: 'center', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#CBD5E1', borderStyle: 'dashed' },
+    previewImage: { width: '100%', height: '100%' },
+    placeholder: { alignItems: 'center' },
+    plusIcon: { fontSize: 30, color: '#64748B' },
+    placeholderText: { fontSize: 12, color: '#64748B', marginTop: 4 },
+    card: { backgroundColor: '#FFF', borderRadius: 16, padding: 20, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+    inputGroup: { marginBottom: 16 },
+    row: { flexDirection: 'row' },
+    label: { fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 6 },
+    input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 15, color: '#1E293B' },
+    submitButton: { backgroundColor: '#2563EB', paddingVertical: 16, borderRadius: 12, alignItems: 'center', marginTop: 24, elevation: 3 },
+    submitButtonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
 });
 
 export default AddBookScreen;
