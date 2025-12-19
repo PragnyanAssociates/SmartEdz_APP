@@ -9351,25 +9351,62 @@ app.get('/api/library/my-books', verifyToken, async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Error fetching history' }); }
 });
 
-// UPLOAD RESOURCE (UPDATED: Changed isTeacherOrAdmin -> isAdmin)
-app.post('/api/library/digital', verifyToken, isAdmin, libraryUpload.single('file'), async (req, res) => {
+// 1. UPLOAD RESOURCE (Admin Only - Supports File + Cover Image)
+// We use .fields() to accept multiple files with specific keys
+app.post('/api/library/digital', verifyToken, isAdmin, libraryUpload.fields([
+    { name: 'file', maxCount: 1 }, 
+    { name: 'cover_image', maxCount: 1 }
+]), async (req, res) => {
+    
     const { title, subject, class_group } = req.body;
-    const file_url = req.file ? `/uploads/library/${req.file.filename}` : null;
+    
+    // Check if files exist
+    if (!req.files || !req.files.file) {
+        return res.status(400).json({ message: 'Digital file (PDF/Doc) is required.' });
+    }
+
+    // Get Paths
+    const file_url = `/uploads/library/${req.files.file[0].filename}`;
+    const cover_image_url = req.files.cover_image 
+        ? `/uploads/library/${req.files.cover_image[0].filename}` 
+        : null; // Null if no cover provided
+
     try {
         await db.query(
-            'INSERT INTO library_digital_resources (title, file_url, subject, class_group, uploaded_by) VALUES (?, ?, ?, ?, ?)', 
-            [title, file_url, subject, class_group, req.user.id]
+            'INSERT INTO library_digital_resources (title, file_url, cover_image_url, subject, class_group, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)', 
+            [title, file_url, cover_image_url, subject, class_group, req.user.id]
         );
         res.status(201).json({ message: 'Uploaded successfully' });
-    } catch (error) { res.status(500).json({ message: 'Error uploading' }); }
+    } catch (error) { 
+        console.error("Upload Error:", error);
+        res.status(500).json({ message: 'Error uploading resource' }); 
+    }
 });
 
-// GET RESOURCES (Available to All)
+// 2. GET RESOURCES (Search & Filter)
 app.get('/api/library/digital', verifyToken, async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM library_digital_resources ORDER BY id DESC');
+        const { search, subject } = req.query;
+        let query = 'SELECT * FROM library_digital_resources WHERE 1=1';
+        let params = [];
+
+        if (search) {
+            query += ' AND title LIKE ?';
+            params.push(`%${search}%`);
+        }
+        if (subject && subject !== 'All') {
+            query += ' AND subject = ?';
+            params.push(subject);
+        }
+
+        query += ' ORDER BY id DESC';
+
+        const [rows] = await db.query(query, params);
         res.status(200).json(rows);
-    } catch (error) { res.status(500).json({ message: 'Error fetching resources' }); }
+    } catch (error) { 
+        console.error("Fetch Digital Error:", error);
+        res.status(500).json({ message: 'Error fetching resources' }); 
+    }
 });
 
 // --- 5. ADMIN STATS ---
