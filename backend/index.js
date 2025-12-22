@@ -9460,6 +9460,32 @@ app.get('/api/library/stats', verifyToken, isAdmin, async (req, res) => {
 });
 
 
+// 7. GET STUDENT'S OWN HISTORY (My Books)
+app.get('/api/library/student/history', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id; // Get User ID from Token
+
+        const query = `
+            SELECT t.*, 
+                   b.title as book_title, 
+                   b.book_no,
+                   b.author,
+                   b.cover_image_url
+            FROM library_transactions t
+            LEFT JOIN library_books b ON t.book_id = b.id
+            WHERE t.user_id = ?
+            ORDER BY t.created_at DESC
+        `;
+        
+        const [history] = await db.query(query, [userId]);
+        res.json(history);
+    } catch (error) {
+        console.error("Student History Error:", error);
+        res.status(500).json({ message: "Failed to fetch history" });
+    }
+});
+
+
 
 
 
