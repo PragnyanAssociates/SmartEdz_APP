@@ -133,6 +133,8 @@ import AddDigitalResourceScreen from './src/screens/library/AddDigitalResourceSc
 import BookDetailsScreen from './src/screens/library/BookDetailsScreen';
 import DigitalResourceDetailsScreen from './src/screens/library/DigitalResourceDetailsScreen';
 import DocumentViewerScreen from './src/screens/library/DocumentViewerScreen';
+import AdminActionScreen from './src/screens/library/AdminActionScreen';
+import BorrowRequestScreen from './src/screens/library/BorrowRequestScreen';
 // Donor-Specific Screens
 // import DonorNotifications from './src/components/DonorNotifications';
 
@@ -322,6 +324,8 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="BookDetailsScreen" component={BookDetailsScreen} />
       <Stack.Screen name="DigitalResourceDetailsScreen" component={DigitalResourceDetailsScreen} />
       <Stack.Screen name="DocumentViewerScreen" component={DocumentViewerScreen} />
+      <Stack.Screen name="AdminActionScreen" component={AdminActionScreen} />
+      <Stack.Screen name="BorrowRequestScreen" component={BorrowRequestScreen} />
 
       <Stack.Screen name="TeacherPerformanceScreen" component={TeacherPerformanceScreen} />
       <Stack.Screen name="StudentPerformance" component={StudentPerformance} />

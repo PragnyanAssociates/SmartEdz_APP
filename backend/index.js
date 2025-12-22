@@ -9294,6 +9294,83 @@ app.delete('/api/library/books/:id', verifyToken, isAdmin, async (req, res) => {
     }
 });
 
+// Borrow details 
+// 1. SUBMIT BORROW REQUEST
+app.post('/api/library/request', verifyToken, async (req, res) => {
+    try {
+        const { book_id, full_name, roll_no, class_name, mobile, email, borrow_date, return_date } = req.body;
+
+        // Check if book still has available copies
+        const [book] = await db.query('SELECT available_copies FROM library_books WHERE id = ?', [book_id]);
+        if (book[0].available_copies <= 0) {
+            return res.status(400).json({ message: 'No copies left. Please wait until one is returned.' });
+        }
+
+        const query = `INSERT INTO library_transactions 
+            (book_id, user_id, full_name, roll_no, class_name, mobile, email, borrow_date, expected_return_date, status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`;
+        
+        await db.query(query, [book_id, req.user.id, full_name, roll_no, class_name, mobile, email, borrow_date, return_date]);
+        res.status(201).json({ message: 'Request sent to admin successfully!' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// 2. ADMIN: GET ALL PENDING REQUESTS
+app.get('/api/library/admin/requests', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const query = `
+            SELECT t.*, b.title as book_title, b.book_no 
+            FROM library_transactions t
+            JOIN library_books b ON t.book_id = b.id
+            WHERE t.status != 'returned'
+            ORDER BY t.created_at DESC`;
+        const [requests] = await db.query(query);
+        res.json(requests);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// 3. ADMIN: APPROVE/REJECT REQUEST
+app.put('/api/library/admin/request-action/:id', verifyToken, isAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { action } = req.body; // 'approved' or 'rejected'
+
+    try {
+        if (action === 'approved') {
+            // Get book_id first
+            const [trans] = await db.query('SELECT book_id FROM library_transactions WHERE id = ?', [id]);
+            // Decrement available copies
+            await db.query('UPDATE library_books SET available_copies = available_copies - 1 WHERE id = ? AND available_copies > 0', [trans[0].book_id]);
+        }
+        
+        await db.query('UPDATE library_transactions SET status = ? WHERE id = ?', [action, id]);
+        res.json({ message: `Request ${action} successfully.` });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// 4. RETURN BOOK
+app.put('/api/library/return/:id', verifyToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [trans] = await db.query('SELECT book_id FROM library_transactions WHERE id = ?', [id]);
+        
+        // Update status and increment book count
+        await db.query('UPDATE library_transactions SET status = "returned", actual_return_date = NOW() WHERE id = ?', [id]);
+        await db.query('UPDATE library_books SET available_copies = available_copies + 1 WHERE id = ?', [trans[0].book_id]);
+        
+        res.json({ message: 'Book returned successfully.' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+
+
 
 // 1. Digital Library UPLOAD RESOURCE (Admin Only - Supports File + Cover Image)
 // 1. Digital Library (Admin Only)

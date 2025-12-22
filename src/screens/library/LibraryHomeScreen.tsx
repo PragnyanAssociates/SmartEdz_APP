@@ -53,9 +53,8 @@ const LibraryHomeScreen = () => {
         ];
 
         const adminModules = [
-            { id: '4', title: 'Issue/Return', icon: 'https://cdn-icons-png.flaticon.com/128/465/465950.png', screen: 'IssueBookScreen' },
-            { id: '5', title: 'Add Books', icon: 'https://cdn-icons-png.flaticon.com/128/4683/4683468.png', screen: 'AddBookScreen' },
-            { id: '6', title: 'Reports', icon: 'https://cdn-icons-png.flaticon.com/128/1484/1484584.png', screen: 'LibraryReportsScreen' },
+            // { id: '4', title: 'Issue/Return', icon: 'https://cdn-icons-png.flaticon.com/128/465/465950.png', screen: '' },
+            { id: '5', title: 'Action Center', icon: 'https://cdn-icons-png.flaticon.com/128/1484/1484584.png', screen: 'AdminActionScreen' },
         ];
 
         // LOGIC: Use the context role
