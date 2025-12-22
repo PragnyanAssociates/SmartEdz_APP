@@ -9368,6 +9368,25 @@ app.put('/api/library/return/:id', verifyToken, async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 });
+// 5. GET LIBRARY STATS (Admin Dashboard)
+app.get('/api/library/stats', verifyToken, isAdmin, async (req, res) => {
+    try {
+        // Calculate counts using SQL conditional aggregation
+        const query = `
+            SELECT 
+                COUNT(CASE WHEN status = 'approved' THEN 1 END) AS issued,
+                COUNT(CASE WHEN status = 'pending' THEN 1 END) AS pending,
+                COUNT(CASE WHEN status = 'approved' AND expected_return_date < CURDATE() THEN 1 END) AS overdue
+            FROM library_transactions
+        `;
+        
+        const [rows] = await db.query(query);
+        res.json(rows[0]); // Returns { issued: 10, pending: 5, overdue: 2 }
+    } catch (error) {
+        console.error("Stats Error:", error);
+        res.status(500).json({ message: "Failed to fetch stats" });
+    }
+});
 
 
 
