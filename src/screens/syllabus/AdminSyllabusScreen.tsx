@@ -1,5 +1,3 @@
-// 📂 File: screens/syllabus/AdminSyllabusScreen.js
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
     View, Text, StyleSheet, FlatList, TouchableOpacity, 
@@ -20,6 +18,17 @@ const formatDateDisplay = (isoDateString) => {
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const year = date.getFullYear();
     return `${day}/${month}/${year}`;
+};
+
+// --- Helper: Format Date for Backend (YYYY-MM-DD) Local Time ---
+// ★★★ NEW FUNCTION TO FIX DATE SHIFT ISSUE ★★★
+const formatDateForBackend = (dateObj) => {
+    if (!dateObj) return '';
+    const year = dateObj.getFullYear();
+    // Months are 0-indexed in JS, so +1
+    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+    const day = dateObj.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
 };
 
 // --- Main Component ---
@@ -191,7 +200,6 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isSubjectsLoading, setIsSubjectsLoading] = useState(false);
-    // Removed isTeachersLoading since we load them at start
 
     // Date Picker Logic
     const [showDatePicker, setShowDatePicker] = useState(false);
@@ -201,10 +209,10 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
         const bootstrapForm = async () => {
             setIsLoading(true);
             try {
-                // ★★★ UPDATED: Fetch Teachers HERE immediately (parallel with classes) ★★★
+                // Fetch Teachers immediately
                 const [classRes, teacherRes] = await Promise.all([
                     apiClient.get('/student-classes'),
-                    apiClient.get('/teachers/all-simple') // Calls the new simplified backend route
+                    apiClient.get('/teachers/all-simple') 
                 ]);
 
                 // Handle Classes
@@ -217,7 +225,6 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
                 // If Edit Mode, populate existing data
                 if (isEditMode) {
                     await handleClassChange(initialSyllabus.class_group, true);
-                    // No need to fetch teacher on subject change anymore
                     await handleSubjectChange(initialSyllabus.subject_name, true);
                     
                     const syllabusDetailsRes = await apiClient.get(`/syllabus/teacher/${initialSyllabus.class_group}/${initialSyllabus.subject_name}`);
@@ -225,11 +232,11 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
                     
                     const formattedLessons = syllabusData.lessons.map(l => ({ 
                         lessonName: l.lesson_name, 
+                        // Backend dates come in string format, wrap in new Date()
                         dueDate: new Date(l.due_date) 
                     }));
                     setLessons(formattedLessons.length > 0 ? formattedLessons : [{ lessonName: '', dueDate: new Date() }]);
                     
-                    // Ensure the correct teacher is selected
                     setSelectedTeacherId(initialSyllabus.creator_id.toString());
                 }
             } catch (e) { console.error(e); Alert.alert("Error", "Could not load data."); } 
@@ -241,7 +248,6 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     const handleClassChange = async (classGroup, isInitialLoad = false) => {
         if (!isInitialLoad) {
             setSelectedSubject(''); setAvailableSubjects([]);
-            // Don't clear teachers here, they are static list now
         }
         setSelectedClass(classGroup);
         if (!classGroup) return;
@@ -255,7 +261,6 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     };
 
     const handleSubjectChange = async (subjectName, isInitialLoad = false) => {
-        // No longer fetching teachers here to prevent empty lists due to missing timetables
         setSelectedSubject(subjectName);
     };
 
@@ -295,7 +300,9 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
             .filter(l => l.lessonName.trim())
             .map(l => ({
                 lessonName: l.lessonName,
-                dueDate: l.dueDate.toISOString().split('T')[0] 
+                // ★★★ CHANGED: Use Local Date Formatting instead of toISOString() ★★★
+                // This prevents the timezone from shifting back 1 day (e.g., Jan 5 -> Jan 4)
+                dueDate: formatDateForBackend(l.dueDate)
             }));
 
         if (validLessons.length === 0) return Alert.alert("Required", "Please add at least one lesson name.");
@@ -358,7 +365,6 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
 
                     <Text style={styles.label}>Assign Teacher</Text>
                     <View style={styles.inputWrapper}>
-                        {/* ★★★ ENABLED prop fixed: always enabled so you can see list ★★★ */}
                         <Picker selectedValue={selectedTeacherId} onValueChange={setSelectedTeacherId}>
                             <Picker.Item label="Select Teacher..." value="" color="#94a3b8"/>
                             {availableTeachers.map((t) => <Picker.Item key={t.id} label={t.full_name} value={t.id.toString()} color="#0f172a"/>)}
