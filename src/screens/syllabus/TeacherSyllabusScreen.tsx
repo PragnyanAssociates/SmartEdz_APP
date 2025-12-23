@@ -1,8 +1,5 @@
-// 📂 File: screens/syllabus/TeacherSyllabusScreen.js (MODIFIED & CORRECTED)
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
-// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -10,6 +7,13 @@ import { useIsFocused } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
 const Stack = createStackNavigator();
+
+// Helper to format date strictly as DD/MM/YYYY
+const formatDate = (isoString) => {
+    if (!isoString) return 'No Date';
+    const d = new Date(isoString);
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+};
 
 const TeacherSyllabusNavigator = () => (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -28,42 +32,39 @@ const TeacherSyllabusListScreen = ({ navigation }) => {
         if (!user?.id) return;
         setIsLoading(true);
         try {
-            // ★★★ 2. USE apiClient ★★★
             const response = await apiClient.get(`/teacher-assignments/${user.id}`);
             setAssignments(response.data);
-        } catch (error) { Alert.alert("Error", error.response?.data?.message || "Failed to load your assigned subjects."); }
+        } catch (error) { Alert.alert("Error", "Failed to load subjects."); }
         finally { setIsLoading(false); }
     }, [user?.id]);
 
-    useEffect(() => {
-        if (isFocused) { fetchAssignments(); }
-    }, [isFocused, fetchAssignments]);
+    useEffect(() => { if (isFocused) fetchAssignments(); }, [isFocused, fetchAssignments]);
 
     return (
         <View style={styles.container}>
-            <View style={styles.listHeader}>
-                <Text style={styles.listHeaderTitle}>My Syllabus Tracking</Text>
-                <Text style={styles.listHeaderSubtitle}>Select a subject to update lesson progress.</Text>
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>My Syllabus</Text>
+                <Text style={styles.headerSubtitle}>Select a subject to manage progress</Text>
             </View>
             <FlatList
                 data={assignments}
                 keyExtractor={(item, index) => `${item.class_group}-${item.subject_name}-${index}`}
+                contentContainerStyle={{ padding: 15 }}
                 renderItem={({ item }) => (
                     <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('TeacherLessonProgress', { classGroup: item.class_group, subjectName: item.subject_name })}>
-                        <View style={styles.cardContent}>
-                            <MaterialIcons name="menu-book" size={28} color="#5c6bc0" />
-                            <View style={styles.cardTextContainer}>
-                               <Text style={styles.cardTitle}>{item.subject_name}</Text>
-                               <Text style={styles.cardSubtitle}>For: {item.class_group}</Text>
-                            </View>
+                        <View style={styles.iconBox}>
+                            <MaterialIcons name="menu-book" size={24} color="#4f46e5" />
                         </View>
-                        <MaterialIcons name="chevron-right" size={28} color="#757575" />
+                        <View style={styles.cardContent}>
+                           <Text style={styles.cardTitle}>{item.subject_name}</Text>
+                           <Text style={styles.cardSubtitle}>{item.class_group}</Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={24} color="#cbd5e1" />
                     </TouchableOpacity>
                 )}
                 onRefresh={fetchAssignments}
                 refreshing={isLoading}
-                ListEmptyComponent={!isLoading ? <View style={styles.emptyContainer}><Text style={styles.emptyText}>You have no classes assigned in the timetable.</Text></View> : null}
-                contentContainerStyle={{ flexGrow: 1 }}
+                ListEmptyComponent={!isLoading && <Text style={styles.emptyText}>No assigned classes found.</Text>}
             />
         </View>
     );
@@ -79,7 +80,6 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            // ★★★ 3. USE apiClient FOR ALL FETCH CALLS ★★★
             const syllabusResponse = await apiClient.get(`/syllabus/teacher/${classGroup}/${subjectName}`);
             const syllabusData = syllabusResponse.data;
             
@@ -87,131 +87,109 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
             const progressData = progressResponse.data;
 
             const newOverview = { completed: 0, missed: 0, pending: 0, total: progressData.length };
-            progressData.forEach(lesson => {
-                if (lesson.status === 'Completed') newOverview.completed++;
-                else if (lesson.status === 'Missed') newOverview.missed++;
+            progressData.forEach(l => {
+                if (l.status === 'Completed') newOverview.completed++;
+                else if (l.status === 'Missed') newOverview.missed++;
                 else newOverview.pending++;
             });
             setOverview(newOverview);
-            
-            const lessonsWithStatus = progressData.map(p => ({
-                id: p.lesson_id,
-                lesson_name: p.lesson_name,
-                due_date: p.due_date,
-                status: p.status
-            }));
-            setSyllabus({ ...syllabusData, lessons: lessonsWithStatus });
+            setSyllabus({ ...syllabusData, lessons: progressData });
 
         } catch (error) {
-            const message = error.response?.status === 404
-                ? "Syllabus has not been created for this subject yet."
-                : error.response?.data?.message || "Failed to load data.";
-            Alert.alert("Error", message);
+            Alert.alert("Notice", "Syllabus not found for this subject.");
         } finally {
             setIsLoading(false);
         }
     }, [classGroup, subjectName]);
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    useEffect(() => { fetchData(); }, [fetchData]);
 
     const handleStatusUpdate = (lessonId, newStatus) => {
-        const action = newStatus === 'Pending' ? 'revert' : 'mark';
-        const message = `This will ${action} the lesson as '${newStatus}' for ALL students in ${classGroup}. Are you sure?`;
-
+        const action = newStatus === 'Pending' ? 'reset' : 'mark';
         Alert.alert(
-            "Confirm Action", message,
+            "Confirm Update", 
+            `Do you want to ${action} this lesson as ${newStatus}?`,
             [
                 { text: "Cancel", style: "cancel" },
                 { 
-                    text: "Confirm", 
+                    text: "Yes", 
                     onPress: async () => {
                         try {
-                            // ★★★ 4. USE apiClient ★★★
-                            const response = await apiClient.patch('/syllabus/lesson-status', {
+                            await apiClient.patch('/syllabus/lesson-status', {
                                 class_group: classGroup,
                                 lesson_id: lessonId,
                                 status: newStatus,
                                 teacher_id: teacher.id
                             });
-                            Alert.alert("Success", response.data.message);
                             fetchData();
-                        } catch (error) {
-                            Alert.alert("Error", error.response?.data?.message || "Failed to update status.");
-                        }
+                        } catch (error) { Alert.alert("Error", "Update failed."); }
                     } 
                 }
             ]
         );
     };
 
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const isOverdue = date < today;
-        const options = { month: 'short', day: 'numeric', year: 'numeric' };
-        return {
-            display: date.toLocaleDateString('en-US', options),
-            isOverdue: isOverdue
-        };
-    };
-
-    if (isLoading) {
-        return <View style={styles.centered}><ActivityIndicator size="large" color="#3b82f6" /></View>
-    }
+    if (isLoading) return <View style={styles.centered}><ActivityIndicator size="large" color="#4f46e5" /></View>;
 
     return (
         <View style={styles.container}>
-            <View style={styles.headerBlue}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <View style={styles.navHeader}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <MaterialIcons name="arrow-back" size={24} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitleWhite}>{subjectName}</Text>
+                <Text style={styles.navTitle}>{subjectName}</Text>
             </View>
-            <ScrollView>
-                <View style={styles.overviewCard}>
-                    <Text style={styles.progressTitle}>Progress Overview</Text>
-                    <View style={styles.overviewGridContainer}>
-                        <ProgressItem count={overview.completed} label="Completed" color="#059669" />
-                        <ProgressItem count={overview.missed} label="Missed" color="#ef4444" />
-                        <ProgressItem count={overview.pending} label="Pending" color="#f59e0b" />
-                        <ProgressItem count={overview.total} label="Total" color="#3b82f6" />
+
+            <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+                {/* Stats Grid */}
+                <View style={styles.statsContainer}>
+                    <View style={styles.statBox}>
+                        <Text style={[styles.statNum, {color: '#10b981'}]}>{overview.completed}</Text>
+                        <Text style={styles.statLabel}>Done</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                        <Text style={[styles.statNum, {color: '#ef4444'}]}>{overview.missed}</Text>
+                        <Text style={styles.statLabel}>Missed</Text>
+                    </View>
+                    <View style={styles.statBox}>
+                        <Text style={[styles.statNum, {color: '#f59e0b'}]}>{overview.pending}</Text>
+                        <Text style={styles.statLabel}>Left</Text>
                     </View>
                 </View>
 
-                {syllabus?.lessons?.map(lesson => {
-                    const { display, isOverdue } = formatDate(lesson.due_date);
-                    const isMarked = lesson.status === 'Completed' || lesson.status === 'Missed';
+                {syllabus?.lessons?.map((lesson) => {
+                    const isCompleted = lesson.status === 'Completed';
+                    const isMissed = lesson.status === 'Missed';
+                    const isOverdue = new Date(lesson.due_date) < new Date() && !isCompleted && !isMissed;
+
                     return (
-                        <View key={lesson.id} style={[styles.lessonCard, isOverdue && !isMarked && styles.overdueBorder]}>
-                            <Text style={styles.lessonTitle}>{lesson.lesson_name}</Text>
-                            <Text style={[styles.dueDateText, isOverdue && !isMarked && styles.overdueText]}>
-                                Due: {display}
-                                {isOverdue && !isMarked && " (Overdue)"}
-                            </Text>
-                            
-                            {isMarked ? (
-                                <View style={styles.statusContainer}>
-                                    <View style={[styles.statusBadge, lesson.status === 'Completed' ? styles.completedBadge : styles.missedBadge]}>
-                                        <MaterialIcons name={lesson.status === 'Completed' ? 'check-circle' : 'cancel'} size={18} color={lesson.status === 'Completed' ? '#059669' : '#ef4444'} />
-                                        <Text style={styles.statusBadgeText}>Marked as {lesson.status}</Text>
+                        <View key={lesson.lesson_id} style={[styles.lessonCard, isOverdue && styles.overdueBorder]}>
+                            <View style={styles.lessonHeader}>
+                                <Text style={styles.lessonTitle}>{lesson.lesson_name}</Text>
+                                <Text style={[styles.dateText, isOverdue && {color: '#ef4444'}]}>
+                                    Due: {formatDate(lesson.due_date)}
+                                </Text>
+                            </View>
+
+                            {(isCompleted || isMissed) ? (
+                                <View style={styles.statusActionRow}>
+                                    <View style={[styles.badge, isCompleted ? styles.badgeSuccess : styles.badgeError]}>
+                                        <MaterialIcons name={isCompleted ? "check" : "close"} size={14} color={isCompleted ? "#15803d" : "#b91c1c"} />
+                                        <Text style={[styles.badgeText, isCompleted ? {color: '#15803d'} : {color: '#b91c1c'}]}>
+                                            {lesson.status}
+                                        </Text>
                                     </View>
-                                    <TouchableOpacity style={styles.editButton} onPress={() => handleStatusUpdate(lesson.id, 'Pending')}>
-                                        <MaterialIcons name="edit" size={18} color="#4b5563" />
-                                        <Text style={styles.editButtonText}>Edit</Text>
+                                    <TouchableOpacity onPress={() => handleStatusUpdate(lesson.lesson_id, 'Pending')}>
+                                        <Text style={styles.editLink}>Edit</Text>
                                     </TouchableOpacity>
                                 </View>
                             ) : (
-                                <View style={styles.actionRow}>
-                                    <TouchableOpacity style={styles.completeButton} onPress={() => handleStatusUpdate(lesson.id, 'Completed')}>
-                                        <MaterialIcons name="check" size={20} color="#fff" />
-                                        <Text style={styles.buttonText}>Mark Complete</Text>
+                                <View style={styles.btnRow}>
+                                    <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#dcfce7'}]} onPress={() => handleStatusUpdate(lesson.lesson_id, 'Completed')}>
+                                        <Text style={[styles.btnText, {color: '#166534'}]}>Mark Done</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity style={styles.missedButton} onPress={() => handleStatusUpdate(lesson.id, 'Missed')}>
-                                        <MaterialIcons name="close" size={20} color="#fff" />
-                                        <Text style={styles.buttonText}>Mark Missed</Text>
+                                    <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#fee2e2'}]} onPress={() => handleStatusUpdate(lesson.lesson_id, 'Missed')}>
+                                        <Text style={[styles.btnText, {color: '#991b1b'}]}>Mark Missed</Text>
                                     </TouchableOpacity>
                                 </View>
                             )}
@@ -223,52 +201,48 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
     );
 };
 
-const ProgressItem = ({ count, label, color }) => (
-    <View style={styles.progressItem}>
-        <Text style={[styles.progressCount, { color }]}>{count}</Text>
-        <Text style={styles.progressLabel}>{label}</Text>
-    </View>
-);
-
-// Styles remain the same
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f4f7fa' },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f7fa' },
-    listHeader: { padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#ddd' },
-    listHeaderTitle: { fontSize: 22, fontWeight: 'bold', color: '#333' },
-    listHeaderSubtitle: { fontSize: 14, color: '#666', marginTop: 4 },
-    headerBlue: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3b82f6', paddingVertical: 15, paddingHorizontal: 10, elevation: 4, },
-    backButton: { marginRight: 20, padding: 5 },
-    headerTitleWhite: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-    card: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 20, marginHorizontal: 15, marginVertical: 8, borderRadius: 12, elevation: 2, },
-    cardContent: { flexDirection: 'row', alignItems: 'center' },
-    cardTextContainer: { marginLeft: 15 },
-    cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#37474f' },
-    cardSubtitle: { fontSize: 14, color: '#757575', marginTop: 2 },
-    emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-    emptyText: { textAlign: 'center', fontSize: 16, color: '#666' },
-    overviewCard: { backgroundColor: 'white', borderRadius: 8, padding: 20, margin: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 1.41, elevation: 2, },
-    progressTitle: { fontSize: 18, fontWeight: 'bold', color: '#4a5568', marginBottom: 20, textAlign: 'center' },
-    overviewGridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', },
-    progressItem: { width: '50%', alignItems: 'center', marginBottom: 20, },
-    progressCount: { fontSize: 36, fontWeight: '700', },
-    progressLabel: { fontSize: 14, color: '#718096', marginTop: 2, },
-    lessonCard: { backgroundColor: 'white', borderRadius: 8, padding: 18, marginHorizontal: 15, marginVertical: 8, borderWidth: 1, borderColor: '#e2e8f0' },
-    overdueBorder: { borderColor: '#ef4444' },
-    lessonTitle: { fontSize: 18, fontWeight: '600', color: '#1f2937', },
-    dueDateText: { fontSize: 14, color: '#718096', marginTop: 4, marginBottom: 15, },
-    overdueText: { color: '#ef4444', fontWeight: 'bold', },
-    actionRow: { flexDirection: 'row', gap: 10, },
-    completeButton: { flexDirection: 'row', backgroundColor: '#22c55e', paddingVertical: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flex: 1, },
-    missedButton: { flexDirection: 'row', backgroundColor: '#ef4444', paddingVertical: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flex: 1, },
-    buttonText: { color: '#fff', fontWeight: 'bold', marginLeft: 8, fontSize: 16, },
-    statusContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, },
-    statusBadge: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, alignItems: 'center', backgroundColor: '#dcfce7', },
-    completedBadge: { backgroundColor: '#dcfce7', },
-    missedBadge: { backgroundColor: '#fee2e2', },
-    statusBadgeText: { marginLeft: 6, fontWeight: 'bold', fontSize: 14, color: '#1f2937', },
-    editButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#e5e7eb', borderRadius: 20, },
-    editButtonText: { marginLeft: 4, color: '#4b5563', fontWeight: '600', },
+    container: { flex: 1, backgroundColor: '#f8fafc' },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    header: { padding: 25, paddingTop: 50, backgroundColor: '#fff' },
+    headerTitle: { fontSize: 26, fontWeight: '800', color: '#0f172a' },
+    headerSubtitle: { fontSize: 15, color: '#64748b', marginTop: 5 },
+    
+    // List Card
+    card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, marginBottom: 12, borderRadius: 16, shadowColor: '#64748b', shadowOpacity: 0.1, shadowRadius: 5, elevation: 2 },
+    iconBox: { width: 45, height: 45, borderRadius: 12, backgroundColor: '#e0e7ff', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+    cardContent: { flex: 1 },
+    cardTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
+    cardSubtitle: { fontSize: 13, color: '#64748b' },
+    emptyText: { textAlign: 'center', marginTop: 50, color: '#94a3b8' },
+
+    // Detail Screen
+    navHeader: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 50, backgroundColor: '#4f46e5' },
+    backBtn: { marginRight: 15 },
+    navTitle: { fontSize: 20, fontWeight: '700', color: '#fff' },
+    statsContainer: { flexDirection: 'row', justifyContent: 'space-around', padding: 20, backgroundColor: '#fff', marginBottom: 15 },
+    statBox: { alignItems: 'center' },
+    statNum: { fontSize: 24, fontWeight: '800' },
+    statLabel: { fontSize: 12, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 },
+
+    // Lesson Card
+    lessonCard: { backgroundColor: '#fff', marginHorizontal: 15, marginBottom: 12, borderRadius: 12, padding: 15, borderWidth: 1, borderColor: '#f1f5f9' },
+    overdueBorder: { borderColor: '#fca5a5' },
+    lessonHeader: { marginBottom: 12 },
+    lessonTitle: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
+    dateText: { fontSize: 13, color: '#64748b', marginTop: 4 },
+    
+    // Actions
+    statusActionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
+    badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+    badgeSuccess: { backgroundColor: '#dcfce7' },
+    badgeError: { backgroundColor: '#fee2e2' },
+    badgeText: { fontSize: 12, fontWeight: '700', marginLeft: 5 },
+    editLink: { color: '#64748b', textDecorationLine: 'underline', fontSize: 13 },
+    
+    btnRow: { flexDirection: 'row', gap: 10 },
+    actionBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+    btnText: { fontWeight: '700', fontSize: 13 },
 });
 
 export default TeacherSyllabusNavigator;

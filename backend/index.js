@@ -3836,15 +3836,20 @@ app.get('/api/syllabus/class-progress/:syllabusId', async (req, res) => {
     }
 });
 
-// TEACHER: Get syllabus and lessons for a specific class/subject
-app.get('/api/syllabus/teacher/:classGroup/:subjectName', async (req, res) => {
-    const { classGroup, subjectName } = req.params;
+app.get('/api/teachers/all-simple', async (req, res) => {
     try {
-        const [[syllabus]] = await db.query('SELECT id, class_group, subject_name FROM syllabuses WHERE class_group = ? AND subject_name = ?', [classGroup, subjectName]);
-        if (!syllabus) return res.status(404).json({ message: 'Syllabus not found for this class and subject.' });
-        const [lessons] = await db.query('SELECT id, lesson_name, due_date FROM syllabus_lessons WHERE syllabus_id = ? ORDER BY due_date ASC', [syllabus.id]);
-        res.json({ ...syllabus, lessons });
-    } catch (error) { console.error("Error fetching teacher syllabus:", error); res.status(500).json({ message: 'Failed to fetch syllabus.' }); }
+        const query = `
+            SELECT id, full_name 
+            FROM users 
+            WHERE role = 'teacher' 
+            ORDER BY full_name ASC
+        `;
+        const [teachers] = await db.query(query);
+        res.status(200).json(teachers);
+    } catch (error) { 
+        console.error("Error fetching all teachers:", error); 
+        res.status(500).json({ message: "Failed to fetch teachers." }); 
+    }
 });
 
 // TEACHER: Mark a lesson's status for the ENTIRE class

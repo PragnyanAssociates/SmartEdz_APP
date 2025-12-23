@@ -1,14 +1,28 @@
-// 📂 File: screens/syllabus/AdminSyllabusScreen.js (MODIFIED & CORRECTED)
+// 📂 File: screens/syllabus/AdminSyllabusScreen.js
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView, TextInput } from 'react-native';
+import { 
+    View, Text, StyleSheet, FlatList, TouchableOpacity, 
+    ActivityIndicator, Alert, ScrollView, TextInput, Platform 
+} from 'react-native';
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext'; 
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { Picker } from '@react-native-picker/picker';
 import { useIsFocused } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
-// Main component that controls which view is shown
+// --- Helper: Format Date for Display (DD/MM/YYYY) ---
+const formatDateDisplay = (isoDateString) => {
+    if (!isoDateString) return '';
+    const date = new Date(isoDateString);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+
+// --- Main Component ---
 const AdminSyllabusScreen = () => {
     const [view, setView] = useState('history');
     const [selectedSyllabus, setSelectedSyllabus] = useState(null);
@@ -25,7 +39,6 @@ const AdminSyllabusScreen = () => {
     }
     return null;
 };
-
 
 const SyllabusHistoryList = ({ onEdit, onCreate, onViewProgress }) => {
     const [syllabuses, setSyllabuses] = useState([]);
@@ -59,11 +72,10 @@ const SyllabusHistoryList = ({ onEdit, onCreate, onViewProgress }) => {
         if (isFocused) fetchData();
     }, [isFocused, fetchData]);
 
-    // ★★★★★ START: NEW DELETE SYLLABUS HANDLER ★★★★★
     const handleDeleteSyllabus = (syllabusToDelete) => {
         Alert.alert(
             "Confirm Delete",
-            `Are you sure you want to delete the syllabus for ${syllabusToDelete.class_group} - ${syllabusToDelete.subject_name}? This action cannot be undone.`,
+            `Are you sure you want to delete the syllabus for ${syllabusToDelete.class_group} - ${syllabusToDelete.subject_name}?`,
             [
                 { text: "Cancel", style: "cancel" },
                 {
@@ -73,7 +85,7 @@ const SyllabusHistoryList = ({ onEdit, onCreate, onViewProgress }) => {
                         try {
                             await apiClient.delete(`/syllabus/${syllabusToDelete.id}`);
                             Alert.alert("Success", "Syllabus has been deleted.");
-                            fetchData(); // Refresh the list after deletion
+                            fetchData();
                         } catch (error) {
                             Alert.alert("Error", error.response?.data?.message || "Could not delete the syllabus.");
                         }
@@ -82,28 +94,26 @@ const SyllabusHistoryList = ({ onEdit, onCreate, onViewProgress }) => {
             ]
         );
     };
-    // ★★★★★ END: NEW DELETE SYLLABUS HANDLER ★★★★★
 
     const filteredSyllabuses = useMemo(() => {
-        if (selectedClassFilter === 'All') {
-            return syllabuses;
-        }
+        if (selectedClassFilter === 'All') return syllabuses;
         return syllabuses.filter(s => s.class_group === selectedClassFilter);
     }, [selectedClassFilter, syllabuses]);
 
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Syllabus Management</Text>
+                <Text style={styles.headerTitle}>Syllabus Manager</Text>
             </View>
             
             <View style={styles.filterContainer}>
-                <Text style={styles.filterLabel}>Filter by Class:</Text>
+                <Text style={styles.filterLabel}>Filter Class:</Text>
                 <View style={styles.pickerWrapper}>
                     <Picker
                         selectedValue={selectedClassFilter}
                         onValueChange={(itemValue) => setSelectedClassFilter(itemValue)}
                         style={styles.picker}
+                        mode="dropdown"
                     >
                         <Picker.Item label="All Classes" value="All" />
                         {allClasses.map((className, index) => (
@@ -119,78 +129,110 @@ const SyllabusHistoryList = ({ onEdit, onCreate, onViewProgress }) => {
                 renderItem={({ item }) => (
                     <View style={styles.card}>
                         <View style={styles.cardHeader}>
-                           <Text style={styles.cardTitle}>{item.class_group} - {item.subject_name}</Text>
-                           {/* ★★★ MODIFIED: Added View for Edit and Delete Icons ★★★ */}
+                            <View>
+                                <Text style={styles.cardTitle}>{item.subject_name}</Text>
+                                <Text style={styles.cardClassBadge}>{item.class_group}</Text>
+                            </View>
                            <View style={styles.cardActions}>
-                                <TouchableOpacity onPress={() => onEdit(item)} style={styles.actionIcon}>
-                                    <MaterialIcons name="edit" size={24} color="#007bff" />
+                                <TouchableOpacity onPress={() => onEdit(item)} style={styles.actionIconBtn}>
+                                    <MaterialIcons name="edit" size={20} color="#3b82f6" />
                                 </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleDeleteSyllabus(item)} style={styles.actionIcon}>
-                                    <MaterialIcons name="delete" size={24} color="#d9534f" />
+                                <TouchableOpacity onPress={() => handleDeleteSyllabus(item)} style={[styles.actionIconBtn, {backgroundColor: '#fee2e2'}]}>
+                                    <MaterialIcons name="delete" size={20} color="#ef4444" />
                                 </TouchableOpacity>
                            </View>
                         </View>
-                        <Text style={styles.cardSubtitle}>{item.lesson_count} lessons</Text>
-                        <Text style={styles.cardCreator}>Created by: {item.creator_name}</Text>
-                        <Text style={styles.cardDate}>Last Updated: {new Date(item.updated_at).toLocaleDateString()}</Text>
+                        <View style={styles.divider} />
+                        <View style={styles.cardInfoRow}>
+                            <MaterialIcons name="library-books" size={16} color="#64748b" />
+                            <Text style={styles.cardDetailText}>{item.lesson_count} Lessons</Text>
+                        </View>
+                        <View style={styles.cardInfoRow}>
+                             <MaterialIcons name="person" size={16} color="#64748b" />
+                            <Text style={styles.cardDetailText}>{item.creator_name}</Text>
+                        </View>
+                        
                         <TouchableOpacity style={styles.viewProgressButton} onPress={() => onViewProgress(item)}>
-                            <MaterialIcons name="bar-chart" size={20} color="#fff" />
-                            <Text style={styles.buttonText}>View Class Progress</Text>
+                            <Text style={styles.buttonTextSmall}>View Progress</Text>
+                            <MaterialIcons name="arrow-forward" size={16} color="#fff" />
                         </TouchableOpacity>
                     </View>
                 )}
-                ListFooterComponent={
-                    <TouchableOpacity style={styles.createButton} onPress={onCreate}>
-                        <MaterialIcons name="add" size={24} color="#fff" />
-                        <Text style={styles.buttonText}>Create New Syllabus</Text>
-                    </TouchableOpacity>
-                }
                 onRefresh={fetchData}
                 refreshing={isLoading}
-                ListEmptyComponent={!isLoading && <Text style={styles.emptyText}>No syllabuses found for the selected class.</Text>}
-                contentContainerStyle={{ paddingBottom: 20 }}
+                ListEmptyComponent={!isLoading && <Text style={styles.emptyText}>No syllabuses found.</Text>}
+                contentContainerStyle={{ paddingBottom: 100 }}
             />
+
+            <TouchableOpacity style={styles.fab} onPress={onCreate}>
+                <MaterialIcons name="add" size={30} color="#fff" />
+            </TouchableOpacity>
         </View>
     );
 };
 
 const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     const isEditMode = !!initialSyllabus;
-    const { user } = useAuth();
-
+    
+    // Form States
     const [selectedClass, setSelectedClass] = useState(isEditMode ? initialSyllabus.class_group : '');
     const [selectedSubject, setSelectedSubject] = useState(isEditMode ? initialSyllabus.subject_name : '');
     const [selectedTeacherId, setSelectedTeacherId] = useState(isEditMode ? initialSyllabus.creator_id : '');
-    const [lessons, setLessons] = useState([{ lessonName: '', dueDate: '' }]);
-    const [isSaving, setIsSaving] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
+    
+    // Lessons State
+    const [lessons, setLessons] = useState([{ lessonName: '', dueDate: new Date() }]);
+    
+    // Dropdown Data
     const [allClasses, setAllClasses] = useState([]);
     const [availableSubjects, setAvailableSubjects] = useState([]);
     const [availableTeachers, setAvailableTeachers] = useState([]);
+    
+    // UI Loading States
+    const [isSaving, setIsSaving] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubjectsLoading, setIsSubjectsLoading] = useState(false);
-    const [isTeachersLoading, setIsTeachersLoading] = useState(false);
+    // Removed isTeachersLoading since we load them at start
+
+    // Date Picker Logic
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [activeLessonIndex, setActiveLessonIndex] = useState(null);
 
     useEffect(() => {
         const bootstrapForm = async () => {
             setIsLoading(true);
             try {
-                const classRes = await apiClient.get('/student-classes');
-                
-                const filteredClasses = classRes.data.filter(c => 
-                    c && (c.startsWith('Class') || c === 'LKG' || c === 'UKG')
-                );
+                // ★★★ UPDATED: Fetch Teachers HERE immediately (parallel with classes) ★★★
+                const [classRes, teacherRes] = await Promise.all([
+                    apiClient.get('/student-classes'),
+                    apiClient.get('/teachers/all-simple') // Calls the new simplified backend route
+                ]);
+
+                // Handle Classes
+                const filteredClasses = classRes.data.filter(c => c && (c.startsWith('Class') || c === 'LKG' || c === 'UKG'));
                 setAllClasses(filteredClasses);
 
+                // Handle Teachers
+                setAvailableTeachers(teacherRes.data);
+
+                // If Edit Mode, populate existing data
                 if (isEditMode) {
                     await handleClassChange(initialSyllabus.class_group, true);
-                    await handleSubjectChange(initialSyllabus.subject_name, initialSyllabus.class_group, true);
+                    // No need to fetch teacher on subject change anymore
+                    await handleSubjectChange(initialSyllabus.subject_name, true);
                     
                     const syllabusDetailsRes = await apiClient.get(`/syllabus/teacher/${initialSyllabus.class_group}/${initialSyllabus.subject_name}`);
                     const syllabusData = syllabusDetailsRes.data;
-                    const formattedLessons = syllabusData.lessons.map(l => ({ lessonName: l.lesson_name, dueDate: l.due_date.split('T')[0] }));
-                    setLessons(formattedLessons.length > 0 ? formattedLessons : [{ lessonName: '', dueDate: '' }]);
+                    
+                    const formattedLessons = syllabusData.lessons.map(l => ({ 
+                        lessonName: l.lesson_name, 
+                        dueDate: new Date(l.due_date) 
+                    }));
+                    setLessons(formattedLessons.length > 0 ? formattedLessons : [{ lessonName: '', dueDate: new Date() }]);
+                    
+                    // Ensure the correct teacher is selected
+                    setSelectedTeacherId(initialSyllabus.creator_id.toString());
                 }
-            } catch (e) { console.error("Error bootstrapping form:", e); Alert.alert("Error", "Could not load initial form data."); } 
+            } catch (e) { console.error(e); Alert.alert("Error", "Could not load data."); } 
             finally { setIsLoading(false); }
         };
         bootstrapForm();
@@ -199,7 +241,7 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     const handleClassChange = async (classGroup, isInitialLoad = false) => {
         if (!isInitialLoad) {
             setSelectedSubject(''); setAvailableSubjects([]);
-            setSelectedTeacherId(''); setAvailableTeachers([]);
+            // Don't clear teachers here, they are static list now
         }
         setSelectedClass(classGroup);
         if (!classGroup) return;
@@ -208,123 +250,182 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
         try {
             const subjectRes = await apiClient.get(`/subjects-for-class/${classGroup}`);
             setAvailableSubjects(subjectRes.data);
-        } catch (error) { console.error("Error fetching subjects:", error); } 
+        } catch (error) { console.error(error); } 
         finally { setIsSubjectsLoading(false); }
     };
 
-    const handleSubjectChange = async (subjectName, classGroup = selectedClass, isInitialLoad = false) => {
-        if (!isInitialLoad) {
-            setSelectedTeacherId(''); setAvailableTeachers([]);
-        }
+    const handleSubjectChange = async (subjectName, isInitialLoad = false) => {
+        // No longer fetching teachers here to prevent empty lists due to missing timetables
         setSelectedSubject(subjectName);
-        if (!subjectName || !classGroup) return;
-        
-        setIsTeachersLoading(true);
-        try {
-            const teacherRes = await apiClient.get(`/syllabus/teachers/${classGroup}/${subjectName}`);
-            const teachers = teacherRes.data;
-            setAvailableTeachers(teachers);
-            if (teachers.length === 1 && !isEditMode) setSelectedTeacherId(teachers[0].id);
-        } catch (error) { console.error("Error fetching teachers:", error); } 
-        finally { setIsTeachersLoading(false); }
     };
 
-    const handleLessonChange = (index, field, value) => { const newLessons = [...lessons]; newLessons[index][field] = value; setLessons(newLessons); };
-    const addLessonField = () => setLessons([...lessons, { lessonName: '', dueDate: '' }]);
+    // --- Date Picker Handlers ---
+    const openDatePicker = (index) => {
+        setActiveLessonIndex(index);
+        setShowDatePicker(true);
+    };
+
+    const onDateChange = (event, selectedDate) => {
+        setShowDatePicker(Platform.OS === 'ios');
+        if (event.type === 'dismissed') {
+            setShowDatePicker(false);
+            return;
+        }
+        if (selectedDate && activeLessonIndex !== null) {
+            const newLessons = [...lessons];
+            newLessons[activeLessonIndex].dueDate = selectedDate;
+            setLessons(newLessons);
+            if(Platform.OS === 'android') setShowDatePicker(false);
+        }
+    };
+
+    const handleLessonNameChange = (index, text) => {
+        const newLessons = [...lessons];
+        newLessons[index].lessonName = text;
+        setLessons(newLessons);
+    };
+
+    const addLessonField = () => setLessons([...lessons, { lessonName: '', dueDate: new Date() }]);
     const removeLessonField = (index) => setLessons(lessons.filter((_, i) => i !== index));
 
     const handleSaveSyllabus = async () => {
-        if (!selectedClass || !selectedSubject || !selectedTeacherId) return Alert.alert("Selection Missing", "Please select a class, subject, and teacher.");
-        if (lessons.some(l => l.lessonName && !l.dueDate)) return Alert.alert("Missing Date", "All lessons must have a due date.");
-        const validLessons = lessons.filter(l => l.lessonName.trim() && l.dueDate.trim());
-        if (validLessons.length === 0) return Alert.alert("No Lessons", "Please add at least one lesson.");
+        if (!selectedClass || !selectedSubject || !selectedTeacherId) return Alert.alert("Required", "Please select Class, Subject and Teacher.");
+        
+        const validLessons = lessons
+            .filter(l => l.lessonName.trim())
+            .map(l => ({
+                lessonName: l.lessonName,
+                dueDate: l.dueDate.toISOString().split('T')[0] 
+            }));
+
+        if (validLessons.length === 0) return Alert.alert("Required", "Please add at least one lesson name.");
         
         setIsSaving(true);
-        
         try {
-            let response;
+            const payload = {
+                class_group: selectedClass,
+                subject_name: selectedSubject,
+                lessons: validLessons,
+                creator_id: selectedTeacherId,
+            };
+
             if (isEditMode) {
-                response = await apiClient.put(`/syllabus/${initialSyllabus.id}`, {
-                    lessons: validLessons,
-                    creator_id: selectedTeacherId,
-                });
+                await apiClient.put(`/syllabus/${initialSyllabus.id}`, payload);
             } else {
-                response = await apiClient.post('/syllabus/create', {
-                    class_group: selectedClass,
-                    subject_name: selectedSubject,
-                    lessons: validLessons,
-                    creator_id: selectedTeacherId,
-                });
+                await apiClient.post('/syllabus/create', payload);
             }
 
-            Alert.alert("Success", response.data.message);
+            Alert.alert("Success", "Syllabus saved successfully!");
             onFinish();
-
         } catch (error) {
-            Alert.alert("Error", error.response?.data?.message || "Failed to save syllabus.");
+            Alert.alert("Error", error.response?.data?.message || "Failed to save.");
         } finally {
             setIsSaving(false);
         }
     };
     
-    if (isLoading) return <View style={styles.centered}><ActivityIndicator size="large" color="#3f51b5" /></View>;
+    if (isLoading) return <View style={styles.centered}><ActivityIndicator size="large" color="#4f46e5" /></View>;
 
     return (
-        <ScrollView style={styles.containerDark}>
-            <TouchableOpacity onPress={onFinish} style={styles.backButton}>
-                <MaterialIcons name="arrow-back" size={24} color="#333" />
-                <Text style={styles.backButtonText}>Back to List</Text>
-            </TouchableOpacity>
-            <Text style={styles.formHeaderTitle}>{isEditMode ? 'Edit Syllabus' : 'Create New Syllabus'}</Text>
-            
-            <View style={styles.formSection}>
-                <Text style={styles.label}>1. Select Class</Text>
-                <View style={styles.pickerContainer}>
-                    <Picker selectedValue={selectedClass} onValueChange={handleClassChange} enabled={!isEditMode}>
-                        <Picker.Item label="Select Class..." value="" />
-                        {allClasses.map((c, i) => <Picker.Item key={i} label={c} value={c} />)}
-                    </Picker>
-                </View>
-
-                <Text style={styles.label}>2. Select Subject</Text>
-                <View style={styles.pickerContainer}>
-                    <Picker selectedValue={selectedSubject} onValueChange={handleSubjectChange} enabled={!isEditMode && !!selectedClass && !isSubjectsLoading}>
-                        <Picker.Item label={isSubjectsLoading ? "Loading..." : "Select Subject..."} value="" />
-                        {availableSubjects.map((s, i) => <Picker.Item key={i} label={s} value={s} />)}
-                    </Picker>
-                </View>
-                {isSubjectsLoading && <ActivityIndicator style={{marginBottom: 15}}/>}
-
-                <Text style={styles.label}>3. Select Teacher</Text>
-                <View style={styles.pickerContainer}>
-                    <Picker selectedValue={selectedTeacherId} onValueChange={(val) => setSelectedTeacherId(val)} enabled={!!selectedSubject && !isTeachersLoading}>
-                        <Picker.Item label={isTeachersLoading ? "Loading..." : "Select Teacher..."} value="" />
-                        {availableTeachers.map((t) => <Picker.Item key={t.id} label={t.full_name} value={t.id.toString()} />)}
-                    </Picker>
-                </View>
-                {isTeachersLoading && <ActivityIndicator style={{marginBottom: 15}}/>}
-            </View>
-
-            <View style={styles.formSection}>
-                <Text style={styles.headerTitleSecondary}>4. Add/Edit Lessons</Text>
-                {lessons.map((lesson, index) => (
-                    <View key={index} style={styles.lessonInputGroup}>
-                        <View style={styles.lessonInputHeader}>
-                            <Text style={styles.label}>Lesson {index + 1}</Text>
-                            {lessons.length > 1 && <TouchableOpacity onPress={() => removeLessonField(index)}><MaterialIcons name="delete-outline" size={22} color="#c62828" /></TouchableOpacity>}
-                        </View>
-                        <TextInput style={styles.input} placeholder="Lesson Name" value={lesson.lessonName} onChangeText={(text) => handleLessonChange(index, 'lessonName', text)} />
-                        <TextInput style={styles.input} placeholder="Due Date (YYYY-MM-DD)" value={lesson.dueDate} onChangeText={(text) => handleLessonChange(index, 'dueDate', text)} keyboardType="numeric" />
-                    </View>
-                ))}
-                <TouchableOpacity style={styles.addLessonBtn} onPress={addLessonField}>
-                    <Text style={styles.addLessonBtnText}>+ Add Another Lesson</Text>
+        <View style={styles.container}>
+            <View style={styles.header}>
+                <TouchableOpacity onPress={onFinish} style={styles.navBackBtn}>
+                    <MaterialIcons name="arrow-back" size={24} color="#1e293b" />
                 </TouchableOpacity>
+                <Text style={styles.headerTitle}>{isEditMode ? 'Edit Syllabus' : 'New Syllabus'}</Text>
             </View>
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveSyllabus} disabled={isSaving}>
-                {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{isEditMode ? 'Update Syllabus' : 'Save Syllabus'}</Text>}
-            </TouchableOpacity>
-        </ScrollView>
+
+            <ScrollView style={styles.formContainer} contentContainerStyle={{paddingBottom: 40}}>
+                {/* Section 1: Details */}
+                <View style={styles.formSection}>
+                    <Text style={styles.sectionHeader}>Class Details</Text>
+                    
+                    <Text style={styles.label}>Class</Text>
+                    <View style={styles.inputWrapper}>
+                        <Picker selectedValue={selectedClass} onValueChange={handleClassChange} enabled={!isEditMode}>
+                            <Picker.Item label="Select Class..." value="" color="#94a3b8"/>
+                            {allClasses.map((c, i) => <Picker.Item key={i} label={c} value={c} color="#0f172a"/>)}
+                        </Picker>
+                    </View>
+
+                    <Text style={styles.label}>Subject</Text>
+                    <View style={styles.inputWrapper}>
+                        <Picker selectedValue={selectedSubject} onValueChange={handleSubjectChange} enabled={!isEditMode && !!selectedClass}>
+                            <Picker.Item label={isSubjectsLoading ? "Loading..." : "Select Subject..."} value="" color="#94a3b8"/>
+                            {availableSubjects.map((s, i) => <Picker.Item key={i} label={s} value={s} color="#0f172a"/>)}
+                        </Picker>
+                    </View>
+
+                    <Text style={styles.label}>Assign Teacher</Text>
+                    <View style={styles.inputWrapper}>
+                        {/* ★★★ ENABLED prop fixed: always enabled so you can see list ★★★ */}
+                        <Picker selectedValue={selectedTeacherId} onValueChange={setSelectedTeacherId}>
+                            <Picker.Item label="Select Teacher..." value="" color="#94a3b8"/>
+                            {availableTeachers.map((t) => <Picker.Item key={t.id} label={t.full_name} value={t.id.toString()} color="#0f172a"/>)}
+                        </Picker>
+                    </View>
+                </View>
+
+                {/* Section 2: Lessons */}
+                <View style={styles.formSection}>
+                    <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom: 15}}>
+                        <Text style={styles.sectionHeader}>Lessons Plan</Text>
+                        <Text style={styles.countBadge}>{lessons.length} Items</Text>
+                    </View>
+
+                    {lessons.map((lesson, index) => (
+                        <View key={index} style={styles.lessonRow}>
+                            <View style={styles.lessonHeaderRow}>
+                                <Text style={styles.lessonIndex}>#{index + 1}</Text>
+                                {lessons.length > 1 && (
+                                    <TouchableOpacity onPress={() => removeLessonField(index)}>
+                                        <MaterialIcons name="close" size={20} color="#ef4444" />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                            
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="Enter Lesson Name" 
+                                value={lesson.lessonName} 
+                                onChangeText={(text) => handleLessonNameChange(index, text)} 
+                            />
+                            
+                            {/* DYNAMIC CALENDAR SELECTOR */}
+                            <TouchableOpacity 
+                                style={styles.dateSelector} 
+                                onPress={() => openDatePicker(index)}
+                            >
+                                <MaterialIcons name="event" size={20} color="#4f46e5" />
+                                <Text style={styles.dateText}>
+                                    {formatDateDisplay(lesson.dueDate.toISOString())}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    ))}
+                    
+                    <TouchableOpacity style={styles.addLessonBtn} onPress={addLessonField}>
+                        <MaterialIcons name="add-circle-outline" size={20} color="#4f46e5" />
+                        <Text style={styles.addLessonBtnText}>Add Another Lesson</Text>
+                    </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity style={styles.saveButton} onPress={handleSaveSyllabus} disabled={isSaving}>
+                    {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Save Syllabus</Text>}
+                </TouchableOpacity>
+            </ScrollView>
+
+            {/* Native Date Picker Modal */}
+            {showDatePicker && (
+                <DateTimePicker
+                    value={lessons[activeLessonIndex]?.dueDate || new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={onDateChange}
+                    minimumDate={new Date(2023, 0, 1)}
+                />
+            )}
+        </View>
     );
 };
 
@@ -332,14 +433,6 @@ const AdminProgressView = ({ syllabus, onBack }) => {
     const [auditLog, setAuditLog] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const getStatusStyle = (status) => {
-        switch (status) {
-            case 'Completed': return { color: '#22c55e' };
-            case 'Missed': return { color: '#ef4444' };
-            default: return { color: '#f59e0b' };
-        }
-    };
-    
     useEffect(() => {
         const fetchProgress = async () => {
             if (!syllabus?.id) return;
@@ -348,7 +441,7 @@ const AdminProgressView = ({ syllabus, onBack }) => {
                 const response = await apiClient.get(`/syllabus/class-progress/${syllabus.id}`);
                 setAuditLog(response.data);
             } catch (error) {
-                Alert.alert("Error", error.response?.data?.message || "Could not load class progress.");
+                Alert.alert("Error", "Could not load class progress.");
             } finally {
                 setIsLoading(false);
             }
@@ -356,133 +449,111 @@ const AdminProgressView = ({ syllabus, onBack }) => {
         fetchProgress();
     }, [syllabus]);
 
-    const renderLessonCard = ({ item: lesson }) => {
-        const statusStyle = getStatusStyle(lesson.status);
-        return (
-            <View style={styles.lessonAuditCard}>
-                <Text style={styles.lessonAuditTitle}>{lesson.lesson_name}</Text>
-                <View style={styles.lessonAuditDetails}>
-                    <View style={styles.lessonAuditRow}>
-                        <MaterialIcons name="event" size={16} color="#6b7280" />
-                        <Text style={styles.lessonAuditText}>Due: {new Date(lesson.due_date).toLocaleDateString()}</Text>
-                    </View>
-                    <View style={styles.lessonAuditRow}>
-                        <MaterialIcons name="person" size={16} color="#6b7280" />
-                        <Text style={styles.lessonAuditText}>Updated by: <Text style={styles.updaterName}>{lesson.updater_name}</Text></Text>
-                    </View>
-                </View>
-                <View style={[styles.statusBanner, { backgroundColor: statusStyle.color }]}>
-                    <Text style={styles.statusBannerText}>{lesson.status}</Text>
-                </View>
-            </View>
-        );
-    };
-
     return (
         <View style={styles.container}>
-            <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                <MaterialIcons name="arrow-back" size={24} color="#333" />
-                <Text style={styles.backButtonText}>Back to Syllabus List</Text>
-            </TouchableOpacity>
-            <Text style={styles.progressHeaderTitle}>Progress for {syllabus?.class_group} - {syllabus?.subject_name}</Text>
-            {isLoading ? (
-                <ActivityIndicator size="large" style={{ marginTop: 50 }} />
-            ) : (
+            <View style={styles.header}>
+                <TouchableOpacity onPress={onBack} style={styles.navBackBtn}>
+                    <MaterialIcons name="arrow-back" size={24} color="#1e293b" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Progress Tracking</Text>
+            </View>
+            <View style={styles.subHeader}>
+                <Text style={styles.subHeaderTitle}>{syllabus?.class_group} • {syllabus?.subject_name}</Text>
+            </View>
+
+            {isLoading ? <ActivityIndicator size="large" style={{ marginTop: 50 }} color="#4f46e5"/> : (
                 <FlatList
                     data={auditLog}
-                    renderItem={renderLessonCard}
                     keyExtractor={(item) => item.lesson_id.toString()}
-                    ListEmptyComponent={<Text style={styles.emptyText}>No lessons found in this syllabus.</Text>}
-                    contentContainerStyle={{ paddingBottom: 20 }}
+                    contentContainerStyle={{ padding: 15 }}
+                    renderItem={({ item }) => (
+                        <View style={styles.logCard}>
+                            <View style={[styles.statusStrip, { backgroundColor: item.status === 'Completed' ? '#10b981' : item.status === 'Missed' ? '#ef4444' : '#f59e0b' }]} />
+                            <View style={styles.logContent}>
+                                <Text style={styles.logTitle}>{item.lesson_name}</Text>
+                                <View style={styles.logMetaRow}>
+                                    <MaterialIcons name="event" size={14} color="#64748b" />
+                                    <Text style={styles.logMetaText}>Due: {formatDateDisplay(item.due_date)}</Text>
+                                </View>
+                                <View style={styles.logMetaRow}>
+                                    <Text style={[styles.statusBadge, { color: item.status === 'Completed' ? '#10b981' : item.status === 'Missed' ? '#ef4444' : '#f59e0b' }]}>
+                                        {item.status}
+                                    </Text>
+                                    {item.updater_name && <Text style={styles.logMetaText}>by {item.updater_name}</Text>}
+                                </View>
+                            </View>
+                        </View>
+                    )}
                 />
             )}
         </View>
     );
 };
 
+// --- DYNAMIC STYLES ---
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f0f4f7' },
-    containerDark: { flex: 1, backgroundColor: '#e8eaf6', padding: 5,},
+    container: { flex: 1, backgroundColor: '#f8fafc' }, // Slate-50
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: {
-        paddingTop: 20,
-        paddingBottom: 5,
-        paddingHorizontal: 15,
-        backgroundColor: '#f0f4f7',
-    },
-    headerTitle: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: '#1A202C',
-    },
-    formHeaderTitle: { fontSize: 24, fontWeight: 'bold', paddingHorizontal: 15, paddingBottom: 10, textAlign: 'center'},
-    headerTitleSecondary: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, color: '#3f51b5' },
-    card: { backgroundColor: '#fff', padding: 20, marginHorizontal: 15, marginVertical: 8, borderRadius: 12, elevation: 3 },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#263238', flex: 1 }, // Added flex: 1
-    // ★★★ NEW STYLES for Edit/Delete icons ★★★
-    cardActions: {
-        flexDirection: 'row',
-    },
-    actionIcon: {
-        padding: 5,
-        marginLeft: 10,
-    },
-    // ★★★ END NEW STYLES ★★★
-    cardSubtitle: { fontSize: 14, color: '#546e7a', marginTop: 4 },
-    cardCreator: { fontSize: 12, color: '#90a4ae', marginTop: 4 },
-    cardDate: { fontSize: 12, color: '#90a4ae', marginTop: 2, marginBottom: 15 },
-    viewProgressButton: { flexDirection: 'row', backgroundColor: '#00838f', paddingVertical: 12, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-    buttonText: { color: '#fff', fontWeight: 'bold', marginLeft: 10, fontSize: 16 },
-    createButton: { flexDirection: 'row', backgroundColor: '#2e7d32', padding: 15, marginHorizontal: 15, marginTop: 10, borderRadius: 10, justifyContent: 'center', alignItems: 'center', elevation: 2 },
-    emptyText: { textAlign: 'center', marginTop: 50, color: '#666', fontSize: 16 },
-    backButton: { flexDirection: 'row', alignItems: 'center', padding: 15 },
-    backButtonText: { fontSize: 16, fontWeight: '500', marginLeft: 5 },
-    formSection: { backgroundColor: '#fff', padding: 20, borderRadius: 12, margin: 10, elevation: 2, },
-    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 15, backgroundColor: '#fff' },
-    label: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 8 },
-    input: { borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, marginBottom: 12, backgroundColor: '#f9f9f9' },
-    lessonInputGroup: { marginBottom: 15, padding: 15, borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, backgroundColor: '#fafafa' },
-    lessonInputHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-    addLessonBtn: { backgroundColor: '#e0e6ff', padding: 12, borderRadius: 8, alignItems: 'center', marginVertical: 10 },
-    addLessonBtnText: { color: '#3f51b5', fontWeight: 'bold' },
-    saveButton: { flexDirection: 'row', backgroundColor: '#43a047', padding: 15, margin: 15, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    progressHeaderTitle: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', paddingHorizontal: 15, marginBottom: 10, color: '#1f2937' },
-    lessonAuditCard: { backgroundColor: '#fff', marginHorizontal: 15, marginVertical: 8, borderRadius: 12, elevation: 2, overflow: 'hidden' },
-    lessonAuditTitle: { fontSize: 18, fontWeight: '600', color: '#111827', paddingHorizontal: 15, paddingTop: 15 },
-    lessonAuditDetails: { paddingHorizontal: 15, paddingBottom: 15, paddingTop: 5 },
-    lessonAuditRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-    lessonAuditText: { fontSize: 14, color: '#4b5563', marginLeft: 8 },
-    updaterName: { fontWeight: 'bold', color: '#1e3a8a' },
-    statusBanner: { paddingVertical: 6, alignItems: 'center' },
-    statusBannerText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-    filterContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        backgroundColor: '#f0f4f7',
-        marginBottom: 5,
-    },
-    filterLabel: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#4A5568',
-        marginRight: 10,
-    },
-    pickerWrapper: {
-        flex: 1,
-        backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
-        borderRadius: 8,
-        height: 50,
-        justifyContent: 'center',
-    },
-    picker: {
-        width: '100%',
-        color: '#1A202C',
-    },
+    
+    // Header
+    header: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 40, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+    headerTitle: { fontSize: 22, fontWeight: '700', color: '#0f172a', marginLeft: 10 },
+    subHeader: { backgroundColor: '#fff', paddingHorizontal: 20, paddingBottom: 15 },
+    subHeaderTitle: { fontSize: 16, color: '#64748b', fontWeight: '500' },
+    navBackBtn: { padding: 5 },
+
+    // Filter Area
+    filterContainer: { padding: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    filterLabel: { fontSize: 14, fontWeight: '600', color: '#64748b' },
+    pickerWrapper: { flex: 1, marginLeft: 10, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1', height: 45, justifyContent: 'center' },
+
+    // Card Styles
+    card: { backgroundColor: '#fff', borderRadius: 16, marginHorizontal: 15, marginBottom: 15, padding: 15, shadowColor: '#64748b', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
+    cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
+    cardClassBadge: { fontSize: 12, backgroundColor: '#e0e7ff', color: '#4338ca', paddingVertical: 2, paddingHorizontal: 8, borderRadius: 12, overflow: 'hidden', alignSelf: 'flex-start', marginTop: 4 },
+    cardActions: { flexDirection: 'row', gap: 8 },
+    actionIconBtn: { padding: 8, backgroundColor: '#eff6ff', borderRadius: 8 },
+    divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 10 },
+    cardInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+    cardDetailText: { marginLeft: 8, color: '#475569', fontSize: 14 },
+    viewProgressButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#4f46e5', padding: 10, borderRadius: 10, marginTop: 10 },
+    buttonTextSmall: { color: '#fff', fontWeight: '600', fontSize: 14, marginRight: 5 },
+
+    // FAB (Floating Action Button) - Positioned Absolutely
+    fab: { position: 'absolute', bottom: 25, right: 25, backgroundColor: '#4f46e5', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 8, shadowColor: '#4f46e5', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: {width: 0, height: 4}, zIndex: 10 },
+
+    // Form Styles
+    formContainer: { padding: 15 },
+    formSection: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 1 },
+    sectionHeader: { fontSize: 18, fontWeight: '700', color: '#1e293b', marginBottom: 15 },
+    label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 6, marginTop: 10 },
+    inputWrapper: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, backgroundColor: '#f8fafc', overflow: 'hidden' },
+    input: { borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, fontSize: 15, color: '#334155' },
+    
+    // Lesson Row
+    lessonRow: { marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+    lessonHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+    lessonIndex: { fontSize: 12, color: '#94a3b8', fontWeight: 'bold' },
+    dateSelector: { flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 12, backgroundColor: '#eff6ff', borderRadius: 10, borderWidth: 1, borderColor: '#dbeafe' },
+    dateText: { marginLeft: 10, color: '#4f46e5', fontWeight: '600', fontSize: 15 },
+    addLessonBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: '#6366f1', borderRadius: 10, backgroundColor: '#eef2ff' },
+    addLessonBtnText: { marginLeft: 8, color: '#4f46e5', fontWeight: '600' },
+    countBadge: { fontSize: 12, color: '#64748b' },
+    
+    // Save Button
+    saveButton: { backgroundColor: '#10b981', padding: 16, borderRadius: 12, alignItems: 'center', shadowColor: '#10b981', shadowOpacity: 0.3, shadowOffset: {width: 0, height: 4}, elevation: 4 },
+    saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
+    // Log Card (Progress)
+    logCard: { flexDirection: 'row', backgroundColor: '#fff', marginBottom: 10, borderRadius: 12, overflow: 'hidden', elevation: 1 },
+    statusStrip: { width: 6 },
+    logContent: { flex: 1, padding: 12 },
+    logTitle: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
+    logMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, justifyContent: 'space-between' },
+    logMetaText: { fontSize: 13, color: '#64748b', marginLeft: 5 },
+    statusBadge: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    emptyText: { textAlign: 'center', marginTop: 40, color: '#94a3b8' }
 });
 
 export default AdminSyllabusScreen;
