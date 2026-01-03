@@ -49,11 +49,13 @@ import TeacherAdminResourcesScreen from '../screens/syllabus_Textbook/TeacherAdm
 import TeacherAttendanceReportScreen from '../screens/teacher_attendence/TeacherAttendanceReportScreen';
 
 import TeacherPerformanceScreen from '../screens/Performance/TeacherPerformanceScreen';
+import StudentPerformance from '../screens/Performance/StudentPerformance';
 
 import ActivitiesScreen from '../screens/Extra_activity/ActivitiesScreen';
 import DictionaryScreen from '../screens/dictionary/DictionaryScreen';
 import TransportScreen from '../screens/transport/TransportScreen';
 import LibraryHomeScreen from '../screens/library/LibraryHomeScreen';
+import PerformanceFilter from '../screens/report/PerformanceFilter';
 
 // --- Constants & Colors ---
 const { width: windowWidth } = Dimensions.get('window');
@@ -113,6 +115,8 @@ const TeacherDashboard = ({ navigation }) => {
   const allQuickAccessItems = [
     { id: 'qa23', title: 'My Attendence', imageSource: 'https://cdn-icons-png.flaticon.com/128/12404/12404284.png', navigateToTab: 'TeacherAttendanceReportScreen' },
     { id: 'qa24', title: 'My Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/939/939354.png', navigateToTab: 'TeacherPerformanceScreen' },
+    { id: 'qa27', title: 'Student Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/15175/15175651.png', navigateToTab: 'StudentPerformance' },
+    { id: 'qa34', title: 'Performance Filter', imageSource: 'https://cdn-icons-png.flaticon.com/128/9733/9733233.png', navigateToTab: 'PerformanceFilter' },
      { id: 'qa32', title: 'Library', imageSource: 'https://cdn-icons-png.flaticon.com/128/9043/9043296.png', navigateToTab: 'LibraryHomeScreen' },
     // { id: 'qa31', title: 'Transport', imageSource: 'https://cdn-icons-png.flaticon.com/128/3124/3124263.png', navigateToTab: 'TransportScreen' },
     { id: 'qa2', title: 'Timetable', imageSource: 'https://cdn-icons-png.flaticon.com/128/1254/1254275.png', navigateToTab: 'Timetable' },
@@ -135,6 +139,7 @@ const TeacherDashboard = ({ navigation }) => {
     { id: 'qa15', title: 'Study Materials', imageSource: 'https://cdn-icons-png.flaticon.com/128/3273/3273259.png', navigateToTab: 'TeacherAdminMaterialsScreen' },
     { id: 'qa20', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'TeacherSyllabusScreen' },
     { id: 'qa22', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'TeacherAdminResourcesScreen' },
+    
     // { id: 'qa-ads-create', title: 'Create Ad', imageSource: 'https://cdn-icons-png.flaticon.com/128/4944/4944482.png', navigateTo: 'CreateAdScreen' },
   ];
 
@@ -221,10 +226,12 @@ const TeacherDashboard = ({ navigation }) => {
       case 'TeacherAdminResourcesScreen': return ( <><ContentScreenHeader title="Textbooks" onBack={handleBack} /><TeacherAdminResourcesScreen /></> );
       case 'TeacherAttendanceReportScreen': return ( <><ContentScreenHeader title="My Attendence" onBack={handleBack} /><TeacherAttendanceReportScreen /></> );
       case 'TeacherPerformanceScreen': return ( <><ContentScreenHeader title="My Performance" onBack={handleBack} /><TeacherPerformanceScreen /></> );
+      case 'StudentPerformance': return ( <><ContentScreenHeader title="Student Performance" onBack={handleBack} /><StudentPerformance /></> );
       case 'ActivitiesScreen': return ( <><ContentScreenHeader title="Extracurricular Activities" onBack={handleBack} /><ActivitiesScreen /></> );
       case 'DictionaryScreen': return ( <><ContentScreenHeader title="Dictionary" onBack={handleBack} /><DictionaryScreen /></> );
       case 'TransportScreen': return ( <><ContentScreenHeader title="Transport" onBack={handleBack} /><TransportScreen /></> );
       case 'LibraryHomeScreen': return ( <><ContentScreenHeader title="Library" onBack={handleBack} /><LibraryHomeScreen /></> );
+      case 'PerformanceFilter': return ( <><ContentScreenHeader title="Performance Filter" onBack={handleBack} /><PerformanceFilter /></> );
 
       default: return ( <><ContentScreenHeader title={capitalize(activeTab)} onBack={handleBack} /><View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content not available yet.</Text></View></> );
     }
