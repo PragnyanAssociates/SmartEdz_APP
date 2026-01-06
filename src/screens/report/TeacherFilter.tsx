@@ -1,7 +1,6 @@
 /**
  * File: src/screens/report/TeacherFilter.tsx
- * Purpose: Filter Teachers by Performance (Year, Class & Subject).
- * Design: Based on PerformanceFilter.tsx but adapted for Teachers.
+ * Purpose: Filter Teachers by Performance (Class & Subject) - Date Logic Removed.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -9,7 +8,6 @@ import {
     View, Text, StyleSheet, FlatList, ActivityIndicator,
     TouchableOpacity, ScrollView, RefreshControl, StatusBar
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import apiClient from '../../api/client';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -49,17 +47,6 @@ const CLASS_SUBJECTS: any = {
     'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
-// Generate last 5 academic years
-const ACADEMIC_YEARS = (() => {
-    const currentYear = new Date().getFullYear();
-    const years = [];
-    for (let i = 0; i < 5; i++) {
-        const startYear = currentYear - i;
-        years.push(`${startYear}-${startYear + 1}`);
-    }
-    return years;
-})();
-
 const TeacherFilter = () => {
     // --- State ---
     const [loading, setLoading] = useState(false);
@@ -70,7 +57,6 @@ const TeacherFilter = () => {
     const [rawTeacherData, setRawTeacherData] = useState<any[]>([]);
 
     // Filters
-    const [selectedYear, setSelectedYear] = useState(ACADEMIC_YEARS[0]);
     const [selectedClass, setSelectedClass] = useState('All Classes');
     const [selectedSubject, setSelectedSubject] = useState('All Subjects');
     
@@ -95,13 +81,13 @@ const TeacherFilter = () => {
     // --- 2. Fetch Teacher Data ---
     useEffect(() => {
         fetchTeacherData();
-    }, [selectedYear]);
+    }, []); // Removed dependency on selectedYear
 
     const fetchTeacherData = async () => {
         setLoading(true);
         try {
-            // Using the endpoint from TeacherPerformanceScreen.js
-            const response = await apiClient.get(`/performance/admin/all-teachers/${selectedYear}`);
+            // Using the endpoint from TeacherPerformanceScreen.js (No year param)
+            const response = await apiClient.get(`/performance/admin/all-teachers`);
             setRawTeacherData(response.data || []);
         } catch (error) {
             console.error('Error fetching teacher data:', error);
@@ -179,7 +165,7 @@ const TeacherFilter = () => {
         calculatedTeachers = calculatedTeachers.map((t, index) => ({ ...t, rank: index + 1 }));
 
         return calculatedTeachers;
-    }, [selectedYear, selectedClass, selectedSubject, rawTeacherData]);
+    }, [selectedClass, selectedSubject, rawTeacherData]);
 
     // --- 4. Tab Filtering Logic ---
     const filteredList = useMemo(() => {
@@ -270,21 +256,7 @@ const TeacherFilter = () => {
                 {/* 1. Filter Card */}
                 <View style={styles.filterCard}>
                     
-                    {/* Academic Year Picker */}
-                    <View style={styles.pickerRow}>
-                        <Icon name="calendar-range" size={20} color={COLORS.primary} style={{marginRight: 8}} />
-                        <View style={styles.pickerWrapper}>
-                            <Picker
-                                selectedValue={selectedYear}
-                                onValueChange={setSelectedYear}
-                                style={styles.picker}
-                                dropdownIconColor={COLORS.textSub}
-                                mode="dropdown"
-                            >
-                                {ACADEMIC_YEARS.map(y => <Picker.Item key={y} label={`Academic Year: ${y}`} value={y} style={{fontSize: 14}} />)}
-                            </Picker>
-                        </View>
-                    </View>
+                    {/* --- YEAR PICKER REMOVED --- */}
 
                     {/* Class Pills */}
                     <View style={styles.pillContainer}>
@@ -380,7 +352,7 @@ const TeacherFilter = () => {
                                     <View style={styles.emptyContainer}>
                                         <Icon name="clipboard-text-off-outline" size={60} color="#CFD8DC" />
                                         <Text style={styles.emptyText}>No Teachers Found</Text>
-                                        <Text style={styles.emptySubText}>Try changing the year or class filters.</Text>
+                                        <Text style={styles.emptySubText}>Try changing the class filters.</Text>
                                     </View>
                                 }
                             />
@@ -431,18 +403,6 @@ const styles = StyleSheet.create({
         shadowRadius: 6,
         marginBottom: 15,
     },
-    pickerRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#F5F7FA',
-        borderRadius: 12,
-        paddingHorizontal: 10,
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    pickerWrapper: { flex: 1, height: 45, justifyContent: 'center' },
-    picker: { width: '100%', color: COLORS.textMain },
     
     // Pills
     pillContainer: { marginBottom: 8 },

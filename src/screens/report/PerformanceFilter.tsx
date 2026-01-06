@@ -2,8 +2,7 @@
  * File: src/screens/report/PerformanceFilter.tsx
  * Purpose: Filter students by Class, Exam & Subject.
  * Design: Modern UI with floating cards, avatars, and dynamic styling.
- * Fixes: Resolved layout collision between Filter Card and Tabs using Flexbox flow.
- * Update: Renamed tabs to Above Average, Average, and Below Average.
+ * Update: Teacher Badge is now Orange with "Teacher : Name" format.
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -75,13 +74,16 @@ const PerformanceFilter = () => {
     const [classList, setClassList] = useState<string[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [marksData, setMarksData] = useState<any[]>([]);
+    
+    // Teacher Assignments State
+    const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
 
     // Filters
     const [selectedClass, setSelectedClass] = useState('');
     const [selectedExam, setSelectedExam] = useState('Overall');
     const [selectedSubject, setSelectedSubject] = useState('All Subjects');
     
-    // UPDATED: Active Tab State Name
+    // Active Tab State Name
     const [activeTab, setActiveTab] = useState<'Above Average' | 'Average' | 'Below Average'>('Above Average');
 
     // --- 1. Fetch Classes ---
@@ -111,8 +113,12 @@ const PerformanceFilter = () => {
         setLoading(true);
         try {
             const response = await apiClient.get(`/reports/class-data/${classGroup}`);
-            setStudents(response.data.students || []);
-            setMarksData(response.data.marks || []);
+            const { students, marks, assignments } = response.data;
+            
+            setStudents(students || []);
+            setMarksData(marks || []);
+            setTeacherAssignments(assignments || []);
+            
         } catch (error) {
             console.error('Error fetching class data:', error);
         } finally {
@@ -185,7 +191,7 @@ const PerformanceFilter = () => {
         return calculatedStudents;
     }, [selectedClass, selectedExam, selectedSubject, students, marksData]);
 
-    // --- 4. Filtering Logic (UPDATED NAMES) ---
+    // --- 4. Filtering Logic ---
     const filteredList = useMemo(() => {
         if (processedList.length === 0) return [];
         const list = [...processedList];
@@ -196,6 +202,13 @@ const PerformanceFilter = () => {
 
         return [];
     }, [activeTab, processedList]);
+
+    // --- NEW: Helper to get Teacher Name ---
+    const currentTeacherName = useMemo(() => {
+        if (selectedSubject === 'All Subjects') return null;
+        const assignment = teacherAssignments.find(a => a.subject === selectedSubject);
+        return assignment ? assignment.teacher_name : 'Not Assigned';
+    }, [selectedSubject, teacherAssignments]);
 
     const getStatusColor = (perc: number) => {
         if (perc >= 90) return COLORS.success;
@@ -251,20 +264,16 @@ const PerformanceFilter = () => {
     };
 
     const currentSubjects = ['All Subjects', ...(CLASS_SUBJECTS[selectedClass] || [])];
-    
-    // UPDATED: Tab Titles array
     const TABS = ['Above Average', 'Average', 'Below Average'];
 
     return (
         <View style={styles.container}>
             <StatusBar backgroundColor={COLORS.primaryDark} barStyle="light-content" />
             
-            {/* Header Background */}
             <View style={styles.headerBackground}>
                 <Text style={styles.headerTitle}>Analytics</Text>
             </View>
 
-            {/* Content Body Container (Flows naturally) */}
             <View style={styles.bodyContainer}>
                 
                 {/* 1. Filter Card */}
@@ -322,13 +331,13 @@ const PerformanceFilter = () => {
                     </View>
                 </View>
 
-                {/* 2. Tabs (Now in normal flow below card) */}
+                {/* 2. Tabs */}
                 <View style={styles.tabWrapper}>
                     {TABS.map((tab) => {
                         const isActive = activeTab === tab;
                         let iconName = 'trophy-variant';
                         if(tab === 'Average') iconName = 'scale-balance';
-                        if(tab === 'Below Average') iconName = 'arrow-down-circle-outline'; // UPDATED for Below Average
+                        if(tab === 'Below Average') iconName = 'arrow-down-circle-outline';
 
                         return (
                             <TouchableOpacity
@@ -353,14 +362,26 @@ const PerformanceFilter = () => {
                         <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
                     ) : (
                         <>
+                            {/* LIST HEADER with ORANGE Teacher Badge */}
                             <View style={styles.listHeader}>
-                                {/* UPDATED: Header Titles corresponding to new tabs */}
-                                <Text style={styles.listHeaderTitle}>
-                                    {activeTab === 'Above Average' ? 'Top Performers' : activeTab === 'Below Average' ? 'Need Attention' : 'Average Performers'}
-                                </Text>
-                                <View style={styles.badgeCount}>
-                                    <Text style={styles.badgeCountText}>{filteredList.length}</Text>
+                                <View style={styles.listHeaderLeft}>
+                                    <Text style={styles.listHeaderTitle}>
+                                        {activeTab === 'Above Average' ? 'Top Performers' : activeTab === 'Below Average' ? 'Need Attention' : 'Average Performers'}
+                                    </Text>
+                                    <View style={styles.badgeCount}>
+                                        <Text style={styles.badgeCountText}>{filteredList.length}</Text>
+                                    </View>
                                 </View>
+
+                                {/* TEACHER NAME SECTION (Orange) */}
+                                {selectedSubject !== 'All Subjects' && currentTeacherName && (
+                                    <View style={styles.teacherBadge}>
+                                        <Icon name="account-tie" size={16} color="#EF6C00" />
+                                        <Text style={styles.teacherText} numberOfLines={1}>
+                                            Teacher : {currentTeacherName}
+                                        </Text>
+                                    </View>
+                                )}
                             </View>
 
                             <FlatList
@@ -392,7 +413,7 @@ const styles = StyleSheet.create({
     // Header Background
     headerBackground: {
         backgroundColor: COLORS.primary,
-        height: 120, // Reduced height
+        height: 120, 
         paddingHorizontal: 20,
         paddingTop: 15,
         borderBottomRightRadius: 30,
@@ -408,12 +429,12 @@ const styles = StyleSheet.create({
     // Main Body Container
     bodyContainer: {
         flex: 1,
-        marginTop: -60, // Pulls content up over the header
+        marginTop: -60,
         paddingHorizontal: 15,
         zIndex: 2,
     },
 
-    // Filter Card (Normal Flow)
+    // Filter Card
     filterCard: {
         backgroundColor: COLORS.cardBg,
         borderRadius: 20,
@@ -423,7 +444,7 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 3 },
         shadowOpacity: 0.15,
         shadowRadius: 6,
-        marginBottom: 15, // Space between Card and Tabs
+        marginBottom: 15,
     },
     pickerRow: {
         flexDirection: 'row',
@@ -459,7 +480,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#E0E7FF',
         borderRadius: 15,
         padding: 4,
-        marginBottom: 15, // Space between Tabs and List
+        marginBottom: 15,
     },
     tabButton: {
         flex: 1,
@@ -474,15 +495,22 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.primary,
         elevation: 3,
     },
-    tabText: { fontSize: 11, fontWeight: '700', color: COLORS.textSub }, // Reduced Font size slightly to fit 3 longer names
+    tabText: { fontSize: 11, fontWeight: '700', color: COLORS.textSub },
     tabTextActive: { color: '#FFF' },
 
     // Content
     contentArea: { flex: 1 },
+    
+    // Header Row (Title on Left, Teacher on Right)
     listHeader: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
         marginBottom: 10,
+    },
+    listHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     listHeaderTitle: {
         fontSize: 16,
@@ -497,6 +525,27 @@ const styles = StyleSheet.create({
         marginLeft: 8,
     },
     badgeCountText: { fontSize: 11, fontWeight: 'bold', color: COLORS.textMain },
+    
+    // Updated Teacher Badge (Orange Theme)
+    teacherBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFF3E0', // Very light orange background
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#FFE0B2', // Soft orange border
+        maxWidth: '55%',
+        elevation: 1, // Subtle shadow for attractiveness
+    },
+    teacherText: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: '#E65100', // Deep Orange Text
+        marginLeft: 6,
+    },
+
     listContent: { paddingBottom: 20 },
 
     // Student Card
