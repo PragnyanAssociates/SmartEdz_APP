@@ -6699,7 +6699,194 @@ app.get('/api/teacher-attendance/report/:teacherId', verifyToken, async (req, re
 // ==========================================================
 // --- PROGRESS CARD (REPORTS) API ROUTES (COMPLETE VERSION) ---
 // ==========================================================
-// Note: Date/Year logic removed.
+// Configuration for Max Marks (Adjust these values based on your school's logic)
+const EXAM_MAX_MARKS = {
+    'Assignment-1': 10, 'AT1': 10,
+    'Unitest-1': 25,    'UT1': 25,
+    'Assignment-2': 10, 'AT2': 10,
+    'Unitest-2': 25,    'UT2': 25,
+    'Assignment-3': 10, 'AT3': 10,
+    'Unitest-3': 25,    'UT3': 25,
+    'Assignment-4': 10, 'AT4': 10,
+    'Unitest-4': 25,    'UT4': 25,
+    'SA1': 100,
+    'SA2': 100,
+    'Pre-Final': 100,
+    'Total': 100 // Fallback
+};
+
+// HELPER: Calculate Performance Stats
+const calculateStats = (marksData) => {
+    let totalObtained = 0;
+    let totalPossible = 0;
+    const examBreakdown = {};
+
+    marksData.forEach(row => {
+        // Skip rows where marks are null/empty or exam type is 'Total' (we calculate total manually)
+        if (row.marks_obtained === null || row.exam_type === 'Total') return;
+
+        const obtained = parseFloat(row.marks_obtained);
+        const maxMark = EXAM_MAX_MARKS[row.exam_type] || 100; // Default to 100 if unknown
+
+        totalObtained += obtained;
+        totalPossible += maxMark;
+
+        // Group by Exam Type
+        if (!examBreakdown[row.exam_type]) {
+            examBreakdown[row.exam_type] = { 
+                exam_type: row.exam_type, 
+                total_obtained: 0, 
+                total_possible: 0,
+                count: 0
+            };
+        }
+        examBreakdown[row.exam_type].total_obtained += obtained;
+        examBreakdown[row.exam_type].total_possible += maxMark;
+        examBreakdown[row.exam_type].count += 1;
+    });
+
+    // Calculate Percentages for breakdown
+    const breakdownArray = Object.values(examBreakdown).map(item => ({
+        ...item,
+        percentage: item.total_possible > 0 
+            ? ((item.total_obtained / item.total_possible) * 100).toFixed(2) 
+            : 0
+    }));
+
+    return {
+        totalObtained,
+        totalPossible,
+        average: totalPossible > 0 ? ((totalObtained / totalPossible) * 100).toFixed(2) : 0,
+        breakdown: breakdownArray
+    };
+};
+
+// --- ROUTE 1: ADMIN - GET PERFORMANCE FOR ALL TEACHERS ---
+app.get('/api/performance/admin/all-teachers', [verifyToken, isAdmin], async (req, res) => {
+    try {
+        // 1. Get all teachers
+        const [teachers] = await db.query(
+            "SELECT id, full_name FROM users WHERE role = 'teacher' ORDER BY full_name"
+        );
+
+        const performanceReport = [];
+
+        for (const teacher of teachers) {
+            // 2. Get Assignments (Subjects/Classes) for this teacher
+            // Note: Date filter removed
+            const [assignments] = await db.query(
+                "SELECT class_group, subject FROM report_teacher_assignments WHERE teacher_id = ?",
+                [teacher.id]
+            );
+
+            if (assignments.length === 0) continue; // Skip teachers with no assignments
+
+            let teacherTotalObtained = 0;
+            let teacherTotalPossible = 0;
+            const detailedPerformance = [];
+
+            for (const assign of assignments) {
+                // 3. Get Marks for this specific Class & Subject
+                // Note: Date filter removed
+                const [marks] = await db.query(
+                    `SELECT exam_type, marks_obtained 
+                     FROM report_student_marks 
+                     WHERE class_group = ? AND subject = ?`,
+                    [assign.class_group, assign.subject]
+                );
+
+                const stats = calculateStats(marks);
+
+                if (stats.totalPossible > 0) {
+                    teacherTotalObtained += stats.totalObtained;
+                    teacherTotalPossible += stats.totalPossible;
+
+                    detailedPerformance.push({
+                        class_group: assign.class_group,
+                        subject: assign.subject,
+                        total_marks: stats.totalObtained,
+                        max_possible_marks: stats.totalPossible,
+                        average_marks: stats.average,
+                        exam_breakdown: stats.breakdown
+                    });
+                }
+            }
+
+            // Only add teacher if they have data
+            if (detailedPerformance.length > 0) {
+                const overallAvg = teacherTotalPossible > 0 
+                    ? ((teacherTotalObtained / teacherTotalPossible) * 100).toFixed(2) 
+                    : 0;
+
+                performanceReport.push({
+                    teacher_id: teacher.id,
+                    teacher_name: teacher.full_name,
+                    overall_total: teacherTotalObtained,
+                    overall_possible: teacherTotalPossible,
+                    overall_average: overallAvg,
+                    detailed_performance: detailedPerformance
+                });
+            }
+        }
+
+        res.json(performanceReport);
+
+    } catch (error) {
+        console.error("Error fetching admin performance:", error);
+        res.status(500).json({ message: "Failed to generate performance report" });
+    }
+});
+
+// --- ROUTE 2: TEACHER - GET OWN PERFORMANCE ---
+app.get('/api/performance/teacher/:teacherId', [verifyToken], async (req, res) => {
+    const { teacherId } = req.params;
+
+    // Security check: Ensure teacher can only view their own data (unless admin)
+    if (req.user.role !== 'admin' && req.user.id != teacherId) {
+        return res.status(403).json({ message: "Unauthorized access" });
+    }
+
+    try {
+        // 1. Get Assignments
+        // Note: Date filter removed
+        const [assignments] = await db.query(
+            "SELECT class_group, subject FROM report_teacher_assignments WHERE teacher_id = ?",
+            [teacherId]
+        );
+
+        const resultData = [];
+
+        for (const assign of assignments) {
+            // 2. Get Marks
+            // Note: Date filter removed
+            const [marks] = await db.query(
+                `SELECT exam_type, marks_obtained 
+                 FROM report_student_marks 
+                 WHERE class_group = ? AND subject = ?`,
+                [assign.class_group, assign.subject]
+            );
+
+            const stats = calculateStats(marks);
+
+            if (stats.totalPossible > 0) {
+                resultData.push({
+                    class_group: assign.class_group,
+                    subject: assign.subject,
+                    total_marks: stats.totalObtained,
+                    max_possible_marks: stats.totalPossible,
+                    average_marks: stats.average,
+                    exam_breakdown: stats.breakdown
+                });
+            }
+        }
+
+        res.json(resultData);
+
+    } catch (error) {
+        console.error("Error fetching teacher performance:", error);
+        res.status(500).json({ message: "Failed to fetch performance data" });
+    }
+});
 
 // Subject configuration based on class
 const CLASS_SUBJECTS = {
