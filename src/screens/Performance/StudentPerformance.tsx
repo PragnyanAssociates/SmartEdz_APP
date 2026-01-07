@@ -3,8 +3,8 @@
  * Purpose: View class-wise student performance.
  * Logic: Calculates percentage based ONLY on completed exams.
  * Updated Logic: AT/UT Max marks are 20 for Classes 6-10, and 25 for others.
- * Updated: Strict Color Logic (<60 Red, 60-90 Blue, >90 Green).
- * Added: Subject Filter in Comparison Modal.
+ * Updated: New Range Logic (0-50 Red, 50-85 Blue, 85-100 Green).
+ * Updated: Custom Rounding (94.5 -> 94, 94.6 -> 95).
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -40,7 +40,7 @@ const CLASS_SUBJECTS: any = {
     'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
-// ★★★ NEW: Define which classes use 20 marks for AT/UT ★★★
+// Define which classes use 20 marks for AT/UT
 const SENIOR_CLASSES = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 
 // Map API exam names to short codes
@@ -66,17 +66,46 @@ const COLORS = {
     textSub: '#546E7A',
     
     // UPDATED STATUS COLORS
-    success: '#43A047',    // Green (> 90%)
-    average: '#1E88E5',    // Blue (60% - 90%)
-    poor: '#E53935',       // Red (< 60%)
+    success: '#43A047',    // Green (85% - 100%) - Topper
+    average: '#1E88E5',    // Blue (50% - 85%) - Average
+    poor: '#E53935',       // Red (0% - 50%) - Least
     
     track: '#ECEFF1',      // Light Grey
     border: '#CFD8DC'
 };
 
+// --- HELPER: CUSTOM ROUNDING ---
+// Rule: 94.5% -> 94%, 94.6% -> 95%
+const getRoundedPercentage = (value: number | string): number => {
+    const floatVal = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(floatVal)) return 0;
+    
+    const decimalPart = floatVal - Math.floor(floatVal);
+    
+    // If decimal is strictly greater than 0.5, round up.
+    // If decimal is 0.5 or less, round down.
+    if (decimalPart > 0.5) {
+        return Math.ceil(floatVal);
+    } else {
+        return Math.floor(floatVal);
+    }
+};
+
+// --- HELPER: STATUS COLOR LOGIC ---
+// 85-100: Green, 50-85: Blue, 0-50: Red
+const getStatusColor = (perc: number | string) => {
+    const val = getRoundedPercentage(perc);
+    if (val >= 85) return COLORS.success; 
+    if (val >= 50) return COLORS.average;
+    return COLORS.poor; 
+};
+
 // --- COMPONENT: ANIMATED BAR ---
 const AnimatedBar = ({ percentage, marks, label, color, height = 200 }: any) => {
     const animatedHeight = useRef(new Animated.Value(0)).current;
+    
+    // Ensure we use the rounded integer for logic/display
+    const displayPercentage = getRoundedPercentage(percentage);
 
     useEffect(() => {
         Animated.timing(animatedHeight, {
@@ -89,12 +118,12 @@ const AnimatedBar = ({ percentage, marks, label, color, height = 200 }: any) => 
 
     const heightStyle = animatedHeight.interpolate({
         inputRange: [0, 1],
-        outputRange: ['0%', `${percentage}%`]
+        outputRange: ['0%', `${displayPercentage}%`]
     });
 
     return (
         <View style={[styles.barWrapper, { height: height }]}>
-            <Text style={[styles.barLabelTop, { color: COLORS.textMain }]}>{Math.round(percentage)}%</Text>
+            <Text style={[styles.barLabelTop, { color: COLORS.textMain }]}>{displayPercentage}%</Text>
             <View style={styles.barBackground}>
                 <Animated.View style={[styles.barFill, { height: heightStyle, backgroundColor: color }]} />
                 <View style={styles.barTextContainer}>
@@ -184,14 +213,14 @@ const StudentPerformance = () => {
         setIsGraphVisible(true);
     };
 
-    // --- 3. Process Data (UPDATED LOGIC FOR 20/25 MARKS) ---
+    // --- 3. Process Data ---
     const processedData = useMemo(() => {
         if (!selectedClass || students.length === 0) return [];
 
         const subjects = CLASS_SUBJECTS[selectedClass] || [];
         const subjectCount = subjects.length;
 
-        // ★ Determine if this is a senior class (6-10)
+        // Determine if this is a senior class (6-10)
         const isSeniorClass = SENIOR_CLASSES.includes(selectedClass);
 
         // 1. Map Marks: student_id -> exam_code -> subject -> marks
@@ -225,15 +254,13 @@ const StudentPerformance = () => {
                 });
 
                 if (hasExamData) {
-                    // ★★★ DYNAMIC MAX MARKS LOGIC ★★★
+                    // DYNAMIC MAX MARKS LOGIC
                     let maxMarksPerSubject = 0;
                     
                     if (['SA1', 'SA2', 'Pre-Final'].includes(examCode)) {
-                        // SA exams are always 100
                         maxMarksPerSubject = 100;
                     } else {
                         // AT / UT Exams
-                        // If senior class (6-10) -> 20 marks, else -> 25 marks
                         maxMarksPerSubject = isSeniorClass ? 20 : 25;
                     }
 
@@ -242,25 +269,31 @@ const StudentPerformance = () => {
                     studentTotalObtained += examObtained;
                     studentMaxTotal += examMax;
 
-                    const examPerc = examMax > 0 ? (examObtained / examMax) * 100 : 0;
+                    // Raw percentage calculation
+                    const rawPerc = examMax > 0 ? (examObtained / examMax) * 100 : 0;
                     
+                    // Apply custom rounding immediately for the object
+                    const roundedPerc = getRoundedPercentage(rawPerc);
+
                     examBreakdown.push({
                         exam_type: examCode,
                         total_obtained: examObtained,
                         total_possible: examMax,
-                        percentage: examPerc.toFixed(2)
+                        percentage: roundedPerc // Store as integer
                     });
                 }
             });
 
-            const percentage = studentMaxTotal > 0 ? ((studentTotalObtained / studentMaxTotal) * 100).toFixed(2) : 0;
+            // Calculate overall raw percentage
+            const rawOverallPerc = studentMaxTotal > 0 ? (studentTotalObtained / studentMaxTotal) * 100 : 0;
+            const roundedOverallPerc = getRoundedPercentage(rawOverallPerc);
 
             return {
                 ...student,
                 id: student.id,
                 totalObtained: studentTotalObtained,
                 maxTotal: studentMaxTotal, 
-                percentage: parseFloat(percentage as string),
+                percentage: roundedOverallPerc, // Store as integer
                 examBreakdown,
                 performanceRank: 0
             };
@@ -272,7 +305,7 @@ const StudentPerformance = () => {
 
         // 4. Final Sort
         if (sortBy === 'desc') {
-            // Already sorted
+            // Already sorted by obtained marks (which correlates to percentage)
         } else if (sortBy === 'asc') {
             results.sort((a, b) => a.totalObtained - b.totalObtained);
         } else {
@@ -296,45 +329,38 @@ const StudentPerformance = () => {
     const studentList = processedData.students || [];
     const availableExams = ['Overall', ...(processedData.activeExams || [])];
 
-    // --- Comparison Data Logic (Includes Subject Filter & Dynamic Max Marks) ---
+    // --- Comparison Data Logic ---
     const getComparisonData = () => {
         if (studentList.length === 0) return [];
 
         const isSeniorClass = SENIOR_CLASSES.includes(selectedClass);
 
         return studentList.map(student => {
-            let ob = 0; let max = 0; let perc = 0;
+            let ob = 0; let max = 0; let rawPerc = 0;
 
             if (compareSubject === 'All Subjects') {
                 // Default Logic (Total of all subjects)
                 if (compareExam === 'Overall') {
                     ob = student.totalObtained;
                     max = student.maxTotal;
-                    perc = student.percentage;
                 } else {
                     const examData = student.examBreakdown.find((e: any) => e.exam_type === compareExam);
                     if (examData) {
                         ob = examData.total_obtained;
                         max = examData.total_possible;
-                        perc = parseFloat(examData.percentage);
                     }
                 }
             } else {
                 // Specific Subject Logic
-                // Filter marks from raw marksData for this specific student and subject
                 const studentMarks = marksData.filter(m => m.student_id === student.id && m.subject === compareSubject);
                 
                 if (compareExam === 'Overall') {
-                    // Sum all available exams for this subject
                     EXAM_ORDER.forEach(examCode => {
-                        // Find mark where exam code matches
                         const markEntry = studentMarks.find(m => EXAM_NAME_TO_CODE[m.exam_type] === examCode);
                         if (markEntry && markEntry.marks_obtained !== null && markEntry.marks_obtained !== '') {
                              const val = parseFloat(markEntry.marks_obtained);
                              if (!isNaN(val)) {
                                  ob += val;
-                                 
-                                 // ★ Logic for Max Marks for specific subject comparison
                                  if (['SA1', 'SA2', 'Pre-Final'].includes(examCode)) {
                                      max += 100;
                                  } else {
@@ -344,13 +370,11 @@ const StudentPerformance = () => {
                         }
                     });
                 } else {
-                    // Specific Exam + Specific Subject
                     const markEntry = studentMarks.find(m => EXAM_NAME_TO_CODE[m.exam_type] === compareExam);
                     if (markEntry && markEntry.marks_obtained !== null && markEntry.marks_obtained !== '') {
                         const val = parseFloat(markEntry.marks_obtained);
                          if (!isNaN(val)) {
                              ob = val;
-                             // ★ Logic for Max Marks for specific exam & subject
                              if (['SA1', 'SA2', 'Pre-Final'].includes(compareExam)) {
                                  max = 100;
                              } else {
@@ -359,15 +383,18 @@ const StudentPerformance = () => {
                          }
                     }
                 }
-                perc = max > 0 ? (ob / max) * 100 : 0;
             }
+
+            rawPerc = max > 0 ? (ob / max) * 100 : 0;
+            // Apply Custom Rounding
+            const finalPerc = getRoundedPercentage(rawPerc);
 
             return {
                 name: student.full_name,
                 roll: student.roll_no,
                 total_obtained: ob,
                 total_possible: max,
-                percentage: perc
+                percentage: finalPerc
             };
         })
         .filter(item => item.total_possible > 0)
@@ -384,24 +411,14 @@ const StudentPerformance = () => {
         return COLORS.textSub;
     };
 
-    // UPDATED: Strict Logic (<60 Red, 60-90 Blue, >90 Green)
-    const getStatusColor = (perc: number | string) => {
-        const val = parseFloat(perc as string);
-        if (val > 90) return COLORS.success; // Green
-        if (val >= 60) return COLORS.average; // Blue
-        return COLORS.poor; // Red
-    };
-
     // --- Render Item ---
     const renderStudentItem = ({ item }: any) => {
-        // Keep rank strip color based on rank #
         const rankColor = getColorForRank(item.performanceRank);
-        
-        // Use Strict Color Logic for actual performance stats
         const performanceColor = getStatusColor(item.percentage);
-        
         const isExpanded = expandedId === item.id;
 
+        // NOTE: item.percentage is already rounded using custom logic in useMemo
+        
         return (
             <View style={styles.card}>
                 <TouchableOpacity 
@@ -409,7 +426,7 @@ const StudentPerformance = () => {
                     onPress={() => toggleExpand(item.id)}
                     activeOpacity={0.8}
                 >
-                    {/* Rank Strip (Color by Position) */}
+                    {/* Rank Strip */}
                     <View style={[styles.rankStrip, { backgroundColor: rankColor }]}>
                         <Text style={styles.rankText}>#{item.performanceRank}</Text>
                     </View>
@@ -420,9 +437,9 @@ const StudentPerformance = () => {
                                 <Text style={styles.studentName}>{item.full_name}</Text>
                                 <Text style={styles.rollNo}>Roll No: {item.roll_no}</Text>
                             </View>
-                            {/* Circle Badge (Color by Performance %) */}
+                            {/* Circle Badge (Uses Integer Percentage) */}
                             <View style={[styles.circleBadge, { borderColor: performanceColor }]}>
-                                <Text style={[styles.circleText, { color: performanceColor }]}>{Math.round(item.percentage)}%</Text>
+                                <Text style={[styles.circleText, { color: performanceColor }]}>{item.percentage}%</Text>
                             </View>
                         </View>
 
@@ -430,7 +447,7 @@ const StudentPerformance = () => {
                             Total Marks: <Text style={styles.marksValue}>{Math.round(item.totalObtained)} / {Math.round(item.maxTotal)}</Text>
                         </Text>
 
-                        {/* Progress Bar (Color by Performance %) */}
+                        {/* Progress Bar */}
                         <View style={styles.progressTrack}>
                             <View style={[styles.progressFill, { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: performanceColor }]} />
                         </View>
@@ -471,8 +488,9 @@ const StudentPerformance = () => {
                                             {Math.round(exam.total_obtained)} / {Math.round(exam.total_possible)}
                                         </Text>
                                         <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-                                            <View style={[styles.percentagePill, { backgroundColor: getStatusColor(parseFloat(exam.percentage)) }]}>
-                                                <Text style={styles.pillText}>{Math.round(exam.percentage)}%</Text>
+                                            {/* exam.percentage is already custom rounded integer */}
+                                            <View style={[styles.percentagePill, { backgroundColor: getStatusColor(exam.percentage) }]}>
+                                                <Text style={styles.pillText}>{exam.percentage}%</Text>
                                             </View>
                                         </View>
                                     </View>
@@ -547,21 +565,21 @@ const StudentPerformance = () => {
                                 {graphData?.exams && graphData.exams.length > 0 ? graphData.exams.map((exam: any, idx: number) => (
                                     <AnimatedBar 
                                         key={idx} 
-                                        percentage={parseFloat(exam.percentage)} 
+                                        percentage={exam.percentage} 
                                         marks={`${Math.round(exam.total_obtained)}/${Math.round(exam.total_possible)}`}
                                         label={exam.exam_type} 
-                                        color={getStatusColor(parseFloat(exam.percentage))}
+                                        color={getStatusColor(exam.percentage)}
                                         height={240}
                                     />
                                 )) : <Text style={styles.noDataTxt}>No exams completed.</Text>}
                             </ScrollView>
                         </View>
 
-                        {/* UPDATED LEGEND */}
+                        {/* UPDATED LEGEND FOR NEW RANGES */}
                         <View style={styles.legendRow}>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>{">"} 90% (Good)</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>60% - 90% (Avg)</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>{"<"} 60% (Poor)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>85-100% (Topper)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>50-85% (Avg)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>0-50% (Least)</Text></View>
                         </View>
                     </View>
                 </View>
@@ -586,7 +604,7 @@ const StudentPerformance = () => {
                             </Picker>
                         </View>
 
-                        {/* 2. Subject Filter (NEW) */}
+                        {/* 2. Subject Filter */}
                         <View style={{ marginTop: 15 }}>
                             <Text style={styles.controlLabel}>Select Subject:</Text>
                             <View style={styles.controlPicker}>

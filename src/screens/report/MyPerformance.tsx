@@ -5,8 +5,8 @@
  *  1. Single Subject View: Topper vs Me.
  *  2. Overview Mode: All subjects side-by-side.
  *  3. Displays Rank, Marks, and Percentage.
- *  4. Color coded performance (Green > 90, Orange 60-90, Red < 60).
- *  5. Improved Note/Legend Section for clarity.
+ *  4. Color coded performance (Green > 85, Orange 50-85, Red < 50).
+ *  5. Custom Rounding (94.5 -> 94, 94.6 -> 95).
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -55,10 +55,10 @@ const COLORS = {
     textMain: '#263238',
     textSub: '#546E7A',
     
-    // --- COLORS ---
-    success: '#43A047',    // Green (> 90%)
-    average: '#FB8C00',    // Orange (60% - 90%)
-    poor: '#E53935',       // Red (< 60%)
+    // --- UPDATED COLORS ---
+    success: '#43A047',    // Green (85% - 100%)
+    average: '#FB8C00',    // Orange (50% - 85%)
+    poor: '#E53935',       // Red (0% - 50%)
     
     // Note Section Colors
     noteBg: '#FFF8E1',     // Light Buttery Background
@@ -71,11 +71,28 @@ const COLORS = {
     overviewChip: '#292828ff' 
 };
 
+// --- HELPER: CUSTOM ROUNDING ---
+// Rule: 94.5% -> 94%, 94.6% -> 95%
+const getRoundedPercentage = (value: number | string): number => {
+    const floatVal = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(floatVal)) return 0;
+    
+    const decimalPart = floatVal - Math.floor(floatVal);
+    
+    if (decimalPart > 0.5) {
+        return Math.ceil(floatVal);
+    } else {
+        return Math.floor(floatVal);
+    }
+};
+
 // --- Helper: Get Color Based on Percentage ---
+// Updated: 85-100 Green, 50-85 Orange, 0-50 Red
 const getColorForPercentage = (percentage: number) => {
-    if (percentage >= 90) return COLORS.success; // Green
-    if (percentage >= 60) return COLORS.average; // Orange
-    return COLORS.poor;                          // Red
+    // percentage is assumed to be already rounded integer
+    if (percentage >= 85) return COLORS.success; 
+    if (percentage >= 50) return COLORS.average; 
+    return COLORS.poor;                          
 };
 
 // --- HELPER: Calculate Stats for One Subject ---
@@ -121,12 +138,15 @@ const calculateStatsForSubject = (
             }
         }
 
-        const percentage = totalPossible > 0 ? (totalObtained / totalPossible) * 100 : 0;
+        const rawPercentage = totalPossible > 0 ? (totalObtained / totalPossible) * 100 : 0;
+        // Apply custom rounding immediately
+        const percentage = getRoundedPercentage(rawPercentage);
+
         return {
             id: student.id,
             obtained: totalObtained,
             total: totalPossible,
-            percentage: percentage
+            percentage: percentage // Integer
         };
     });
 
@@ -173,8 +193,9 @@ const PerformanceBar = ({ data, label, showRank = true, slim = false }: any) => 
                     <Text style={[styles.totalMarksText, { fontSize: slim ? 10 : 13 }]}>/{Math.round(data.total)}</Text>
                 </View>
 
+                {/* Data.percentage is already integer */}
                 <Text style={[styles.percentageText, { color: dynamicColor, fontSize: slim ? 10 : 12 }]}>
-                    {Math.round(data.percentage)}%
+                    {data.percentage}%
                 </Text>
             </View>
 
@@ -267,7 +288,11 @@ const MyPerformance = () => {
                             }
                          }
                     });
-                    return { id: student.id, obtained: totalObtained, total: totalPossible, percentage: totalPossible > 0 ? (totalObtained/totalPossible)*100 : 0 };
+                    
+                    const rawPerc = totalPossible > 0 ? (totalObtained/totalPossible)*100 : 0;
+                    const perc = getRoundedPercentage(rawPerc);
+                    
+                    return { id: student.id, obtained: totalObtained, total: totalPossible, percentage: perc };
                 });
                 classResults.sort((a: any, b: any) => b.obtained - a.obtained);
                 const ranked = classResults.map((item: any, idx: number) => ({ ...item, rank: idx + 1 }));
@@ -342,7 +367,7 @@ const MyPerformance = () => {
 
                     <View style={styles.graphCard}>
                         
-                        {/* --- NEW DYNAMIC NOTE SECTION --- */}
+                        {/* --- DYNAMIC NOTE SECTION (UPDATED) --- */}
                         <View style={styles.noteCard}>
                             <View style={styles.noteHeader}>
                                 <Text style={styles.noteTitle}>Performance Guide :-</Text>
@@ -352,17 +377,17 @@ const MyPerformance = () => {
                                 {/* Row 1 */}
                                 <View style={styles.legendItem}>
                                     <View style={[styles.colorBox, { backgroundColor: COLORS.success }]} />
-                                    <Text style={styles.legendText}>&gt;90% (Excel)</Text>
+                                    <Text style={styles.legendText}>&gt;85% (Excel)</Text>
                                 </View>
                                 <View style={styles.legendItem}>
                                     <View style={[styles.colorBox, { backgroundColor: COLORS.average }]} />
-                                    <Text style={styles.legendText}>60-90% (Avg)</Text>
+                                    <Text style={styles.legendText}>50-85% (Avg)</Text>
                                 </View>
 
                                 {/* Row 2 */}
                                 <View style={styles.legendItem}>
                                     <View style={[styles.colorBox, { backgroundColor: COLORS.poor }]} />
-                                    <Text style={styles.legendText}>&lt;60% (Poor)</Text>
+                                    <Text style={styles.legendText}>&lt;50% (Poor)</Text>
                                 </View>
                                 <View style={styles.legendItem}>
                                     <View style={styles.miniRankBadge}>

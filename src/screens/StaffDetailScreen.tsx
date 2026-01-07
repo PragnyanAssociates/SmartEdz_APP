@@ -1,18 +1,20 @@
 /**
  * File: src/screens/staff/StaffDetailScreen.js
- * Purpose: Staff Details with Professional, Timetable, Attendance, and Graphical Performance Analysis.
- * Updated: Aligned with 20/25 Max Marks logic and Strict Color Grading.
+ * Purpose: Staff Details with updated UI (Header Card, Profile Card).
+ * Updated: Strict Color Logic (0-50 Red, 50-85 Blue, 85-100 Green).
+ * Updated: Custom Rounding (94.5 -> 94, 94.6 -> 95).
  */
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, ActivityIndicator, Image,
-    TouchableOpacity, Modal, Pressable, Platform, UIManager, LayoutAnimation, Alert, Animated, Easing
+    TouchableOpacity, Modal, Pressable, Platform, UIManager, LayoutAnimation, Alert, Animated, Easing, SafeAreaView, Dimensions
 } from 'react-native';
 import apiClient from '../api/client';
 import { SERVER_URL } from '../../apiConfig';
-import TimetableScreen from './TimetableScreen';
+import TimetableScreen from './TimetableScreen'; 
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import * as Animatable from 'react-native-animatable';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -21,16 +23,16 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 // --- COLORS ---
 const COLORS = {
-    primary: '#00897B',    // Teal
-    background: '#f4f6f8',
+    primary: '#008080',    // Teal 
+    background: '#F2F5F8', // Light Grey Blue
     cardBg: '#FFFFFF',
     textMain: '#263238',
     textSub: '#546E7A',
     
-    // Strict Logic Colors
-    success: '#43A047',    // Green (> 90%)
-    average: '#1E88E5',    // Blue (60% - 90%)
-    poor: '#E53935',       // Red (< 60%)
+    // Updated Status Colors
+    success: '#43A047',    // Green (85% - 100%)
+    average: '#1E88E5',    // Blue (50% - 85%)
+    poor: '#E53935',       // Red (0% - 50%)
     
     track: '#ECEFF1',      // Light Grey
     border: '#CFD8DC'
@@ -53,18 +55,36 @@ const getCurrentAcademicYear = () => {
     return currentMonth >= 5 ? `${currentYear}-${currentYear + 1}` : `${currentYear - 1}-${currentYear}`;
 };
 
-// --- HELPER: Strict Status Color ---
+// --- HELPER: CUSTOM ROUNDING ---
+// Rule: 94.5% -> 94%, 94.6% -> 95%
+const getRoundedPercentage = (value) => {
+    const floatVal = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(floatVal)) return 0;
+    
+    const decimalPart = floatVal - Math.floor(floatVal);
+    
+    if (decimalPart > 0.5) {
+        return Math.ceil(floatVal);
+    } else {
+        return Math.floor(floatVal);
+    }
+};
+
+// --- HELPER: STATUS COLOR LOGIC ---
+// 85-100: Green, 50-85: Blue, 0-50: Red
 const getStatusColor = (percentage) => {
-    const val = parseFloat(percentage);
-    if (isNaN(val)) return COLORS.textMain;
-    if (val > 90) return COLORS.success; // Green
-    if (val >= 60) return COLORS.average; // Blue
-    return COLORS.poor; // Red
+    const val = getRoundedPercentage(percentage);
+    if (val >= 85) return COLORS.success; 
+    if (val >= 50) return COLORS.average; 
+    return COLORS.poor; 
 };
 
 // --- COMPONENT: ANIMATED BAR ---
 const AnimatedBar = ({ percentage, marks, label, color, height = 200 }) => {
     const animatedHeight = useRef(new Animated.Value(0)).current;
+
+    // Use rounded integer for display and logic
+    const displayPercentage = getRoundedPercentage(percentage);
 
     useEffect(() => {
         Animated.timing(animatedHeight, {
@@ -77,23 +97,18 @@ const AnimatedBar = ({ percentage, marks, label, color, height = 200 }) => {
 
     const heightStyle = animatedHeight.interpolate({
         inputRange: [0, 1],
-        outputRange: ['0%', `${percentage}%`]
+        outputRange: ['0%', `${displayPercentage}%`]
     });
 
     return (
         <View style={[styles.barWrapper, { height: height }]}>
-            {/* Percentage Label */}
-            <Text style={styles.barLabelTop}>{Math.round(percentage)}%</Text>
-            {/* Bar Track */}
+            <Text style={styles.barLabelTop}>{displayPercentage}%</Text>
             <View style={styles.barBackground}>
-                {/* Animated Fill */}
                 <Animated.View style={[styles.barFill, { height: heightStyle, backgroundColor: color }]} />
-                {/* Marks Overlay (Rotated) */}
                 <View style={styles.barTextContainer}>
                     <Text style={styles.barInnerText} numberOfLines={1}>{marks}</Text>
                 </View>
             </View>
-            {/* Bottom Label */}
             <Text style={styles.barLabelBottom} numberOfLines={1}>{label}</Text>
         </View>
     );
@@ -126,7 +141,7 @@ const DailyStatusCard = ({ record, date }) => {
 };
 
 // --- MAIN COMPONENT ---
-const StaffDetailScreen = ({ route }) => {
+const StaffDetailScreen = ({ route, navigation }) => {
     const { staffId } = route.params;
     const [staffDetails, setStaffDetails] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -160,6 +175,11 @@ const StaffDetailScreen = ({ route }) => {
     const [showToPicker, setShowToPicker] = useState(false);
 
     const scrollViewRef = useRef(null);
+
+    // --- HIDE NATIVE HEADER ---
+    useLayoutEffect(() => {
+        navigation.setOptions({ headerShown: false });
+    }, [navigation]);
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -255,17 +275,40 @@ const StaffDetailScreen = ({ route }) => {
     const subjectsDisplay = staffDetails.subjects_taught && Array.isArray(staffDetails.subjects_taught) && staffDetails.subjects_taught.length > 0 ? staffDetails.subjects_taught.join(', ') : 'Not Provided';
 
     return (
-        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <SafeAreaView style={styles.container}>
             <Modal visible={isViewerVisible} transparent={true} onRequestClose={() => setViewerVisible(false)} animationType="fade">
                 <Pressable style={styles.modalBackdrop} onPress={() => setViewerVisible(false)}><View style={styles.modalContent}><Image source={imageUrl ? { uri: imageUrl } : require('../assets/default_avatar.png')} style={styles.enlargedAvatar} resizeMode="contain" /><TouchableOpacity style={styles.closeButton} onPress={() => setViewerVisible(false)}><Text style={styles.closeButtonText}>Close</Text></TouchableOpacity></View></Pressable>
             </Modal>
             
-            <ScrollView ref={scrollViewRef} style={styles.container} contentContainerStyle={styles.scrollContentContainer}>
-                {/* Header Profile */}
-                <View style={styles.profileHeader}>
-                    <TouchableOpacity onPress={() => setViewerVisible(true)}><Image source={imageUrl ? { uri: imageUrl } : require('../assets/default_avatar.png')} style={styles.avatar} /></TouchableOpacity>
+            {/* Header Card with Back Button */}
+            <View style={styles.headerCard}>
+                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.6}>
+                    <MaterialIcons name="arrow-back" size={24} color="#333" />
+                </TouchableOpacity>
+                <View style={styles.headerIconContainer}>
+                    <MaterialIcons name="assignment-ind" size={28} color="#008080" />
+                </View>
+                <View style={styles.headerTextContainer}>
+                    <Text style={styles.headerTitle}>Staff Profile</Text>
+                    <Text style={styles.headerSubtitle}>View detailed information</Text>
+                </View>
+            </View>
+
+            <ScrollView ref={scrollViewRef} style={styles.scrollContainer} contentContainerStyle={styles.scrollContentContainer}>
+                
+                {/* Floating Profile Card */}
+                <View style={styles.profileCard}>
+                    <TouchableOpacity onPress={() => setViewerVisible(true)} style={styles.avatarWrapper}>
+                        <Image 
+                            source={imageUrl ? { uri: imageUrl } : require('../assets/default_avatar.png')} 
+                            style={styles.avatar}
+                            fadeDuration={0} 
+                        />
+                    </TouchableOpacity>
                     <Text style={styles.fullName}>{staffDetails.full_name}</Text>
-                    <Text style={styles.role}>{displayRole}</Text>
+                    <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{displayRole}</Text>
+                    </View>
                 </View>
                 
                 {/* Static Details */}
@@ -305,7 +348,8 @@ const StaffDetailScreen = ({ route }) => {
                                             <Text style={styles.teacherNameHeader}>{staffDetails.full_name}</Text>
                                             <View style={styles.teacherStatsContainer}>
                                                 <Text style={styles.overallStat}>Marks: <Text style={styles.overallValue}>{Math.round(overallStats.totalObtained)}</Text></Text>
-                                                <Text style={styles.overallStat}>Perf: <Text style={[styles.averageValue, { color: getStatusColor(overallStats.percentage) }]}>{overallStats.percentage.toFixed(2)}%</Text></Text>
+                                                {/* Display Rounded Integer Percentage */}
+                                                <Text style={styles.overallStat}>Perf: <Text style={[styles.averageValue, { color: getStatusColor(overallStats.percentage) }]}>{getRoundedPercentage(overallStats.percentage)}%</Text></Text>
                                             </View>
                                         </View>
                                         
@@ -316,19 +360,23 @@ const StaffDetailScreen = ({ route }) => {
                                                     <Text style={[styles.detailHeaderText, { flex: 2, textAlign: 'center' }]}>Score</Text>
                                                     <Text style={[styles.detailHeaderText, { flex: 1.5, textAlign: 'right' }]}>Avg %</Text>
                                                 </View>
-                                                {performanceDetails.map((detail, index) => (
-                                                    <View key={index} style={[styles.detailRowPerformance, index === performanceDetails.length - 1 && styles.lastDetailRow]}>
-                                                        <View style={{flex: 3, flexDirection: 'row', alignItems: 'center'}}>
-                                                            <Text style={styles.detailColumnSubject} numberOfLines={1}>{`${detail.class_group} - ${detail.subject}`}</Text>
-                                                            {/* GRAPH BUTTON */}
-                                                            <TouchableOpacity style={styles.inlineGraphBtn} onPress={() => handleOpenGraph(`${detail.class_group} - ${detail.subject}`, detail.exam_breakdown)}>
-                                                                <Icon name="chart-bar" size={16} color="#FFF" />
-                                                            </TouchableOpacity>
+                                                {performanceDetails.map((detail, index) => {
+                                                    const dPerc = getRoundedPercentage(detail.average_marks);
+                                                    return (
+                                                        <View key={index} style={[styles.detailRowPerformance, index === performanceDetails.length - 1 && styles.lastDetailRow]}>
+                                                            <View style={{flex: 3, flexDirection: 'row', alignItems: 'center'}}>
+                                                                <Text style={styles.detailColumnSubject} numberOfLines={1}>{`${detail.class_group} - ${detail.subject}`}</Text>
+                                                                {/* GRAPH BUTTON */}
+                                                                <TouchableOpacity style={styles.inlineGraphBtn} onPress={() => handleOpenGraph(`${detail.class_group} - ${detail.subject}`, detail.exam_breakdown)}>
+                                                                    <Icon name="chart-bar" size={16} color="#FFF" />
+                                                                </TouchableOpacity>
+                                                            </View>
+                                                            <Text style={styles.detailColumnTotal}>{Math.round(detail.total_marks)}/{Math.round(detail.max_possible_marks)}</Text>
+                                                            {/* Display Rounded Integer Percentage */}
+                                                            <Text style={[styles.detailColumnAverage, { color: getStatusColor(dPerc) }]}>{dPerc}%</Text>
                                                         </View>
-                                                        <Text style={styles.detailColumnTotal}>{Math.round(detail.total_marks)}/{Math.round(detail.max_possible_marks)}</Text>
-                                                        <Text style={[styles.detailColumnAverage, { color: getStatusColor(detail.average_marks) }]}>{parseFloat(detail.average_marks).toFixed(2)}%</Text>
-                                                    </View>
-                                                ))}
+                                                    );
+                                                })}
                                             </>
                                         ) : <View style={styles.noDataContainer}><Text style={styles.noDataText}>No performance data available.</Text></View>}
                                     </View>
@@ -412,38 +460,95 @@ const StaffDetailScreen = ({ route }) => {
                                 {graphData?.exams && graphData.exams.length > 0 ? graphData.exams.map((exam, idx) => (
                                     <AnimatedBar 
                                         key={idx} 
-                                        percentage={parseFloat(exam.percentage)} 
+                                        percentage={exam.percentage} 
                                         marks={`${Math.round(exam.total_obtained)}/${Math.round(exam.total_possible)}`}
                                         label={exam.exam_type} 
-                                        color={getStatusColor(parseFloat(exam.percentage))}
+                                        color={getStatusColor(exam.percentage)}
                                         height={240}
                                     />
                                 )) : <Text style={styles.noDataText}>No exam data found.</Text>}
                             </ScrollView>
                         </View>
 
-                        {/* Legend */}
+                        {/* Updated Legend */}
                         <View style={styles.legendRow}>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>{">"} 90% (Good)</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>60% - 90% (Avg)</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>{"<"} 60% (Poor)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>85-100% (Topper)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>50-85% (Avg)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>0-50% (Least)</Text></View>
                         </View>
                     </View>
                 </View>
             </Modal>
-        </View>
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f4f6f8' },
+    container: { flex: 1, backgroundColor: '#F2F5F8' }, // Light Blue Grey
     scrollContentContainer: { paddingBottom: 20 },
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    profileHeader: { alignItems: 'center', paddingVertical: 30, paddingHorizontal: 15, backgroundColor: COLORS.primary },
-    avatar: { width: 120, height: 120, borderRadius: 60, borderWidth: 4, borderColor: '#ffffff', marginBottom: 15, backgroundColor: '#bdc3c7' },
-    fullName: { fontSize: 24, fontWeight: 'bold', color: '#ffffff', textAlign: 'center' },
-    role: { fontSize: 16, color: '#ecf0f1', marginTop: 5, backgroundColor: 'rgba(255, 255, 255, 0.2)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 15, textTransform: 'capitalize' },
-    card: { backgroundColor: '#ffffff', borderRadius: 8, marginHorizontal: 15, marginTop: 15, paddingHorizontal: 15, paddingBottom: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+    
+    // Header Card Style
+    headerCard: {
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 15,
+        paddingVertical: 10,
+        width: '96%',
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        elevation: 3,
+        shadowColor: '#000',
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 2 },
+    },
+    backButton: {
+        marginRight: 8,
+        padding: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Light Teal Circle
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center', flex: 1 },
+    headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#333333' },
+    headerSubtitle: { fontSize: 14, color: '#666666', marginTop: 1 },
+
+    // Floating Profile Card
+    profileCard: {
+        alignItems: 'center',
+        backgroundColor: '#008080', // Teal Background for Profile Card
+        marginHorizontal: 15,
+        borderRadius: 16,
+        paddingVertical: 25,
+        marginBottom: 10,
+        elevation: 4,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 5,
+    },
+    avatarWrapper: {
+        borderRadius: 65,
+        borderWidth: 4,
+        borderColor: 'rgba(255,255,255,0.3)',
+        padding: 4,
+        marginBottom: 10,
+    },
+    avatar: { width: 110, height: 110, borderRadius: 55, backgroundColor: '#bdc3c7' },
+    fullName: { fontSize: 22, fontWeight: 'bold', color: '#ffffff', textAlign: 'center', marginBottom: 5 },
+    badge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
+    badgeText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+
+    card: { backgroundColor: '#ffffff', borderRadius: 12, marginHorizontal: 15, marginTop: 15, paddingHorizontal: 15, paddingBottom: 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
     cardTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f2f5', marginBottom: 5 },
     cardContent: { paddingHorizontal: 15, paddingBottom: 5 },
     detailRow: { flexDirection: 'row', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f2f5', alignItems: 'center' },
@@ -451,7 +556,7 @@ const styles = StyleSheet.create({
     detailValue: { fontSize: 15, color: '#2c3e50', flex: 3, fontWeight: '500', textAlign: 'right' },
     
     // Collapsible
-    collapsibleCard: { backgroundColor: '#ffffff', borderRadius: 8, marginHorizontal: 15, marginTop: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, overflow: 'hidden' },
+    collapsibleCard: { backgroundColor: '#ffffff', borderRadius: 12, marginHorizontal: 15, marginTop: 15, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, overflow: 'hidden' },
     collapsibleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
     collapsibleTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary },
     arrowIcon: { fontSize: 20, color: COLORS.primary },

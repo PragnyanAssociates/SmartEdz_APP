@@ -1,7 +1,8 @@
 /**
  * File: src/screens/report/PerformanceFilter.tsx
  * Purpose: Filter students by Class, Exam & Subject.
- * Design: Consistent Card Header UI.
+ * Updated: Strict Color Logic (0-50 Red, 50-85 Blue, 85-100 Green).
+ * Updated: Custom Rounding (94.5 -> 94, 94.6 -> 95).
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -20,16 +21,16 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 // --- CONSTANTS ---
 const COLORS = {
-    primary: '#008080',      // Main Teal (Matches other screens)
-    background: '#F2F5F8',   // Light Blue-Grey Background (Matches other screens)
+    primary: '#008080',      // Main Teal
+    background: '#F2F5F8',   // Light Blue-Grey Background
     cardBg: '#FFFFFF',
     textMain: '#333333',
     textSub: '#666666',
     
-    // Status Colors
-    success: '#00C853',      // Vibrant Green (> 90%)
-    average: '#2979FF',      // Vibrant Blue (60% - 90%)
-    poor: '#FF5252',         // Soft Red (< 60%)
+    // Updated Status Colors
+    success: '#00C853',      // Vibrant Green (> 85%)
+    average: '#2979FF',      // Vibrant Blue (50% - 85%)
+    poor: '#FF5252',         // Soft Red (< 50%)
     
     // Rank Colors
     gold: '#FFD700',
@@ -66,6 +67,21 @@ const EXAM_NAME_TO_CODE: any = {
     'SA1': 'SA1', 'SA2': 'SA2', 
     'AT1': 'AT1', 'UT1': 'UT1', 'AT2': 'AT2', 'UT2': 'UT2',
     'AT3': 'AT3', 'UT3': 'UT3', 'AT4': 'AT4', 'UT4': 'UT4'
+};
+
+// --- HELPER: CUSTOM ROUNDING ---
+// Rule: 94.5% -> 94%, 94.6% -> 95%
+const getRoundedPercentage = (value: number | string): number => {
+    const floatVal = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(floatVal)) return 0;
+    
+    const decimalPart = floatVal - Math.floor(floatVal);
+    
+    if (decimalPart > 0.5) {
+        return Math.ceil(floatVal);
+    } else {
+        return Math.floor(floatVal);
+    }
 };
 
 const PerformanceFilter = () => {
@@ -183,39 +199,50 @@ const PerformanceFilter = () => {
                 calculateExamScore(selectedExam);
             }
 
-            const percentage = max > 0 ? (obtained / max) * 100 : 0;
+            const rawPercentage = max > 0 ? (obtained / max) * 100 : 0;
+            // Apply custom rounding here so filtering works on the rounded integer
+            const percentage = getRoundedPercentage(rawPercentage);
+
             return { ...student, obtained, max, percentage };
         });
 
         calculatedStudents = calculatedStudents.filter(s => s.max > 0);
+        // Sort based on the integer percentage
         calculatedStudents.sort((a, b) => b.percentage - a.percentage); 
         calculatedStudents = calculatedStudents.map((s, index) => ({ ...s, rank: index + 1 }));
 
         return calculatedStudents;
     }, [selectedClass, selectedExam, selectedSubject, students, marksData]);
 
-    // --- 4. Filtering Logic ---
+    // --- 4. Filtering Logic (Updated Ranges) ---
     const filteredList = useMemo(() => {
         if (processedList.length === 0) return [];
         const list = [...processedList];
 
-        if (activeTab === 'Above Average') return list.filter(s => s.percentage >= 90);
-        if (activeTab === 'Average') return list.filter(s => s.percentage >= 60 && s.percentage < 90);
-        if (activeTab === 'Below Average') return list.filter(s => s.percentage < 60).sort((a, b) => a.percentage - b.percentage);
+        // Above Average: 85% to 100%
+        if (activeTab === 'Above Average') return list.filter(s => s.percentage >= 85);
+        
+        // Average: 50% to 85%
+        if (activeTab === 'Average') return list.filter(s => s.percentage >= 50 && s.percentage < 85);
+        
+        // Below Average: 0% to 50%
+        if (activeTab === 'Below Average') return list.filter(s => s.percentage < 50).sort((a, b) => a.percentage - b.percentage);
 
         return [];
     }, [activeTab, processedList]);
 
-    // --- NEW: Helper to get Teacher Name ---
+    // --- Helper to get Teacher Name ---
     const currentTeacherName = useMemo(() => {
         if (selectedSubject === 'All Subjects') return null;
         const assignment = teacherAssignments.find(a => a.subject === selectedSubject);
         return assignment ? assignment.teacher_name : 'Not Assigned';
     }, [selectedSubject, teacherAssignments]);
 
+    // --- Helper for Colors (Updated Logic) ---
     const getStatusColor = (perc: number) => {
-        if (perc >= 90) return COLORS.success;
-        if (perc >= 60) return COLORS.average;
+        // perc is already rounded integer
+        if (perc >= 85) return COLORS.success;
+        if (perc >= 50) return COLORS.average;
         return COLORS.poor;
     };
 
@@ -254,12 +281,14 @@ const PerformanceFilter = () => {
                         </View>
                     </View>
                     <View style={styles.progressTrack}>
+                        {/* Percentage is already 0-100 integer */}
                         <View style={[styles.progressFill, { width: `${item.percentage}%`, backgroundColor: color }]} />
                     </View>
                 </View>
 
                 <View style={styles.scoreContainer}>
-                    <Text style={[styles.percentage, { color: color }]}>{item.percentage.toFixed(1)}%</Text>
+                    {/* Display integer percentage directly */}
+                    <Text style={[styles.percentage, { color: color }]}>{item.percentage}%</Text>
                     <Text style={styles.marks}>{Math.round(item.obtained)}/{Math.round(item.max)}</Text>
                 </View>
             </View>
@@ -378,7 +407,6 @@ const PerformanceFilter = () => {
                                     <Text style={styles.listHeaderTitle}>
                                         {activeTab === 'Above Average' ? 'Top Performers' : activeTab === 'Below Average' ? 'Need Attention' : 'Average Performers'}
                                     </Text>
-                                    {/* --- MODIFIED: Shows Filtered / Total --- */}
                                     <View style={styles.badgeCount}>
                                         <Text style={styles.badgeCountText}>
                                             {filteredList.length} / {processedList.length}
@@ -423,7 +451,7 @@ const PerformanceFilter = () => {
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: COLORS.background },
 
-    // --- Header Card Style (Matches others) ---
+    // --- Header Card Style ---
     headerCard: {
         backgroundColor: '#FFFFFF',
         paddingHorizontal: 15,
@@ -468,14 +496,14 @@ const styles = StyleSheet.create({
     // Main Body Container
     bodyContainer: {
         flex: 1,
-        paddingHorizontal: 8, // Reduced horizontal padding
+        paddingHorizontal: 8,
     },
 
     // Filter Card
     filterCard: {
         backgroundColor: COLORS.cardBg,
         borderRadius: 16,
-        padding: 12, // Reduced padding
+        padding: 12,
         elevation: 2,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },

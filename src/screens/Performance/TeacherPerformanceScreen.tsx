@@ -1,7 +1,8 @@
 /**
  * File: src/screens/report/TeacherPerformanceScreen.js
  * Purpose: Teacher Performance Analytics with Table View and Class-wise Max Mark Logic (20/25).
- * Note: Date/Year logic removed.
+ * Updated: Strict Color Logic (0-50 Red, 50-85 Blue, 85-100 Green).
+ * Updated: Custom Rounding (94.5 -> 94, 94.6 -> 95).
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -35,27 +36,45 @@ const COLORS = {
     textMain: '#263238',   // Dark Slate
     textSub: '#546E7A',    // Slate Grey
     
-    // --- STATUS COLORS (Strict Logic) ---
-    success: '#43A047',    // Green (> 90%)
-    average: '#1E88E5',    // Blue (60% - 90%)
-    poor: '#E53935',       // Red (< 60%)
+    // --- UPDATED STATUS COLORS ---
+    success: '#43A047',    // Green (85% - 100%)
+    average: '#1E88E5',    // Blue (50% - 85%)
+    poor: '#E53935',       // Red (0% - 50%)
     
     track: '#ECEFF1',      // Light Grey for bar track
     border: '#CFD8DC'
 };
 
+// --- HELPER: CUSTOM ROUNDING ---
+// Rule: 94.5% -> 94%, 94.6% -> 95%
+const getRoundedPercentage = (value) => {
+    const floatVal = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(floatVal)) return 0;
+    
+    const decimalPart = floatVal - Math.floor(floatVal);
+    
+    if (decimalPart > 0.5) {
+        return Math.ceil(floatVal);
+    } else {
+        return Math.floor(floatVal);
+    }
+};
+
 // --- HELPER: GET COLOR BASED ON PERCENTAGE ---
+// 85-100: Green, 50-85: Blue, 0-50: Red
 const getStatusColor = (percentage) => {
-    const val = parseFloat(percentage);
-    if (isNaN(val)) return COLORS.textMain;
-    if (val > 90) return COLORS.success; // Green
-    if (val >= 60) return COLORS.average; // Blue
-    return COLORS.poor; // Red
+    const val = getRoundedPercentage(percentage);
+    if (val >= 85) return COLORS.success; 
+    if (val >= 50) return COLORS.average;
+    return COLORS.poor; 
 };
 
 // --- COMPONENT: ANIMATED BAR ---
 const AnimatedBar = ({ percentage, marks, label, color, height = 200 }) => {
     const animatedHeight = useRef(new Animated.Value(0)).current;
+
+    // Use rounded integer for display
+    const displayPercentage = getRoundedPercentage(percentage);
 
     useEffect(() => {
         Animated.timing(animatedHeight, {
@@ -68,13 +87,13 @@ const AnimatedBar = ({ percentage, marks, label, color, height = 200 }) => {
 
     const heightStyle = animatedHeight.interpolate({
         inputRange: [0, 1],
-        outputRange: ['0%', `${percentage}%`]
+        outputRange: ['0%', `${displayPercentage}%`]
     });
 
     return (
         <View style={[styles.barWrapper, { height: height }]}>
             <Text style={styles.barLabelTop}>
-                {Math.round(percentage)}%
+                {displayPercentage}%
             </Text>
             <View style={styles.barBackground}>
                 <Animated.View 
@@ -130,10 +149,8 @@ const TeacherPerformanceScreen = () => {
         try {
             let response;
             if (userRole === 'admin') {
-                // Removed year parameter
                 response = await apiClient.get(`/performance/admin/all-teachers`);
             } else {
-                // Removed year parameter
                 response = await apiClient.get(`/performance/teacher/${userId}`);
             }
             const data = response.data || [];
@@ -165,10 +182,10 @@ const TeacherPerformanceScreen = () => {
             const promises = teachersList.map(async (teacher) => {
                 const tId = teacher.teacher_id;
                 try {
-                    // Removed period/targetYear params
                     const res = await apiClient.get(`/teacher-attendance/report/${tId}`);
-                    const pct = res.data?.stats?.overallPercentage || '0.00';
-                    return { id: tId, pct: pct };
+                    const pct = res.data?.stats?.overallPercentage || '0';
+                    // Store as rounded integer string for consistency
+                    return { id: tId, pct: getRoundedPercentage(pct) };
                 } catch (err) {
                     return { id: tId, pct: 'N/A' };
                 }
@@ -250,16 +267,19 @@ const TeacherPerformanceScreen = () => {
                 }
             }
 
-            let percentage = 0;
+            let rawPercentage = 0;
             if (totalPossible > 0) {
-                percentage = (totalObtained / totalPossible) * 100;
+                rawPercentage = (totalObtained / totalPossible) * 100;
             }
+
+            // Apply custom rounding
+            const finalPercentage = getRoundedPercentage(rawPercentage);
 
             return {
                 name: teacher.teacher_name,
                 total_obtained: totalObtained,
                 total_possible: totalPossible,
-                percentage: percentage
+                percentage: finalPercentage
             };
         })
         .filter(item => item.total_possible > 0)
@@ -278,7 +298,8 @@ const TeacherPerformanceScreen = () => {
                 name: teacher.teacher_name,
                 totalManaged: teacher.overall_total || 0,
                 maxPossible: teacher.overall_possible || 0,
-                percentage: parseFloat(teacher.overall_average) || 0,
+                // Store rounded integer directly
+                percentage: getRoundedPercentage(teacher.overall_average || 0),
                 details: teacher.detailed_performance || [],
                 performanceRank: 0
             }));
@@ -290,7 +311,8 @@ const TeacherPerformanceScreen = () => {
                 subName: item.subject,
                 totalManaged: item.total_marks,
                 maxPossible: item.max_possible_marks,
-                percentage: parseFloat(item.average_marks) || 0,
+                // Store rounded integer directly
+                percentage: getRoundedPercentage(item.average_marks || 0),
                 examBreakdown: item.exam_breakdown || [],
                 performanceRank: 0
             }));
@@ -339,8 +361,10 @@ const TeacherPerformanceScreen = () => {
                     {/* Table Rows */}
                     <ScrollView showsVerticalScrollIndicator={false}>
                         {processedData.map((item, index) => {
-                            const attPercentageStr = attendanceData[item.id] ? `${attendanceData[item.id]}%` : '-';
-                            const attVal = parseFloat(attendanceData[item.id]);
+                            const attPercentageStr = attendanceData[item.id] !== undefined && attendanceData[item.id] !== 'N/A' 
+                                ? `${attendanceData[item.id]}%` 
+                                : '-';
+                            const attVal = attendanceData[item.id] !== 'N/A' ? attendanceData[item.id] : 0;
                             const attColor = getStatusColor(attVal);
 
                             return (
@@ -366,13 +390,16 @@ const TeacherPerformanceScreen = () => {
                                     </View>
                                     <View style={{ width: 90, justifyContent: 'center', alignItems: 'center' }}>
                                         {item.details && item.details.length > 0 ? (
-                                            item.details.map((d, i) => (
-                                                <View key={i} style={styles.detailRowItem}>
-                                                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: getStatusColor(d.average_marks) }}>
-                                                        {parseFloat(d.average_marks).toFixed(0)}%
-                                                    </Text>
-                                                </View>
-                                            ))
+                                            item.details.map((d, i) => {
+                                                const dPerc = getRoundedPercentage(d.average_marks);
+                                                return (
+                                                    <View key={i} style={styles.detailRowItem}>
+                                                        <Text style={{ fontSize: 12, fontWeight: 'bold', color: getStatusColor(dPerc) }}>
+                                                            {dPerc}%
+                                                        </Text>
+                                                    </View>
+                                                )
+                                            })
                                         ) : (
                                             <View style={styles.detailRowItem}><Text style={{ fontSize: 12, fontWeight: 'bold', color: COLORS.poor }}>0%</Text></View>
                                         )}
@@ -394,7 +421,9 @@ const TeacherPerformanceScreen = () => {
         const rankStripColor = getRankColor(item.performanceRank);
         const performanceColor = getStatusColor(item.percentage);
         const isExpanded = expandedId === item.uniqueKey;
-        const percentage = item.percentage.toFixed(2);
+        
+        // item.percentage is already the custom rounded integer
+        const percentage = item.percentage;
 
         return (
             <View style={styles.card}>
@@ -414,7 +443,7 @@ const TeacherPerformanceScreen = () => {
                                 {item.subName && <Text style={styles.subName}>{item.subName}</Text>}
                             </View>
                             <View style={[styles.circleBadge, { borderColor: performanceColor }]}>
-                                <Text style={[styles.circleText, { color: performanceColor }]}>{Math.round(item.percentage)}%</Text>
+                                <Text style={[styles.circleText, { color: performanceColor }]}>{percentage}%</Text>
                             </View>
                         </View>
                         
@@ -437,25 +466,28 @@ const TeacherPerformanceScreen = () => {
                     <View style={styles.expandedSection}>
                         {userRole === 'admin' ? (
                             item.details && item.details.length > 0 ? (
-                                item.details.map((detail, idx) => (
-                                    <View key={idx} style={styles.detailBlock}>
-                                        <View style={styles.detailHeader}>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={styles.detailTitle} numberOfLines={1}>{detail.class_group} - {detail.subject}</Text>
+                                item.details.map((detail, idx) => {
+                                    const dPerc = getRoundedPercentage(detail.average_marks);
+                                    return (
+                                        <View key={idx} style={styles.detailBlock}>
+                                            <View style={styles.detailHeader}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={styles.detailTitle} numberOfLines={1}>{detail.class_group} - {detail.subject}</Text>
+                                                </View>
+                                                <TouchableOpacity style={styles.iconButton} onPress={() => handleOpenIndividualGraph(`${detail.class_group} - ${detail.subject}`, detail.exam_breakdown)}>
+                                                    <Icon name="chart-bar" size={18} color="#fff" />
+                                                </TouchableOpacity>
+                                                <View style={{ alignItems: 'flex-end' }}>
+                                                    <Text style={styles.detailMarks}>{Math.round(detail.total_marks)} / {Math.round(detail.max_possible_marks)}</Text>
+                                                    <Text style={{ fontSize: 12, fontWeight: 'bold', color: getStatusColor(dPerc) }}>
+                                                        {dPerc}%
+                                                    </Text>
+                                                </View>
                                             </View>
-                                            <TouchableOpacity style={styles.iconButton} onPress={() => handleOpenIndividualGraph(`${detail.class_group} - ${detail.subject}`, detail.exam_breakdown)}>
-                                                <Icon name="chart-bar" size={18} color="#fff" />
-                                            </TouchableOpacity>
-                                            <View style={{ alignItems: 'flex-end' }}>
-                                                <Text style={styles.detailMarks}>{Math.round(detail.total_marks)} / {Math.round(detail.max_possible_marks)}</Text>
-                                                <Text style={{ fontSize: 12, fontWeight: 'bold', color: getStatusColor(detail.average_marks) }}>
-                                                    {parseFloat(detail.average_marks).toFixed(2)}%
-                                                </Text>
-                                            </View>
+                                            {renderExamBreakdown(detail.exam_breakdown)}
                                         </View>
-                                        {renderExamBreakdown(detail.exam_breakdown)}
-                                    </View>
-                                ))
+                                    );
+                                })
                             ) : <Text style={styles.emptyText}>No detailed records found.</Text>
                         ) : (
                             <View style={styles.detailBlock}>
@@ -482,19 +514,22 @@ const TeacherPerformanceScreen = () => {
                 <Text style={[styles.bdHeaderTxt, { flex: 2, textAlign: 'center' }]}>Marks</Text>
                 <Text style={[styles.bdHeaderTxt, { flex: 1.5, textAlign: 'right' }]}>Perf %</Text>
             </View>
-            {exams.map((exam, idx) => (
-                <View key={idx} style={styles.bdRow}>
-                    <Text style={[styles.bdTxt, { flex: 1.5, fontWeight: '600' }]}>{exam.exam_type}</Text>
-                    <Text style={[styles.bdTxt, { flex: 2, textAlign: 'center' }]}>
-                        {Math.round(exam.total_obtained)} / {Math.round(exam.total_possible)}
-                    </Text>
-                    <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
-                        <View style={[styles.percentagePill, { backgroundColor: getStatusColor(exam.percentage) }]}>
-                            <Text style={styles.pillText}>{exam.percentage}%</Text>
+            {exams.map((exam, idx) => {
+                const ePerc = getRoundedPercentage(exam.percentage);
+                return (
+                    <View key={idx} style={styles.bdRow}>
+                        <Text style={[styles.bdTxt, { flex: 1.5, fontWeight: '600' }]}>{exam.exam_type}</Text>
+                        <Text style={[styles.bdTxt, { flex: 2, textAlign: 'center' }]}>
+                            {Math.round(exam.total_obtained)} / {Math.round(exam.total_possible)}
+                        </Text>
+                        <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
+                            <View style={[styles.percentagePill, { backgroundColor: getStatusColor(ePerc) }]}>
+                                <Text style={styles.pillText}>{ePerc}%</Text>
+                            </View>
                         </View>
                     </View>
-                </View>
-            ))}
+                );
+            })}
         </View>
     );
 
@@ -524,7 +559,6 @@ const TeacherPerformanceScreen = () => {
                     </View>
                 </View>
                 <View style={styles.filterContainer}>
-                    {/* Removed Year Picker */}
                     <View style={styles.filterBox}>
                         <Picker selectedValue={sortBy} onValueChange={setSortBy} style={styles.picker}>
                             <Picker.Item label="High to Low" value="high-low" />
@@ -567,19 +601,19 @@ const TeacherPerformanceScreen = () => {
                                 {individualGraphData?.exams && individualGraphData.exams.map((exam, idx) => (
                                     <AnimatedBar 
                                         key={idx} 
-                                        percentage={parseFloat(exam.percentage)} 
+                                        percentage={exam.percentage} 
                                         marks={`${Math.round(exam.total_obtained)}/${Math.round(exam.total_possible)}`}
                                         label={exam.exam_type} 
-                                        color={getStatusColor(parseFloat(exam.percentage))}
+                                        color={getStatusColor(exam.percentage)}
                                         height={240}
                                     />
                                 ))}
                             </ScrollView>
                         </View>
                         <View style={styles.legendRow}>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>{">"} 90% (Good)</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>60% - 90% (Avg)</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>{"<"} 60% (Poor)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>85-100% (Topper)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>50-85% (Avg)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>0-50% (Least)</Text></View>
                         </View>
                     </View>
                 </View>

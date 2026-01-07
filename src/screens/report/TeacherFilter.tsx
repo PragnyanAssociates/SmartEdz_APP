@@ -1,7 +1,8 @@
 /**
  * File: src/screens/report/TeacherFilter.tsx
  * Purpose: Filter Teachers by Performance (Class & Subject).
- * Design: Consistent Card Header UI.
+ * Updated: Strict Color Logic (0-50 Red, 50-85 Blue, 85-100 Green).
+ * Updated: Custom Rounding (94.5 -> 94, 94.6 -> 95).
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -19,16 +20,16 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 // --- CONSTANTS ---
 const COLORS = {
-    primary: '#008080',      // Main Teal (Matches other screens)
+    primary: '#008080',      // Main Teal
     background: '#F2F5F8',   // Light Blue-Grey Background
     cardBg: '#FFFFFF',
     textMain: '#333333',
     textSub: '#666666',
     
-    // Status Colors
-    success: '#00C853',      // Vibrant Green (> 90%)
-    average: '#2979FF',      // Vibrant Blue (60% - 90%)
-    poor: '#FF5252',         // Soft Red (< 60%)
+    // Updated Status Colors
+    success: '#00C853',      // Vibrant Green (> 85%)
+    average: '#2979FF',      // Vibrant Blue (50% - 85%)
+    poor: '#FF5252',         // Soft Red (< 50%)
     
     // Rank Colors
     gold: '#FFD700',
@@ -50,6 +51,21 @@ const CLASS_SUBJECTS: any = {
     'Class 8': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], 
     'Class 9': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'],
     'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
+};
+
+// --- HELPER: CUSTOM ROUNDING ---
+// Rule: 94.5% -> 94%, 94.6% -> 95%
+const getRoundedPercentage = (value: number | string): number => {
+    const floatVal = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(floatVal)) return 0;
+    
+    const decimalPart = floatVal - Math.floor(floatVal);
+    
+    if (decimalPart > 0.5) {
+        return Math.ceil(floatVal);
+    } else {
+        return Math.floor(floatVal);
+    }
 };
 
 const TeacherFilter = () => {
@@ -111,14 +127,14 @@ const TeacherFilter = () => {
         if (!rawTeacherData || rawTeacherData.length === 0) return [];
 
         let calculatedTeachers = rawTeacherData.map(teacher => {
-            let percentage = 0;
+            let rawPercentage = 0;
             let displayLabel = 'Overall';
             let totalObtained = 0;
             let totalPossible = 0;
 
             // Logic to calculate percentage based on filters
             if (selectedClass === 'All Classes') {
-                percentage = parseFloat(teacher.overall_average) || 0;
+                rawPercentage = parseFloat(teacher.overall_average) || 0;
                 totalObtained = teacher.overall_total || 0;
                 totalPossible = teacher.overall_possible || 0;
             } else {
@@ -138,11 +154,14 @@ const TeacherFilter = () => {
                 }
 
                 if (totalPossible > 0) {
-                    percentage = (totalObtained / totalPossible) * 100;
+                    rawPercentage = (totalObtained / totalPossible) * 100;
                 } else {
-                    percentage = -1; 
+                    rawPercentage = -1; // Mark as invalid if no data
                 }
             }
+
+            // Apply custom rounding logic
+            const percentage = rawPercentage >= 0 ? getRoundedPercentage(rawPercentage) : -1;
 
             return {
                 id: teacher.teacher_id,
@@ -154,28 +173,38 @@ const TeacherFilter = () => {
             };
         });
 
+        // Filter out those with no data (percentage = -1)
         calculatedTeachers = calculatedTeachers.filter(t => t.percentage >= 0 && t.max > 0);
+        
+        // Sort based on the rounded integer
         calculatedTeachers.sort((a, b) => b.percentage - a.percentage);
         calculatedTeachers = calculatedTeachers.map((t, index) => ({ ...t, rank: index + 1 }));
 
         return calculatedTeachers;
     }, [selectedClass, selectedSubject, rawTeacherData]);
 
-    // --- 4. Tab Filtering Logic ---
+    // --- 4. Tab Filtering Logic (Updated Ranges) ---
     const filteredList = useMemo(() => {
         if (processedList.length === 0) return [];
         const list = [...processedList];
 
-        if (activeTab === 'Above Average') return list.filter(s => s.percentage >= 90);
-        if (activeTab === 'Average') return list.filter(s => s.percentage >= 60 && s.percentage < 90);
-        if (activeTab === 'Below Average') return list.filter(s => s.percentage < 60).sort((a, b) => a.percentage - b.percentage);
+        // Above Average: 85% to 100%
+        if (activeTab === 'Above Average') return list.filter(s => s.percentage >= 85);
+        
+        // Average: 50% to 85%
+        if (activeTab === 'Average') return list.filter(s => s.percentage >= 50 && s.percentage < 85);
+        
+        // Below Average: 0% to 50%
+        if (activeTab === 'Below Average') return list.filter(s => s.percentage < 50).sort((a, b) => a.percentage - b.percentage);
 
         return [];
     }, [activeTab, processedList]);
 
+    // --- Helper for Colors (Updated Logic) ---
     const getStatusColor = (perc: number) => {
-        if (perc >= 90) return COLORS.success;
-        if (perc >= 60) return COLORS.average;
+        // perc is already rounded integer
+        if (perc >= 85) return COLORS.success;
+        if (perc >= 50) return COLORS.average;
         return COLORS.poor;
     };
 
@@ -215,12 +244,14 @@ const TeacherFilter = () => {
                         </View>
                     </View>
                     <View style={styles.progressTrack}>
+                        {/* Percentage is 0-100 integer */}
                         <View style={[styles.progressFill, { width: `${item.percentage}%`, backgroundColor: color }]} />
                     </View>
                 </View>
 
                 <View style={styles.scoreContainer}>
-                    <Text style={[styles.percentage, { color: color }]}>{item.percentage.toFixed(1)}%</Text>
+                    {/* Display integer directly */}
+                    <Text style={[styles.percentage, { color: color }]}>{item.percentage}%</Text>
                     <Text style={styles.marks}>{Math.round(item.obtained)}/{Math.round(item.max)}</Text>
                 </View>
             </View>
