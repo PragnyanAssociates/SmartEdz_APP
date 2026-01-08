@@ -5,6 +5,7 @@
  * Updated Logic: AT/UT Max marks are 20 for Classes 6-10, and 25 for others.
  * Updated: New Range Logic (0-50 Red, 50-85 Blue, 85-100 Green).
  * Updated: Custom Rounding (94.5 -> 94, 94.6 -> 95).
+ * Updated: Rectangular Bars (Removed high border radius).
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -124,6 +125,7 @@ const AnimatedBar = ({ percentage, marks, label, color, height = 200 }: any) => 
     return (
         <View style={[styles.barWrapper, { height: height }]}>
             <Text style={[styles.barLabelTop, { color: COLORS.textMain }]}>{displayPercentage}%</Text>
+            {/* Rectangular Bar Background */}
             <View style={styles.barBackground}>
                 <Animated.View style={[styles.barFill, { height: heightStyle, backgroundColor: color }]} />
                 <View style={styles.barTextContainer}>
@@ -724,8 +726,10 @@ const styles = StyleSheet.create({
     // Animated Bar
     barWrapper: { width: 55, alignItems: 'center', justifyContent: 'flex-end', marginHorizontal: 8 },
     barLabelTop: { marginBottom: 4, fontSize: 12, fontWeight: 'bold', textAlign: 'center', color: COLORS.textMain },
-    barBackground: { width: 30, height: '80%', backgroundColor: COLORS.track, borderRadius: 15, overflow: 'hidden', justifyContent: 'flex-end', position: 'relative' },
-    barFill: { width: '100%', borderRadius: 15 },
+    // MODIFIED: Reduced borderRadius to 4 for rectangular look
+    barBackground: { width: 30, height: '80%', backgroundColor: COLORS.track, borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end', position: 'relative' },
+    // MODIFIED: Reduced borderRadius to 4 for rectangular look
+    barFill: { width: '100%', borderRadius: 4 },
     barTextContainer: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
     barInnerText: { fontSize: 10, fontWeight: 'bold', color: '#455A64', transform: [{ rotate: '-90deg' }], width: 120, textAlign: 'center' },
     barLabelBottom: { marginTop: 8, fontSize: 11, fontWeight: '600', color: COLORS.textMain, textAlign: 'center', width: '100%' },
