@@ -7,6 +7,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 
 const Stack = createStackNavigator();
+const FILTER_TYPES = ["Overall", "AT1", "UT1", "AT2", "UT2", "SA1", "AT3", "UT3", "AT4", "UT4", "SA2"];
 
 // Helper to format date strictly as DD/MM/YYYY
 const formatDate = (isoString) => {
@@ -73,8 +74,13 @@ const TeacherSyllabusListScreen = ({ navigation }) => {
 const TeacherLessonProgressScreen = ({ route, navigation }) => {
     const { classGroup, subjectName } = route.params;
     const { user: teacher } = useAuth();
-    const [syllabus, setSyllabus] = useState(null);
-    const [overview, setOverview] = useState({ completed: 0, missed: 0, pending: 0, total: 0 });
+    
+    // State for filtering
+    const [fullLessonList, setFullLessonList] = useState([]); 
+    const [filteredLessons, setFilteredLessons] = useState([]);
+    const [selectedFilter, setSelectedFilter] = useState("Overall");
+
+    const [overview, setOverview] = useState({ completed: 0, missed: 0, left: 0 });
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchData = useCallback(async () => {
@@ -86,14 +92,10 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
             const progressResponse = await apiClient.get(`/syllabus/class-progress/${syllabusData.id}`);
             const progressData = progressResponse.data;
 
-            const newOverview = { completed: 0, missed: 0, pending: 0, total: progressData.length };
-            progressData.forEach(l => {
-                if (l.status === 'Completed') newOverview.completed++;
-                else if (l.status === 'Missed') newOverview.missed++;
-                else newOverview.pending++;
-            });
-            setOverview(newOverview);
-            setSyllabus({ ...syllabusData, lessons: progressData });
+            setFullLessonList(progressData);
+            // Apply default filter 'Overall'
+            setFilteredLessons(progressData);
+            calculateStats(progressData);
 
         } catch (error) {
             Alert.alert("Notice", "Syllabus not found for this subject.");
@@ -103,6 +105,28 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
     }, [classGroup, subjectName]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    const handleFilter = (filterType) => {
+        setSelectedFilter(filterType);
+        let updatedList = [];
+        if (filterType === "Overall") {
+            updatedList = fullLessonList;
+        } else {
+            updatedList = fullLessonList.filter(l => l.exam_type === filterType);
+        }
+        setFilteredLessons(updatedList);
+        calculateStats(updatedList);
+    };
+
+    const calculateStats = (dataList) => {
+        const stats = { completed: 0, missed: 0, left: 0 };
+        dataList.forEach(l => {
+            if (l.status === 'Completed') stats.completed++;
+            else if (l.status === 'Missed') stats.missed++;
+            else stats.left++; // Pending
+        });
+        setOverview(stats);
+    };
 
     const handleStatusUpdate = (lessonId, newStatus) => {
         const action = newStatus === 'Pending' ? 'reset' : 'mark';
@@ -121,7 +145,7 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
                                 status: newStatus,
                                 teacher_id: teacher.id
                             });
-                            fetchData();
+                            fetchData(); // Reload data
                         } catch (error) { Alert.alert("Error", "Update failed."); }
                     } 
                 }
@@ -140,6 +164,23 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
                 <Text style={styles.navTitle}>{subjectName}</Text>
             </View>
 
+            {/* FILTER BAR */}
+            <View style={styles.filterBarContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+                    {FILTER_TYPES.map((type) => (
+                        <TouchableOpacity 
+                            key={type} 
+                            style={[styles.filterTab, selectedFilter === type && styles.filterTabActive]}
+                            onPress={() => handleFilter(type)}
+                        >
+                            <Text style={[styles.filterText, selectedFilter === type && styles.filterTextActive]}>
+                                {type}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            </View>
+
             <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
                 {/* Stats Grid */}
                 <View style={styles.statsContainer}>
@@ -152,22 +193,24 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
                         <Text style={styles.statLabel}>Missed</Text>
                     </View>
                     <View style={styles.statBox}>
-                        <Text style={[styles.statNum, {color: '#f59e0b'}]}>{overview.pending}</Text>
+                        <Text style={[styles.statNum, {color: '#f59e0b'}]}>{overview.left}</Text>
                         <Text style={styles.statLabel}>Left</Text>
                     </View>
                 </View>
 
-                {syllabus?.lessons?.map((lesson) => {
+                {filteredLessons.map((lesson) => {
                     const isCompleted = lesson.status === 'Completed';
                     const isMissed = lesson.status === 'Missed';
-                    const isOverdue = new Date(lesson.due_date) < new Date() && !isCompleted && !isMissed;
+                    // Use to_date for overdue check
+                    const isOverdue = new Date(lesson.to_date) < new Date() && !isCompleted && !isMissed;
 
                     return (
                         <View key={lesson.lesson_id} style={[styles.lessonCard, isOverdue && styles.overdueBorder]}>
                             <View style={styles.lessonHeader}>
                                 <Text style={styles.lessonTitle}>{lesson.lesson_name}</Text>
+                                <Text style={styles.examBadge}>{lesson.exam_type}</Text>
                                 <Text style={[styles.dateText, isOverdue && {color: '#ef4444'}]}>
-                                    Due: {formatDate(lesson.due_date)}
+                                    Due: {formatDate(lesson.from_date)} - {formatDate(lesson.to_date)}
                                 </Text>
                             </View>
 
@@ -196,6 +239,9 @@ const TeacherLessonProgressScreen = ({ route, navigation }) => {
                         </View>
                     );
                 })}
+                {filteredLessons.length === 0 && (
+                    <Text style={styles.emptyText}>No lessons found for {selectedFilter}.</Text>
+                )}
             </ScrollView>
         </View>
     );
@@ -220,6 +266,15 @@ const styles = StyleSheet.create({
     navHeader: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 50, backgroundColor: '#4f46e5' },
     backBtn: { marginRight: 15 },
     navTitle: { fontSize: 20, fontWeight: '700', color: '#fff' },
+    
+    // Filter Bar
+    filterBarContainer: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+    filterScroll: { paddingHorizontal: 15, paddingVertical: 12 },
+    filterTab: { marginRight: 15, paddingVertical: 6, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#f1f5f9' },
+    filterTabActive: { backgroundColor: '#4f46e5' },
+    filterText: { color: '#64748b', fontWeight: '600', fontSize: 14 },
+    filterTextActive: { color: '#fff' },
+
     statsContainer: { flexDirection: 'row', justifyContent: 'space-around', padding: 20, backgroundColor: '#fff', marginBottom: 15 },
     statBox: { alignItems: 'center' },
     statNum: { fontSize: 24, fontWeight: '800' },
@@ -231,6 +286,7 @@ const styles = StyleSheet.create({
     lessonHeader: { marginBottom: 12 },
     lessonTitle: { fontSize: 16, fontWeight: '600', color: '#1e293b' },
     dateText: { fontSize: 13, color: '#64748b', marginTop: 4 },
+    examBadge: { fontSize: 10, color: '#6366f1', backgroundColor: '#e0e7ff', alignSelf:'flex-start', paddingHorizontal:6, paddingVertical:2, borderRadius: 4, marginTop:4, overflow:'hidden', fontWeight: 'bold' },
     
     // Actions
     statusActionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },

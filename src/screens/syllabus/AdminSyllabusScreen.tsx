@@ -10,6 +10,9 @@ import { Picker } from '@react-native-picker/picker';
 import { useIsFocused } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+// --- CONSTANTS ---
+const EXAM_TYPES = ["AT1", "UT1", "AT2", "UT2", "SA1", "AT3", "UT3", "AT4", "UT4", "SA2"];
+
 // --- Helper: Format Date for Display (DD/MM/YYYY) ---
 const formatDateDisplay = (isoDateString) => {
     if (!isoDateString) return '';
@@ -21,11 +24,9 @@ const formatDateDisplay = (isoDateString) => {
 };
 
 // --- Helper: Format Date for Backend (YYYY-MM-DD) Local Time ---
-// ★★★ NEW FUNCTION TO FIX DATE SHIFT ISSUE ★★★
 const formatDateForBackend = (dateObj) => {
     if (!dateObj) return '';
     const year = dateObj.getFullYear();
-    // Months are 0-indexed in JS, so +1
     const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
     const day = dateObj.getDate().toString().padStart(2, '0');
     return `${year}-${month}-${day}`;
@@ -188,8 +189,8 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     const [selectedSubject, setSelectedSubject] = useState(isEditMode ? initialSyllabus.subject_name : '');
     const [selectedTeacherId, setSelectedTeacherId] = useState(isEditMode ? initialSyllabus.creator_id : '');
     
-    // Lessons State
-    const [lessons, setLessons] = useState([{ lessonName: '', dueDate: new Date() }]);
+    // Lessons State - Updated for Exam Type and Date Range
+    const [lessons, setLessons] = useState([{ lessonName: '', examType: 'AT1', fromDate: new Date(), toDate: new Date() }]);
     
     // Dropdown Data
     const [allClasses, setAllClasses] = useState([]);
@@ -201,9 +202,8 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSubjectsLoading, setIsSubjectsLoading] = useState(false);
 
-    // Date Picker Logic
-    const [showDatePicker, setShowDatePicker] = useState(false);
-    const [activeLessonIndex, setActiveLessonIndex] = useState(null);
+    // Date Picker Logic (Modified for From/To)
+    const [datePickerState, setDatePickerState] = useState({ show: false, index: null, mode: 'from' }); // mode: 'from' or 'to'
 
     useEffect(() => {
         const bootstrapForm = async () => {
@@ -231,11 +231,12 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
                     const syllabusData = syllabusDetailsRes.data;
                     
                     const formattedLessons = syllabusData.lessons.map(l => ({ 
-                        lessonName: l.lesson_name, 
-                        // Backend dates come in string format, wrap in new Date()
-                        dueDate: new Date(l.due_date) 
+                        lessonName: l.lesson_name,
+                        examType: l.exam_type || 'AT1',
+                        fromDate: new Date(l.from_date),
+                        toDate: new Date(l.to_date) 
                     }));
-                    setLessons(formattedLessons.length > 0 ? formattedLessons : [{ lessonName: '', dueDate: new Date() }]);
+                    setLessons(formattedLessons.length > 0 ? formattedLessons : [{ lessonName: '', examType: 'AT1', fromDate: new Date(), toDate: new Date() }]);
                     
                     setSelectedTeacherId(initialSyllabus.creator_id.toString());
                 }
@@ -265,22 +266,24 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     };
 
     // --- Date Picker Handlers ---
-    const openDatePicker = (index) => {
-        setActiveLessonIndex(index);
-        setShowDatePicker(true);
+    const openDatePicker = (index, mode) => {
+        setDatePickerState({ show: true, index, mode });
     };
 
     const onDateChange = (event, selectedDate) => {
-        setShowDatePicker(Platform.OS === 'ios');
         if (event.type === 'dismissed') {
-            setShowDatePicker(false);
+            setDatePickerState({ ...datePickerState, show: false });
             return;
         }
-        if (selectedDate && activeLessonIndex !== null) {
+        if (selectedDate && datePickerState.index !== null) {
             const newLessons = [...lessons];
-            newLessons[activeLessonIndex].dueDate = selectedDate;
+            if (datePickerState.mode === 'from') {
+                newLessons[datePickerState.index].fromDate = selectedDate;
+            } else {
+                newLessons[datePickerState.index].toDate = selectedDate;
+            }
             setLessons(newLessons);
-            if(Platform.OS === 'android') setShowDatePicker(false);
+            if(Platform.OS === 'android') setDatePickerState({ ...datePickerState, show: false });
         }
     };
 
@@ -290,7 +293,13 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
         setLessons(newLessons);
     };
 
-    const addLessonField = () => setLessons([...lessons, { lessonName: '', dueDate: new Date() }]);
+    const handleExamChange = (index, value) => {
+        const newLessons = [...lessons];
+        newLessons[index].examType = value;
+        setLessons(newLessons);
+    };
+
+    const addLessonField = () => setLessons([...lessons, { lessonName: '', examType: 'AT1', fromDate: new Date(), toDate: new Date() }]);
     const removeLessonField = (index) => setLessons(lessons.filter((_, i) => i !== index));
 
     const handleSaveSyllabus = async () => {
@@ -300,9 +309,9 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
             .filter(l => l.lessonName.trim())
             .map(l => ({
                 lessonName: l.lessonName,
-                // ★★★ CHANGED: Use Local Date Formatting instead of toISOString() ★★★
-                // This prevents the timezone from shifting back 1 day (e.g., Jan 5 -> Jan 4)
-                dueDate: formatDateForBackend(l.dueDate)
+                examType: l.examType,
+                fromDate: formatDateForBackend(l.fromDate),
+                toDate: formatDateForBackend(l.toDate)
             }));
 
         if (validLessons.length === 0) return Alert.alert("Required", "Please add at least one lesson name.");
@@ -396,17 +405,49 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
                                 value={lesson.lessonName} 
                                 onChangeText={(text) => handleLessonNameChange(index, text)} 
                             />
+
+                            {/* Exam Type Selector */}
+                            <Text style={styles.labelSmall}>Exam Type</Text>
+                            <View style={styles.inputWrapperSmall}>
+                                <Picker
+                                    selectedValue={lesson.examType}
+                                    onValueChange={(val) => handleExamChange(index, val)}
+                                    style={{ height: 50, width: '100%' }}
+                                >
+                                    {EXAM_TYPES.map(type => (
+                                        <Picker.Item key={type} label={type} value={type} />
+                                    ))}
+                                </Picker>
+                            </View>
                             
-                            {/* DYNAMIC CALENDAR SELECTOR */}
-                            <TouchableOpacity 
-                                style={styles.dateSelector} 
-                                onPress={() => openDatePicker(index)}
-                            >
-                                <MaterialIcons name="event" size={20} color="#4f46e5" />
-                                <Text style={styles.dateText}>
-                                    {formatDateDisplay(lesson.dueDate.toISOString())}
-                                </Text>
-                            </TouchableOpacity>
+                            {/* DYNAMIC DATE SELECTORS */}
+                            <View style={{flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 10}}>
+                                <TouchableOpacity 
+                                    style={[styles.dateSelector, {flex: 1}]} 
+                                    onPress={() => openDatePicker(index, 'from')}
+                                >
+                                    <Text style={styles.dateLabelSmall}>Start Date</Text>
+                                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                        <MaterialIcons name="event" size={18} color="#4f46e5" />
+                                        <Text style={styles.dateText}>
+                                            {formatDateDisplay(lesson.fromDate.toISOString())}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity 
+                                    style={[styles.dateSelector, {flex: 1}]} 
+                                    onPress={() => openDatePicker(index, 'to')}
+                                >
+                                    <Text style={styles.dateLabelSmall}>End Date</Text>
+                                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                        <MaterialIcons name="event-available" size={18} color="#4f46e5" />
+                                        <Text style={styles.dateText}>
+                                            {formatDateDisplay(lesson.toDate.toISOString())}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     ))}
                     
@@ -422,9 +463,9 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
             </ScrollView>
 
             {/* Native Date Picker Modal */}
-            {showDatePicker && (
+            {datePickerState.show && (
                 <DateTimePicker
-                    value={lessons[activeLessonIndex]?.dueDate || new Date()}
+                    value={datePickerState.mode === 'from' ? lessons[datePickerState.index].fromDate : lessons[datePickerState.index].toDate}
                     mode="date"
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                     onChange={onDateChange}
@@ -477,9 +518,12 @@ const AdminProgressView = ({ syllabus, onBack }) => {
                             <View style={[styles.statusStrip, { backgroundColor: item.status === 'Completed' ? '#10b981' : item.status === 'Missed' ? '#ef4444' : '#f59e0b' }]} />
                             <View style={styles.logContent}>
                                 <Text style={styles.logTitle}>{item.lesson_name}</Text>
+                                <Text style={styles.examBadge}>{item.exam_type}</Text>
                                 <View style={styles.logMetaRow}>
-                                    <MaterialIcons name="event" size={14} color="#64748b" />
-                                    <Text style={styles.logMetaText}>Due: {formatDateDisplay(item.due_date)}</Text>
+                                    <MaterialIcons name="date-range" size={14} color="#64748b" />
+                                    <Text style={styles.logMetaText}>
+                                        {formatDateDisplay(item.from_date)} - {formatDateDisplay(item.to_date)}
+                                    </Text>
                                 </View>
                                 <View style={styles.logMetaRow}>
                                     <Text style={[styles.statusBadge, { color: item.status === 'Completed' ? '#10b981' : item.status === 'Missed' ? '#ef4444' : '#f59e0b' }]}>
@@ -534,15 +578,18 @@ const styles = StyleSheet.create({
     formSection: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 1 },
     sectionHeader: { fontSize: 18, fontWeight: '700', color: '#1e293b', marginBottom: 15 },
     label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 6, marginTop: 10 },
+    labelSmall: { fontSize: 12, fontWeight: '600', color: '#64748b', marginTop: 8, marginBottom: 4 },
     inputWrapper: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, backgroundColor: '#f8fafc', overflow: 'hidden' },
+    inputWrapperSmall: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, backgroundColor: '#f8fafc', overflow: 'hidden' },
     input: { borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, fontSize: 15, color: '#334155' },
     
     // Lesson Row
     lessonRow: { marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
     lessonHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
     lessonIndex: { fontSize: 12, color: '#94a3b8', fontWeight: 'bold' },
-    dateSelector: { flexDirection: 'row', alignItems: 'center', marginTop: 10, padding: 12, backgroundColor: '#eff6ff', borderRadius: 10, borderWidth: 1, borderColor: '#dbeafe' },
-    dateText: { marginLeft: 10, color: '#4f46e5', fontWeight: '600', fontSize: 15 },
+    dateSelector: { marginTop: 5, padding: 10, backgroundColor: '#eff6ff', borderRadius: 10, borderWidth: 1, borderColor: '#dbeafe' },
+    dateLabelSmall: { fontSize: 10, color: '#6366f1', marginBottom: 2, textTransform: 'uppercase' },
+    dateText: { marginLeft: 6, color: '#1e293b', fontWeight: '600', fontSize: 14 },
     addLessonBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: '#6366f1', borderRadius: 10, backgroundColor: '#eef2ff' },
     addLessonBtnText: { marginLeft: 8, color: '#4f46e5', fontWeight: '600' },
     countBadge: { fontSize: 12, color: '#64748b' },
@@ -559,6 +606,7 @@ const styles = StyleSheet.create({
     logMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, justifyContent: 'space-between' },
     logMetaText: { fontSize: 13, color: '#64748b', marginLeft: 5 },
     statusBadge: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    examBadge: { fontSize: 10, color: '#fff', backgroundColor: '#6366f1', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4, overflow: 'hidden', fontWeight: 'bold' },
     emptyText: { textAlign: 'center', marginTop: 40, color: '#94a3b8' }
 });
 

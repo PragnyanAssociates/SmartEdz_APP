@@ -8,6 +8,7 @@ import * as Progress from 'react-native-progress';
 import { createStackNavigator } from '@react-navigation/stack';
 
 const Stack = createStackNavigator();
+const FILTER_TYPES = ["Overall", "AT1", "UT1", "AT2", "UT2", "SA1", "AT3", "UT3", "AT4", "UT4", "SA2"];
 
 // Helper for DD/MM/YYYY
 const formatDate = (isoString) => {
@@ -115,7 +116,11 @@ const StudentSyllabusDashboardScreen = ({ navigation }) => {
 const StudentLessonListScreen = ({ route, navigation }) => {
     const { syllabusId, subjectName } = route.params;
     const { user } = useAuth();
-    const [syllabusDetails, setSyllabusDetails] = useState(null);
+    
+    // State for data and filtering
+    const [fullList, setFullList] = useState([]);
+    const [filteredList, setFilteredList] = useState([]);
+    const [selectedFilter, setSelectedFilter] = useState("Overall");
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -123,12 +128,22 @@ const StudentLessonListScreen = ({ route, navigation }) => {
             setIsLoading(true);
             try {
                 const response = await apiClient.get(`/syllabus/student/subject-details/${syllabusId}/${user.id}`);
-                setSyllabusDetails(response.data);
+                setFullList(response.data.lessons);
+                setFilteredList(response.data.lessons); // Default to Overall
             } catch (error) { Alert.alert("Error", "Failed to load details."); }
             finally { setIsLoading(false); }
         };
         fetchLessons();
     }, [user, syllabusId]);
+
+    const handleFilter = (type) => {
+        setSelectedFilter(type);
+        if (type === "Overall") {
+            setFilteredList(fullList);
+        } else {
+            setFilteredList(fullList.filter(l => l.exam_type === type));
+        }
+    };
 
     return (
         <View style={styles.container}>
@@ -139,8 +154,22 @@ const StudentLessonListScreen = ({ route, navigation }) => {
                 <Text style={styles.navTitle}>{subjectName}</Text>
             </View>
             
+            {/* Filter Bar */}
+            <View style={styles.filterBarContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+                     {FILTER_TYPES.map(type => (
+                        <TouchableOpacity 
+                            key={type} 
+                            onPress={() => handleFilter(type)}
+                            style={[styles.filterTab, selectedFilter === type && styles.filterTabActive]}>
+                            <Text style={[styles.filterText, selectedFilter === type && styles.filterTextActive]}>{type}</Text>
+                        </TouchableOpacity>
+                     ))}
+                </ScrollView>
+            </View>
+
             <FlatList
-                data={syllabusDetails?.lessons || []}
+                data={filteredList}
                 keyExtractor={(item) => item.id.toString()}
                 contentContainerStyle={{padding: 15}}
                 renderItem={({item}) => {
@@ -158,7 +187,10 @@ const StudentLessonListScreen = ({ route, navigation }) => {
                            </View>
                            <View style={styles.lessonContent}>
                                 <Text style={[styles.lessonName, isDone && {textDecorationLine: 'line-through', color: '#94a3b8'}]}>{item.lesson_name}</Text>
-                                <Text style={styles.lessonDate}>Due: {formatDate(item.due_date)}</Text>
+                                <Text style={styles.examBadge}>{item.exam_type}</Text>
+                                <Text style={styles.lessonDate}>
+                                    Due: {formatDate(item.from_date)} - {formatDate(item.to_date)}
+                                </Text>
                            </View>
                            <View style={[styles.statusTag, {backgroundColor: isDone ? '#dcfce7' : isMissed ? '#fee2e2' : '#f1f5f9'}]}>
                                <Text style={[styles.statusTagText, {color: isDone ? '#166534' : isMissed ? '#991b1b' : '#64748b'}]}>{item.status}</Text>
@@ -203,11 +235,21 @@ const styles = StyleSheet.create({
     navHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#3b82f6', paddingVertical: 20, paddingTop: 50, paddingHorizontal: 15 },
     backButton: { marginRight: 15 },
     navTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+    
+    // Filter Bar
+    filterBarContainer: { backgroundColor: '#fff', height: 60, elevation: 2 },
+    filterScroll: { alignItems: 'center', paddingHorizontal: 10 },
+    filterTab: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, marginRight: 10, backgroundColor: '#f1f5f9' },
+    filterTabActive: { backgroundColor: '#3b82f6' },
+    filterText: { color: '#64748b', fontWeight: '600' },
+    filterTextActive: { color: '#fff' },
+
     lessonItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, marginBottom: 10, borderRadius: 12 },
     iconContainer: { marginRight: 15, alignItems: 'center' },
     lessonContent: { flex: 1 },
     lessonName: { fontSize: 16, fontWeight: '500', color: '#1e293b' },
     lessonDate: { fontSize: 12, color: '#64748b', marginTop: 2 },
+    examBadge: { fontSize: 10, color: '#3b82f6', fontWeight:'700', marginBottom: 2 },
     statusTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
     statusTagText: { fontSize: 11, fontWeight: '700' },
     emptyText: { textAlign: 'center', marginTop: 50, color: '#94a3b8' }
