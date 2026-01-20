@@ -142,6 +142,8 @@ import MyBooksScreen from './src/screens/library/MyBooksScreen';
 import MyPerformance from './src/screens/report/MyPerformance';
 import PerformanceFilter from './src/screens/report/PerformanceFilter';
 import TeacherFilter from './src/screens/report/TeacherFilter';
+
+import StudentFeedback from './src/screens/Feedbacks/StudentFeedback';
 // Donor-Specific Screens
 // import DonorNotifications from './src/components/DonorNotifications';
 
@@ -335,6 +337,8 @@ const AuthenticatedStack = () => {
       <Stack.Screen name="BorrowRequestScreen" component={BorrowRequestScreen} />
       <Stack.Screen name="LibraryHistoryScreen" component={LibraryHistoryScreen} />
       <Stack.Screen name="MyBooksScreen" component={MyBooksScreen} />
+
+      <Stack.Screen name="StudentFeedback" component={StudentFeedback} />
 
       <Stack.Screen name="TeacherPerformanceScreen" component={TeacherPerformanceScreen} />
       <Stack.Screen name="StudentPerformance" component={StudentPerformance} />

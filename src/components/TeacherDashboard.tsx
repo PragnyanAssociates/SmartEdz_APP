@@ -57,6 +57,8 @@ import TransportScreen from '../screens/transport/TransportScreen';
 import LibraryHomeScreen from '../screens/library/LibraryHomeScreen';
 import PerformanceFilter from '../screens/report/PerformanceFilter';
 
+import StudentFeedback from '../screens/Feedbacks/StudentFeedback';
+
 // --- Constants & Colors ---
 const { width: windowWidth } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -139,6 +141,7 @@ const TeacherDashboard = ({ navigation }) => {
     { id: 'qa15', title: 'Study Materials', imageSource: 'https://cdn-icons-png.flaticon.com/128/3273/3273259.png', navigateToTab: 'TeacherAdminMaterialsScreen' },
     { id: 'qa20', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'TeacherSyllabusScreen' },
     { id: 'qa22', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'TeacherAdminResourcesScreen' },
+    { id: 'qa23', title: 'Student Feedback', imageSource: 'https://cdn-icons-png.flaticon.com/128/2839/2839244.png', navigateToTab: 'StudentFeedback' },
     
     // { id: 'qa-ads-create', title: 'Create Ad', imageSource: 'https://cdn-icons-png.flaticon.com/128/4944/4944482.png', navigateTo: 'CreateAdScreen' },
   ];
@@ -232,6 +235,7 @@ const TeacherDashboard = ({ navigation }) => {
       case 'TransportScreen': return ( <><ContentScreenHeader title="Transport" onBack={handleBack} /><TransportScreen /></> );
       case 'LibraryHomeScreen': return ( <><ContentScreenHeader title="Library" onBack={handleBack} /><LibraryHomeScreen /></> );
       case 'PerformanceFilter': return ( <><ContentScreenHeader title="Students Status Report" onBack={handleBack} /><PerformanceFilter /></> );
+      case 'StudentFeedback': return ( <><ContentScreenHeader title="Student Feedback" onBack={handleBack} /><StudentFeedback /></> );
 
       default: return ( <><ContentScreenHeader title={capitalize(activeTab)} onBack={handleBack} /><View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content not available yet.</Text></View></> );
     }
