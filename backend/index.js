@@ -9898,33 +9898,26 @@ app.put('/api/library/digital/:id', verifyToken, isAdmin, libraryUpload.fields([
 
 // 1. Get classes assigned to a specific teacher based on the Timetable
 // This enforces the rule: "Only able to mark when assigned in timetable"
+// 1. Get classes assigned to the teacher (from Timetable)
 app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     const { teacherId } = req.params;
     try {
-        // distinct classes from timetable for this teacher
         const [rows] = await db.query(
-            `SELECT DISTINCT class_group FROM timetables WHERE teacher_id = ? ORDER BY class_group`,
+            "SELECT DISTINCT class_group FROM timetables WHERE teacher_id = ? ORDER BY class_group", 
             [teacherId]
         );
-        const classes = rows.map(r => r.class_group);
-        res.status(200).json(classes);
-    } catch (error) {
-        console.error("Error fetching teacher classes:", error);
-        res.status(500).json({ message: 'Error fetching assigned classes.' });
+        res.json(rows.map(r => r.class_group));
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching classes' });
     }
 });
 
 // 2. Get Students for a specific class (to populate the list)
-// Includes existing feedback for TODAY if it exists
+// 2. Get Students + Existing Feedback for a specific Date
 app.get('/api/feedback/students', async (req, res) => {
-    const { class_group, teacher_id, date } = req.query; // date format YYYY-MM-DD
-    
-    if (!class_group || !teacher_id || !date) {
-        return res.status(400).json({ message: "Class, Teacher ID, and Date are required." });
-    }
-
+    const { class_group, teacher_id, date } = req.query;
     try {
-        const query = `
+        const sql = `
             SELECT 
                 u.id as student_id, 
                 u.full_name, 
@@ -9937,47 +9930,25 @@ app.get('/api/feedback/students', async (req, res) => {
                 ON u.id = f.student_id 
                 AND f.teacher_id = ? 
                 AND f.feedback_date = ?
-            WHERE u.role = 'student' 
-            AND u.class_group = ?
+            WHERE u.role = 'student' AND u.class_group = ?
             ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
         `;
-        
-        const [rows] = await db.query(query, [teacher_id, date, class_group]);
-        res.status(200).json(rows);
-    } catch (error) {
-        console.error("Error fetching students for feedback:", error);
-        res.status(500).json({ message: 'Error fetching student list.' });
+        const [rows] = await db.query(sql, [teacher_id, date, class_group]);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching data' });
     }
 });
 
-// 3. Save/Update Feedback (Bulk Upsert)
+// 3. Save Feedback (Bulk Save)
 app.post('/api/feedback', async (req, res) => {
     const { teacher_id, class_group, date, feedback_data } = req.body;
-    // feedback_data is an array: [{ student_id, behavior_status, remarks }]
-
-    if (!teacher_id || !class_group || !date || !Array.isArray(feedback_data)) {
-        return res.status(400).json({ message: "Invalid data provided." });
-    }
-
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-
-        // Security Check: Verify teacher is actually assigned to this class in timetable
-        // (Optional strict check, though frontend handles filtering)
-        const [assignmentCheck] = await connection.query(
-            "SELECT id FROM timetables WHERE teacher_id = ? AND class_group = ? LIMIT 1", 
-            [teacher_id, class_group]
-        );
-        
-        // Admin bypass logic can be added here if needed, but per requirement:
-        // "Teacher only able to mark... when assigned"
-        // If checking purely for teacher role:
-        // if (assignmentCheck.length === 0) { ... throw error ... }
-
-        // Prepare Upsert Queries
         for (const item of feedback_data) {
-            if (item.behavior_status) { // Only save if a status is selected
+            // Only save if status or remarks exist
+            if (item.behavior_status || item.remarks) {
                 const sql = `
                     INSERT INTO student_feedback 
                     (student_id, teacher_id, class_group, feedback_date, behavior_status, remarks)
@@ -9986,23 +9957,14 @@ app.post('/api/feedback', async (req, res) => {
                     behavior_status = VALUES(behavior_status),
                     remarks = VALUES(remarks)
                 `;
-                await connection.query(sql, [
-                    item.student_id, 
-                    teacher_id, 
-                    class_group, 
-                    date, 
-                    item.behavior_status, 
-                    item.remarks || null
-                ]);
+                await connection.query(sql, [item.student_id, teacher_id, class_group, date, item.behavior_status, item.remarks]);
             }
         }
-
         await connection.commit();
-        res.status(200).json({ message: 'Feedback saved successfully!' });
-    } catch (error) {
+        res.json({ message: 'Saved successfully' });
+    } catch (err) {
         await connection.rollback();
-        console.error("Error saving feedback:", error);
-        res.status(500).json({ message: 'Error saving feedback.' });
+        res.status(500).json({ message: 'Error saving feedback' });
     } finally {
         connection.release();
     }
