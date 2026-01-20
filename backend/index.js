@@ -9912,10 +9912,9 @@ app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     }
 });
 
-// 2. Get Students for a specific class (to populate the list)
-// 2. Get Students + Existing Feedback for a specific Date
+// GET Students + Existing Feedback (No Date Filter)
 app.get('/api/feedback/students', async (req, res) => {
-    const { class_group, teacher_id, date } = req.query;
+    const { class_group, teacher_id } = req.query;
     try {
         const sql = `
             SELECT 
@@ -9929,35 +9928,33 @@ app.get('/api/feedback/students', async (req, res) => {
             LEFT JOIN student_feedback f 
                 ON u.id = f.student_id 
                 AND f.teacher_id = ? 
-                AND f.feedback_date = ?
             WHERE u.role = 'student' AND u.class_group = ?
             ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
         `;
-        const [rows] = await db.query(sql, [teacher_id, date, class_group]);
+        const [rows] = await db.query(sql, [teacher_id, class_group]);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ message: 'Error fetching data' });
     }
 });
 
-// 3. Save Feedback (Bulk Save)
+// POST Save Feedback (No Date Insert)
 app.post('/api/feedback', async (req, res) => {
-    const { teacher_id, class_group, date, feedback_data } = req.body;
+    const { teacher_id, class_group, feedback_data } = req.body;
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
         for (const item of feedback_data) {
-            // Only save if status or remarks exist
             if (item.behavior_status || item.remarks) {
                 const sql = `
                     INSERT INTO student_feedback 
-                    (student_id, teacher_id, class_group, feedback_date, behavior_status, remarks)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (student_id, teacher_id, class_group, behavior_status, remarks)
+                    VALUES (?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE
                     behavior_status = VALUES(behavior_status),
                     remarks = VALUES(remarks)
                 `;
-                await connection.query(sql, [item.student_id, teacher_id, class_group, date, item.behavior_status, item.remarks]);
+                await connection.query(sql, [item.student_id, teacher_id, class_group, item.behavior_status, item.remarks]);
             }
         }
         await connection.commit();

@@ -7,7 +7,6 @@ import { Picker } from '@react-native-picker/picker';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import DateTimePicker from '@react-native-community/datetimepicker';
 
 const { width } = Dimensions.get('window');
 
@@ -34,8 +33,6 @@ const StudentFeedback = () => {
     const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null);
     const [assignedClasses, setAssignedClasses] = useState<string[]>([]);
     const [selectedClass, setSelectedClass] = useState<string>('');
-    const [selectedDate, setSelectedDate] = useState(new Date());
-    const [showDatePicker, setShowDatePicker] = useState(false);
 
     // Data
     const [students, setStudents] = useState<StudentFeedbackRow[]>([]);
@@ -80,14 +77,14 @@ const StudentFeedback = () => {
 
         setLoading(true);
         try {
-            const dateStr = selectedDate.toISOString().split('T')[0];
+            // No Date param sent
             const response = await apiClient.get('/feedback/students', {
-                params: { class_group: selectedClass, teacher_id: selectedTeacherId, date: dateStr }
+                params: { class_group: selectedClass, teacher_id: selectedTeacherId }
             });
             
             const formattedData = response.data.map((s: any) => ({
                 ...s,
-                behavior_status: s.behavior_status || null, // Default to null if undefined
+                behavior_status: s.behavior_status || null,
                 remarks: s.remarks || ''
             }));
             setStudents(formattedData);
@@ -98,7 +95,7 @@ const StudentFeedback = () => {
         } finally {
             setLoading(false);
         }
-    }, [selectedTeacherId, selectedClass, selectedDate]);
+    }, [selectedTeacherId, selectedClass]);
 
     // Fetch data when filters change
     useEffect(() => {
@@ -111,11 +108,10 @@ const StudentFeedback = () => {
         if (!selectedTeacherId || !selectedClass) return;
         setLoading(true);
         try {
-            const dateStr = selectedDate.toISOString().split('T')[0];
+            // No Date param sent in payload
             const payload = {
                 teacher_id: selectedTeacherId,
                 class_group: selectedClass,
-                date: dateStr,
                 feedback_data: students.map(s => ({
                     student_id: s.student_id,
                     behavior_status: s.behavior_status,
@@ -143,11 +139,6 @@ const StudentFeedback = () => {
         setHasChanges(true);
     };
 
-    const onDateChange = (event: any, date?: Date) => {
-        setShowDatePicker(Platform.OS === 'ios');
-        if (date) setSelectedDate(date);
-    };
-
     // --- Components ---
     const StatusButton = ({ label, currentStatus, targetStatus, color, onPress, disabled }: any) => {
         const isSelected = currentStatus === targetStatus;
@@ -167,12 +158,10 @@ const StudentFeedback = () => {
         );
     };
 
-    const formattedDate = selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
     return (
         <SafeAreaView style={styles.container}>
             
-            {/* --- HEADER CARD --- */}
+            {/* --- HEADER CARD (Date Removed) --- */}
             <View style={styles.headerCard}>
                 <View style={styles.headerLeft}>
                     <View style={styles.headerIconContainer}>
@@ -180,20 +169,10 @@ const StudentFeedback = () => {
                     </View>
                     <View style={styles.headerTextContainer}>
                         <Text style={styles.headerTitle}>Behaviour</Text>
-                        <Text style={styles.headerSubtitle}>Daily Tracking</Text>
+                        <Text style={styles.headerSubtitle}>Student Tracking</Text>
                     </View>
                 </View>
-                
-                {/* Date Picker Button (Top Right) */}
-                <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateBadge}>
-                    <Text style={styles.dateText}>{formattedDate}</Text>
-                    <MaterialIcons name="calendar-today" size={16} color="#008080" />
-                </TouchableOpacity>
             </View>
-
-            {showDatePicker && (
-                <DateTimePicker value={selectedDate} mode="date" display="default" onChange={onDateChange} />
-            )}
 
             {/* Filters */}
             <View style={styles.filterContainer}>
@@ -275,7 +254,7 @@ const StudentFeedback = () => {
                                     />
                                 </View>
 
-                                {/* Remarks Input (Scrollable if long text) */}
+                                {/* Remarks Input */}
                                 <View style={{ width: 80, marginLeft: 8 }}>
                                     <TextInput 
                                         style={styles.input}
@@ -330,7 +309,7 @@ const styles = StyleSheet.create({
     headerCard: {
         backgroundColor: '#FFFFFF',
         paddingHorizontal: 15,
-        paddingVertical: 12,
+        paddingVertical: 15,
         width: '94%', 
         alignSelf: 'center',
         marginTop: 10,
@@ -358,12 +337,6 @@ const styles = StyleSheet.create({
     headerTextContainer: { justifyContent: 'center' },
     headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
     headerSubtitle: { fontSize: 12, color: '#666' },
-    
-    dateBadge: {
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0F2F1', 
-        paddingVertical: 6, paddingHorizontal: 10, borderRadius: 20, borderWidth: 1, borderColor: '#B2DFDB'
-    },
-    dateText: { marginRight: 6, color: '#00796B', fontWeight: 'bold', fontSize: 13 },
     
     // Filters
     filterContainer: { paddingHorizontal: 15, marginBottom: 5 },
