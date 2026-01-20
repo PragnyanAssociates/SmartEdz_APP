@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, ActivityIndicator, Image,
-    TouchableOpacity, Modal, Pressable, Dimensions, Platform, SafeAreaView, UIManager
+    TouchableOpacity, Modal, Pressable, Dimensions, Platform, SafeAreaView, UIManager,
+    Animated, Easing
 } from 'react-native';
 import apiClient from '../api/client';
 import { SERVER_URL } from '../../apiConfig';
@@ -14,6 +15,64 @@ import * as Animatable from 'react-native-animatable';
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// --- CONSTANTS & COLORS (From Reference) ---
+const COLORS = {
+    primary: '#008080',    
+    background: '#F5F7FA',
+    success: '#43A047',    // 85-100%
+    average: '#1E88E5',    // 50-85%
+    poor: '#E53935',       // 0-50%
+    track: '#ECEFF1',      
+    textMain: '#263238',
+    textSub: '#546E7A'
+};
+
+const getRoundedPercentage = (value) => {
+    const floatVal = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(floatVal)) return 0;
+    return Math.round(floatVal);
+};
+
+const getStatusColor = (perc) => {
+    const val = getRoundedPercentage(perc);
+    if (val >= 85) return COLORS.success; 
+    if (val >= 50) return COLORS.average;
+    return COLORS.poor; 
+};
+
+// --- COMPONENT: ANIMATED BAR (From Reference) ---
+const AnimatedBar = ({ percentage, marks, label, color, height = 200 }) => {
+    const animatedHeight = useRef(new Animated.Value(0)).current;
+    const displayPercentage = getRoundedPercentage(percentage);
+
+    useEffect(() => {
+        Animated.timing(animatedHeight, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: false, // height layout property requires false
+            easing: Easing.out(Easing.poly(4)),
+        }).start();
+    }, [percentage]);
+
+    const heightStyle = animatedHeight.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0%', `${Math.min(displayPercentage, 100)}%`] // Cap at 100% height visually
+    });
+
+    return (
+        <View style={[barStyles.barWrapper, { height: height }]}>
+            <Text style={barStyles.barLabelTop}>{displayPercentage}%</Text>
+            <View style={barStyles.barBackground}>
+                <Animated.View style={[barStyles.barFill, { height: heightStyle, backgroundColor: color }]} />
+                <View style={barStyles.barTextContainer}>
+                    <Text style={barStyles.barInnerText} numberOfLines={1}>{marks}</Text>
+                </View>
+            </View>
+            <Text style={barStyles.barLabelBottom} numberOfLines={1}>{label}</Text>
+        </View>
+    );
+};
 
 // --- Timetable Constants ---
 type Day = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
@@ -38,6 +97,7 @@ const getSubjectColor = (subject?: string): string => { if (!subject) return '#F
 const CLASS_SUBJECTS = { 'LKG': ['All Subjects'], 'UKG': ['All Subjects'], 'Class 1': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], 'Class 2': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], 'Class 3': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], 'Class 4': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], 'Class 5': ['Telugu', 'English', 'Hindi', 'EVS', 'Maths'], 'Class 6': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], 'Class 7': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], 'Class 8': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], 'Class 9': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'], 'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social'] };
 const EXAM_MAPPING = { 'AT1': 'Assignment-1', 'UT1': 'Unitest-1', 'AT2': 'Assignment-2', 'UT2': 'Unitest-2', 'AT3': 'Assignment-3', 'UT3': 'Unitest-3', 'AT4': 'Assignment-4', 'UT4': 'Unitest-4', 'SA1': 'SA1', 'SA2': 'SA2', 'Total': 'Overall' };
 const DISPLAY_EXAM_ORDER = ['AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'AT4', 'UT4','SA1', 'SA2', 'Total'];
+const GRAPH_EXAMS = ['AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'AT4', 'UT4','SA1', 'SA2']; // Exclude Total for graph
 const SENIOR_CLASSES = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 
 const formatDate = (date) => {
@@ -70,41 +130,151 @@ const StudentTimetable = ({ classGroup }) => {
 const EmbeddedReportCard = ({ studentInfo, academicYear, marksData, attendanceData }) => {
     const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
     const isSeniorClass = SENIOR_CLASSES.includes(studentInfo.class_group);
+    
+    // Toggle View State
+    const [viewMode, setViewMode] = useState('card'); // 'card' or 'graph'
+
+    // --- Calculate Overall Graph Data ---
+    const overallGraphData = useMemo(() => {
+        return GRAPH_EXAMS.map(examCode => {
+            let totalObtained = 0;
+            let totalMax = 0;
+            let hasData = false;
+
+            // Iterate over all subjects for this exam
+            subjects.forEach(subject => {
+                const apiExamName = EXAM_MAPPING[examCode];
+                const rawMark = marksData[subject]?.[apiExamName];
+
+                if (rawMark !== undefined && rawMark !== '-' && rawMark !== null) {
+                    const parsedMark = parseFloat(rawMark);
+                    if (!isNaN(parsedMark)) {
+                        totalObtained += parsedMark;
+                        hasData = true;
+                        
+                        // Determine max marks for this subject/exam combo
+                        if (['SA1', 'SA2', 'Pre-Final'].includes(examCode)) {
+                            totalMax += 100;
+                        } else {
+                            totalMax += isSeniorClass ? 20 : 25;
+                        }
+                    }
+                }
+            });
+
+            if (!hasData) return null;
+
+            const percentage = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0;
+            
+            return {
+                exam: examCode,
+                totalObtained,
+                totalMax,
+                percentage
+            };
+        }).filter(item => item !== null); // Remove exams with no data
+    }, [marksData, subjects, isSeniorClass]);
+
     return (
-        <View style={rcStyles.card}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={rcStyles.table}>
-                    <View style={rcStyles.tableRow}>
-                        <Text style={[rcStyles.tableHeader, rcStyles.subjectCol]}>Subjects</Text>
-                        {DISPLAY_EXAM_ORDER.map(exam => {
-                            let label = exam;
-                            if (exam.startsWith('AT') || exam.startsWith('UT')) {
-                                const maxMarks = isSeniorClass ? '20' : '25';
-                                label = `${exam}\n(${maxMarks})`;
-                            } else if (exam.startsWith('SA')) {
-                                label = `${exam}\n(100)`;
-                            }
-                            return <Text key={exam} style={[rcStyles.tableHeader, rcStyles.markCol]}>{label}</Text>;
-                        })}
-                    </View>
-                    {subjects.map(subject => (
-                        <View key={subject} style={rcStyles.tableRow}>
-                            <Text style={[rcStyles.tableCell, rcStyles.subjectCol]}>{subject}</Text>
-                            {DISPLAY_EXAM_ORDER.map(exam => <Text key={exam} style={[rcStyles.tableCell, rcStyles.markCol]}>{marksData[subject]?.[EXAM_MAPPING[exam]] ?? '-'}</Text>)}
+        <View style={rcStyles.container}>
+            {/* View Switcher (Card / Graph) */}
+            <View style={rcStyles.toggleContainer}>
+                <TouchableOpacity 
+                    style={[rcStyles.toggleBtn, viewMode === 'card' && rcStyles.toggleBtnActive]} 
+                    onPress={() => setViewMode('card')}
+                >
+                    <Icon name="table-large" size={20} color={viewMode === 'card' ? '#FFF' : '#008080'} />
+                    <Text style={[rcStyles.toggleText, viewMode === 'card' && rcStyles.toggleTextActive]}>Card View</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                    style={[rcStyles.toggleBtn, viewMode === 'graph' && rcStyles.toggleBtnActive]} 
+                    onPress={() => setViewMode('graph')}
+                >
+                    <Icon name="chart-bar" size={20} color={viewMode === 'graph' ? '#FFF' : '#008080'} />
+                    <Text style={[rcStyles.toggleText, viewMode === 'graph' && rcStyles.toggleTextActive]}>Graph View</Text>
+                </TouchableOpacity>
+            </View>
+
+            {viewMode === 'card' ? (
+                // --- TABLE VIEW ---
+                <View style={rcStyles.card}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View style={rcStyles.table}>
+                            <View style={rcStyles.tableRow}>
+                                <Text style={[rcStyles.tableHeader, rcStyles.subjectCol]}>Subjects</Text>
+                                {DISPLAY_EXAM_ORDER.map(exam => {
+                                    let label = exam;
+                                    if (exam.startsWith('AT') || exam.startsWith('UT')) {
+                                        const maxMarks = isSeniorClass ? '20' : '25';
+                                        label = `${exam}\n(${maxMarks})`;
+                                    } else if (exam.startsWith('SA')) {
+                                        label = `${exam}\n(100)`;
+                                    }
+                                    return <Text key={exam} style={[rcStyles.tableHeader, rcStyles.markCol]}>{label}</Text>;
+                                })}
+                            </View>
+                            {subjects.map(subject => (
+                                <View key={subject} style={rcStyles.tableRow}>
+                                    <Text style={[rcStyles.tableCell, rcStyles.subjectCol]}>{subject}</Text>
+                                    {DISPLAY_EXAM_ORDER.map(exam => <Text key={exam} style={[rcStyles.tableCell, rcStyles.markCol]}>{marksData[subject]?.[EXAM_MAPPING[exam]] ?? '-'}</Text>)}
+                                </View>
+                            ))}
+                            <View style={[rcStyles.tableRow, rcStyles.totalRow]}>
+                                <Text style={[rcStyles.tableHeader, rcStyles.subjectCol]}>Total</Text>
+                                {DISPLAY_EXAM_ORDER.map(exam => {
+                                    const total = subjects.reduce((sum, subject) => {
+                                        const mark = parseFloat(marksData[subject]?.[EXAM_MAPPING[exam]]);
+                                        return sum + (isNaN(mark) ? 0 : mark);
+                                    }, 0);
+                                    return <Text key={exam} style={[rcStyles.tableHeader, rcStyles.markCol]}>{total > 0 ? total : '-'}</Text>;
+                                })}
+                            </View>
                         </View>
-                    ))}
-                    <View style={[rcStyles.tableRow, rcStyles.totalRow]}>
-                        <Text style={[rcStyles.tableHeader, rcStyles.subjectCol]}>Total</Text>
-                        {DISPLAY_EXAM_ORDER.map(exam => {
-                            const total = subjects.reduce((sum, subject) => {
-                                const mark = parseFloat(marksData[subject]?.[EXAM_MAPPING[exam]]);
-                                return sum + (isNaN(mark) ? 0 : mark);
-                            }, 0);
-                            return <Text key={exam} style={[rcStyles.tableHeader, rcStyles.markCol]}>{total > 0 ? total : '-'}</Text>;
-                        })}
+                    </ScrollView>
+                </View>
+            ) : (
+                // --- NEW CUSTOM GRAPH VIEW (BARS) ---
+                <View style={rcStyles.graphContainer}>
+                    <Text style={rcStyles.graphTitle}>{studentInfo.full_name}</Text>
+                    
+                    <View style={{ height: 260, marginTop: 10 }}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, alignItems: 'flex-end' }}>
+                            {overallGraphData.length > 0 ? (
+                                overallGraphData.map((item, index) => (
+                                    <AnimatedBar
+                                        key={item.exam}
+                                        percentage={item.percentage}
+                                        marks={`${Math.round(item.totalObtained)}/${Math.round(item.totalMax)}`}
+                                        label={item.exam}
+                                        color={getStatusColor(item.percentage)}
+                                        height={220}
+                                    />
+                                ))
+                            ) : (
+                                <View style={{width: width - 40, alignItems: 'center', justifyContent: 'center', height: 200}}>
+                                    <Text style={{color: '#999'}}>No marks data available for graphing.</Text>
+                                </View>
+                            )}
+                        </ScrollView>
+                    </View>
+
+                    {/* Legend */}
+                    <View style={rcStyles.legendRow}>
+                        <View style={rcStyles.legendItem}>
+                            <View style={[rcStyles.dot, {backgroundColor: COLORS.success}]} />
+                            <Text style={rcStyles.legendTxt}>85-100% (Topper)</Text>
+                        </View>
+                        <View style={rcStyles.legendItem}>
+                            <View style={[rcStyles.dot, {backgroundColor: COLORS.average}]} />
+                            <Text style={rcStyles.legendTxt}>50-85% (Avg)</Text>
+                        </View>
+                        <View style={rcStyles.legendItem}>
+                            <View style={[rcStyles.dot, {backgroundColor: COLORS.poor}]} />
+                            <Text style={rcStyles.legendTxt}>0-50% (Least)</Text>
+                        </View>
                     </View>
                 </View>
-            </ScrollView>
+            )}
         </View>
     );
 };
@@ -340,6 +510,17 @@ const StudentDetailScreen = ({ route, navigation }) => {
     );
 };
 
+// --- Bar Component Styles ---
+const barStyles = StyleSheet.create({
+    barWrapper: { width: 55, alignItems: 'center', justifyContent: 'flex-end', marginHorizontal: 8 },
+    barLabelTop: { marginBottom: 4, fontSize: 12, fontWeight: 'bold', textAlign: 'center', color: COLORS.textMain },
+    barBackground: { width: 30, height: '80%', backgroundColor: COLORS.track, borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end', position: 'relative' },
+    barFill: { width: '100%', borderRadius: 4 },
+    barTextContainer: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+    barInnerText: { fontSize: 10, fontWeight: 'bold', color: '#000', transform: [{ rotate: '-90deg' }], width: 120, textAlign: 'center' },
+    barLabelBottom: { marginTop: 8, fontSize: 11, fontWeight: '600', color: COLORS.textMain, textAlign: 'center', width: '100%' },
+});
+
 // --- General Styles ---
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F2F5F8' }, 
@@ -429,6 +610,42 @@ const styles = StyleSheet.create({
 
 // --- Report Card Styles ---
 const rcStyles = StyleSheet.create({
+    container: {
+        backgroundColor: '#ffffff',
+        borderTopWidth: 1,
+        borderColor: '#eee'
+    },
+    toggleContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        backgroundColor: '#f8f9fa',
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee'
+    },
+    toggleBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        marginHorizontal: 8,
+        borderWidth: 1,
+        borderColor: '#008080',
+        backgroundColor: '#FFF'
+    },
+    toggleBtnActive: {
+        backgroundColor: '#008080'
+    },
+    toggleText: {
+        marginLeft: 6,
+        fontWeight: '600',
+        color: '#008080',
+        fontSize: 14
+    },
+    toggleTextActive: {
+        color: '#FFF'
+    },
     card: { backgroundColor: '#ffffff', paddingVertical: 15, paddingHorizontal: 5 },
     table: { borderWidth: 1, borderColor: '#dfe4ea', borderRadius: 8, overflow: 'hidden', marginHorizontal: 5 },
     tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#dfe4ea' },
@@ -437,6 +654,14 @@ const rcStyles = StyleSheet.create({
     subjectCol: { width: 90, textAlign: 'left', fontWeight: '600' },
     markCol: { width: 55 },
     totalRow: { backgroundColor: '#f1f3f5' },
+    
+    // Graph Styles
+    graphContainer: { padding: 10, alignItems: 'center' },
+    graphTitle: { fontSize: 16, fontWeight: 'bold', color: '#455A64', marginBottom: 5, textAlign: 'center', textTransform: 'uppercase' },
+    legendRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 15, gap: 12, flexWrap: 'wrap' },
+    legendItem: { flexDirection: 'row', alignItems: 'center' },
+    dot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
+    legendTxt: { fontSize: 11, color: COLORS.textSub }
 });
 
 // --- Attendance Styles ---
