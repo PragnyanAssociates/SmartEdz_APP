@@ -10072,7 +10072,6 @@ app.post('/api/feedback', async (req, res) => {
 // ==========================================================
 
 // 1. [STUDENT VIEW] Get Assigned Teachers + My Existing Feedback
-// Fetches teachers from the timetable for the student's class group.
 app.get('/api/student/assigned-teachers', async (req, res) => {
     const { student_id, class_group } = req.query;
     try {
@@ -10102,6 +10101,7 @@ app.get('/api/student/assigned-teachers', async (req, res) => {
 app.post('/api/teacher-feedback', async (req, res) => {
     const { student_id, teacher_id, class_group, rating, remarks } = req.body;
     
+    // Validate that remarks is one of the allowed ENUM values or null
     if (!student_id || !teacher_id || !rating) {
         return res.status(400).json({ message: "Rating is required." });
     }
@@ -10123,10 +10123,64 @@ app.post('/api/teacher-feedback', async (req, res) => {
     }
 });
 
-// 3. [ADMIN VIEW] Get Feedback for a specific Teacher in a specific Class
+// 3. [ADMIN VIEW] Get Feedback 
+// Mode 1: specific teacher (list students)
+// Mode 2: "all" teachers (matrix view)
 app.get('/api/admin/teacher-feedback', async (req, res) => {
-    const { teacher_id, class_group } = req.query;
+    const { teacher_id, class_group, mode } = req.query;
+
     try {
+        // --- CASE A: ALL TEACHERS (MATRIX VIEW) ---
+        if (mode === 'all') {
+            // 1. Get all students in the class
+            const [students] = await db.query(`
+                SELECT u.id, u.full_name, p.roll_no 
+                FROM users u 
+                LEFT JOIN user_profiles p ON u.id = p.user_id 
+                WHERE u.class_group = ? AND u.role = 'student' 
+                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
+            `, [class_group]);
+
+            // 2. Get all teachers assigned to this class
+            const [teachers] = await db.query(`
+                SELECT DISTINCT u.id, u.full_name 
+                FROM timetables t 
+                JOIN users u ON t.teacher_id = u.id 
+                WHERE t.class_group = ?
+            `, [class_group]);
+
+            // 3. Get all feedback for this class
+            const [feedbacks] = await db.query(`
+                SELECT student_id, teacher_id, rating, remarks 
+                FROM teacher_feedback 
+                WHERE class_group = ?
+            `, [class_group]);
+
+            // 4. Structure data: Map feedbacks to student objects
+            const matrix = students.map(student => {
+                const studentFeedback = {};
+                feedbacks.forEach(fb => {
+                    if (fb.student_id === student.id) {
+                        studentFeedback[fb.teacher_id] = {
+                            rating: fb.rating,
+                            remarks: fb.remarks
+                        };
+                    }
+                });
+                return {
+                    ...student,
+                    feedback_map: studentFeedback
+                };
+            });
+
+            return res.json({ 
+                mode: 'matrix',
+                teachers: teachers, 
+                students: matrix 
+            });
+        }
+
+        // --- CASE B: SPECIFIC TEACHER (LIST VIEW) ---
         const sql = `
             SELECT 
                 u.full_name as student_name,
@@ -10148,7 +10202,8 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
             avg = (sum / rows.length).toFixed(1);
         }
 
-        res.json({ reviews: rows, average: avg, total: rows.length });
+        res.json({ mode: 'list', reviews: rows, average: avg, total: rows.length });
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error fetching feedback details' });
