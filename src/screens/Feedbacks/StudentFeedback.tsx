@@ -12,13 +12,12 @@ import { useAuth } from '../../context/AuthContext';
 const COL_WIDTHS = {
     ROLL: 50,      
     NAME: 150,     
-    STATUS: 200,   // Wider to fit numbers 1-5
-    REMARKS: 200   // Width to fit G/A/P buttons
+    STATUS: 180,   
+    REMARKS: 200   
 };
 
 const TABLE_MIN_WIDTH = COL_WIDTHS.ROLL + COL_WIDTHS.NAME + COL_WIDTHS.STATUS + COL_WIDTHS.REMARKS; 
 
-// Updated Interface to match new DB structure
 interface StudentFeedbackRow {
     student_id: number;
     full_name: string;
@@ -50,6 +49,9 @@ const StudentFeedback = () => {
     const [students, setStudents] = useState<StudentFeedbackRow[]>([]);
     const [hasChanges, setHasChanges] = useState(false);
 
+    // Helper: Check if looking at overall view
+    const isOverallView = selectedSubject === 'All Subjects';
+
     // --- 1. Initial Setup ---
     useEffect(() => {
         if (!user) return;
@@ -75,6 +77,7 @@ const StudentFeedback = () => {
         } catch (error) { console.error('Error fetching classes', error); }
     };
 
+    // Fetch Subjects when Class changes
     useEffect(() => {
         if (!selectedClass) {
             setAvailableSubjects([]);
@@ -87,20 +90,31 @@ const StudentFeedback = () => {
                 if (user?.role === 'teacher') params.teacher_id = user.id;
 
                 const response = await apiClient.get('/feedback/subjects', { params });
-                setAvailableSubjects(response.data);
-                if (response.data.length > 0) setSelectedSubject(response.data[0]);
+                
+                let subjectsList = response.data;
+                // Add "All Subjects" option for Admin
+                if (user?.role === 'admin') {
+                    subjectsList = ['All Subjects', ...subjectsList];
+                }
+
+                setAvailableSubjects(subjectsList);
+                
+                if (subjectsList.length > 0) setSelectedSubject(subjectsList[0]);
                 else setSelectedSubject('');
+
             } catch (error) { console.error('Error fetching subjects', error); }
         };
         fetchSubjects();
     }, [selectedClass, user]);
 
+    // Fetch Teachers when Subject changes
     useEffect(() => {
-        if (!selectedClass || !selectedSubject) {
+        if (!selectedClass || !selectedSubject || isOverallView) {
             setAvailableTeachers([]);
             if (user?.role === 'admin') setSelectedTeacherId(null);
             return;
         }
+        
         if (user?.role === 'teacher') {
             setSelectedTeacherId(user.id);
         } else if (user?.role === 'admin') {
@@ -120,20 +134,28 @@ const StudentFeedback = () => {
 
     // --- 3. Fetch Student Data ---
     const fetchStudentData = useCallback(async () => {
-        if (!selectedClass || !selectedTeacherId) {
+        // Validation: Need Class. 
+        // Need TeacherID unless it's "All Subjects" mode.
+        if (!selectedClass || (!isOverallView && !selectedTeacherId)) {
             setStudents([]);
             return;
         }
 
         setLoading(true);
         try {
-            const response = await apiClient.get('/feedback/students', {
-                params: { class_group: selectedClass, teacher_id: selectedTeacherId }
-            });
-            // Map response to state
+            const params: any = { class_group: selectedClass };
+
+            if (isOverallView) {
+                params.mode = 'overall'; // Tell API to aggregate
+            } else {
+                params.teacher_id = selectedTeacherId;
+            }
+
+            const response = await apiClient.get('/feedback/students', { params });
+            
             const formattedData = response.data.map((s: any) => ({
                 ...s,
-                status_marks: s.status_marks || null,
+                status_marks: s.status_marks || 0, 
                 remarks_category: s.remarks_category || null
             }));
             setStudents(formattedData);
@@ -144,18 +166,23 @@ const StudentFeedback = () => {
         } finally {
             setLoading(false);
         }
-    }, [selectedClass, selectedTeacherId]);
+    }, [selectedClass, selectedTeacherId, isOverallView]);
 
     useEffect(() => {
-        if (selectedClass && selectedSubject && selectedTeacherId) {
+        // Trigger fetch if:
+        // 1. Overall view + Class selected
+        // 2. OR Normal view + Class + Subject + Teacher selected
+        if ((isOverallView && selectedClass) || (selectedClass && selectedSubject && selectedTeacherId)) {
             fetchStudentData();
         }
-    }, [selectedClass, selectedSubject, selectedTeacherId, fetchStudentData]);
+    }, [selectedClass, selectedSubject, selectedTeacherId, isOverallView, fetchStudentData]);
 
 
-    // --- 4. Save Logic ---
+    // --- 4. Save Logic (Disabled for All Subjects) ---
     const handleSave = async () => {
+        if (isOverallView) return; // Cannot save in overall view
         if (!selectedTeacherId || !selectedClass) return;
+        
         setLoading(true);
         try {
             const payload = {
@@ -163,7 +190,7 @@ const StudentFeedback = () => {
                 class_group: selectedClass,
                 feedback_data: students.map(s => ({
                     student_id: s.student_id,
-                    status_marks: s.status_marks,
+                    status_marks: s.status_marks === 0 ? null : s.status_marks, 
                     remarks_category: s.remarks_category
                 }))
             };
@@ -180,6 +207,8 @@ const StudentFeedback = () => {
 
     const updateStudentFeedback = (id: number, field: keyof StudentFeedbackRow, value: any) => {
         if (user?.role === 'admin') return; 
+        if (isOverallView) return; // Read only
+        
         setStudents(prev => prev.map(s => {
             if (s.student_id === id) return { ...s, [field]: value };
             return s;
@@ -188,14 +217,16 @@ const StudentFeedback = () => {
     };
 
     // --- Sub-Components ---
-
-    // Button for "Remarks" (Good/Avg/Poor)
     const RemarkButton = ({ label, targetValue, currentValue, color, onPress, disabled }: any) => {
         const isSelected = currentValue === targetValue;
+        // In "Overall" view, reduce opacity if not selected to make the average stand out
+        const opacity = isOverallView && !isSelected ? 0.3 : 1;
+        
         return (
             <TouchableOpacity 
                 style={[
                     styles.remarkBtn, 
+                    { opacity },
                     isSelected 
                         ? { backgroundColor: color, borderColor: color } 
                         : { borderColor: '#E0E0E0', backgroundColor: '#FFF' }
@@ -208,25 +239,6 @@ const StudentFeedback = () => {
                     isSelected ? { color: '#FFF' } : { color: '#9e9e9e' }
                 ]}>
                     {label}
-                </Text>
-            </TouchableOpacity>
-        );
-    };
-
-    // Button for "Status" (1, 2, 3, 4, 5)
-    const RatingCircle = ({ value, currentValue, onPress, disabled }: any) => {
-        const isSelected = currentValue === value;
-        return (
-            <TouchableOpacity 
-                style={[
-                    styles.ratingCircle,
-                    isSelected ? { backgroundColor: '#008080', borderColor: '#008080' } : { borderColor: '#CFD8DC' }
-                ]}
-                onPress={() => onPress(value)}
-                disabled={disabled}
-            >
-                <Text style={[styles.ratingText, isSelected && { color: '#FFF', fontWeight: 'bold' }]}>
-                    {value}
                 </Text>
             </TouchableOpacity>
         );
@@ -246,6 +258,12 @@ const StudentFeedback = () => {
                         <Text style={styles.headerSubtitle}>Student Tracking</Text>
                     </View>
                 </View>
+                {/* Visual Indicator for Overall View */}
+                {isOverallView && (
+                    <View style={styles.overallBadge}>
+                        <Text style={styles.overallBadgeText}>Overall View</Text>
+                    </View>
+                )}
             </View>
 
             {/* FILTERS */}
@@ -277,7 +295,8 @@ const StudentFeedback = () => {
                     </View>
                 )}
 
-                {user?.role === 'admin' && selectedSubject !== '' && (
+                {/* Hide Teacher Picker if "All Subjects" is selected */}
+                {user?.role === 'admin' && selectedSubject !== '' && !isOverallView && (
                     <View style={styles.pickerWrapper}>
                         <Picker
                             selectedValue={selectedTeacherId?.toString()}
@@ -306,8 +325,12 @@ const StudentFeedback = () => {
                         <View style={styles.tableHeader}>
                             <Text style={[styles.th, { width: COL_WIDTHS.ROLL, textAlign: 'center' }]}>Roll</Text>
                             <Text style={[styles.th, { width: COL_WIDTHS.NAME }]}>Student Name</Text>
-                            <Text style={[styles.th, { width: COL_WIDTHS.STATUS, textAlign: 'center' }]}>Status (1-5)</Text>
-                            <Text style={[styles.th, { width: COL_WIDTHS.REMARKS, textAlign: 'center' }]}>Remarks</Text>
+                            <Text style={[styles.th, { width: COL_WIDTHS.STATUS, textAlign: 'center' }]}>
+                                {isOverallView ? 'Avg Rating' : 'Rating'}
+                            </Text>
+                            <Text style={[styles.th, { width: COL_WIDTHS.REMARKS, textAlign: 'center' }]}>
+                                {isOverallView ? 'Overall Remarks' : 'Remarks'}
+                            </Text>
                         </View>
 
                         {/* List */}
@@ -325,24 +348,45 @@ const StudentFeedback = () => {
                                                 {item.full_name}
                                             </Text>
                                             
-                                            {/* STATUS COLUMN (Marks 1-5) */}
-                                            <View style={{ width: COL_WIDTHS.STATUS, flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
-                                                {[1, 2, 3, 4, 5].map((val) => (
-                                                    <RatingCircle 
-                                                        key={val} 
-                                                        value={val} 
-                                                        currentValue={item.status_marks} 
-                                                        disabled={user?.role === 'admin'}
-                                                        onPress={(v: number) => updateStudentFeedback(item.student_id, 'status_marks', v)}
-                                                    />
+                                            {/* STATUS COLUMN (STARS) */}
+                                            <View style={{ width: COL_WIDTHS.STATUS, flexDirection: 'row', justifyContent: 'center', gap: 2 }}>
+                                                {[1, 2, 3, 4, 5].map((star) => (
+                                                    <TouchableOpacity 
+                                                        key={star}
+                                                        // Disable editing if Admin or Overall View
+                                                        onPress={() => !isOverallView && !user?.role?.includes('admin') && updateStudentFeedback(item.student_id, 'status_marks', star)}
+                                                        disabled={user?.role === 'admin' || isOverallView}
+                                                        style={{ padding: 2 }}
+                                                    >
+                                                        <MaterialIcons 
+                                                            name={item.status_marks && item.status_marks >= star ? "star" : "star-border"} 
+                                                            size={28} 
+                                                            color={item.status_marks && item.status_marks >= star ? "#FFC107" : "#CFD8DC"} 
+                                                        />
+                                                    </TouchableOpacity>
                                                 ))}
                                             </View>
 
                                             {/* REMARKS COLUMN (G/A/P) */}
                                             <View style={{ width: COL_WIDTHS.REMARKS, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
-                                                <RemarkButton label="G" targetValue="Good" currentValue={item.remarks_category} color="#10b981" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Good')} />
-                                                <RemarkButton label="A" targetValue="Average" currentValue={item.remarks_category} color="#3b82f6" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Average')} />
-                                                <RemarkButton label="P" targetValue="Poor" currentValue={item.remarks_category} color="#ef4444" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Poor')} />
+                                                <RemarkButton 
+                                                    label="G" targetValue="Good" currentValue={item.remarks_category} 
+                                                    color="#10b981" 
+                                                    disabled={user?.role === 'admin' || isOverallView} 
+                                                    onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Good')} 
+                                                />
+                                                <RemarkButton 
+                                                    label="A" targetValue="Average" currentValue={item.remarks_category} 
+                                                    color="#3b82f6" 
+                                                    disabled={user?.role === 'admin' || isOverallView} 
+                                                    onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Average')} 
+                                                />
+                                                <RemarkButton 
+                                                    label="P" targetValue="Poor" currentValue={item.remarks_category} 
+                                                    color="#ef4444" 
+                                                    disabled={user?.role === 'admin' || isOverallView} 
+                                                    onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Poor')} 
+                                                />
                                             </View>
                                         </View>
                                     ))
@@ -350,7 +394,7 @@ const StudentFeedback = () => {
                                     <View style={styles.emptyContainer}>
                                         <MaterialIcons name="person-off" size={40} color="#CFD8DC" />
                                         <Text style={styles.emptyText}>
-                                            {!selectedClass ? "Select a class to view students." : "No students found."}
+                                            {!selectedClass ? "Select a class." : "No data found."}
                                         </Text>
                                     </View>
                                 )}
@@ -360,8 +404,8 @@ const StudentFeedback = () => {
                 </ScrollView>
             </View>
 
-            {/* SAVE BUTTON */}
-            {user?.role === 'teacher' && hasChanges && (
+            {/* SAVE BUTTON - Hide in Overall View */}
+            {!isOverallView && user?.role === 'teacher' && hasChanges && (
                 <View style={styles.floatingSaveContainer}>
                     <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
                         {loading ? <ActivityIndicator color="#fff" size="small"/> : (
@@ -373,11 +417,17 @@ const StudentFeedback = () => {
 
             {/* FOOTER LEGEND */}
             <View style={styles.footerContainer}>
-                <View style={styles.legendContainer}>
-                    <Text style={[styles.legendText, {marginRight: 10}]}>Scale:</Text>
-                    <View style={styles.legendItem}><Text style={styles.legendText}>1 (Low)</Text></View>
-                    <Text style={{color:'#ccc'}}>|</Text>
-                    <View style={styles.legendItem}><Text style={styles.legendText}>5 (High)</Text></View>
+                <View style={styles.legendGroup}>
+                    <Text style={styles.legendLabel}>Scale: </Text>
+                    <MaterialIcons name="star" size={14} color="#FFC107" />
+                    <Text style={styles.legendText}> (1-5)</Text>
+                </View>
+                <View style={styles.verticalDivider} />
+                <View style={styles.legendGroup}>
+                    <Text style={styles.legendLabel}>Note: </Text>
+                    <Text style={[styles.legendText, { color: '#10b981', fontWeight:'bold' }]}>G</Text><Text style={styles.legendText}>=Good, </Text>
+                    <Text style={[styles.legendText, { color: '#3b82f6', fontWeight:'bold' }]}>A</Text><Text style={styles.legendText}>=Avg, </Text>
+                    <Text style={[styles.legendText, { color: '#ef4444', fontWeight:'bold' }]}>P</Text><Text style={styles.legendText}>=Poor</Text>
                 </View>
             </View>
 
@@ -400,6 +450,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
         elevation: 3,
         shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
     },
@@ -416,6 +467,8 @@ const styles = StyleSheet.create({
     headerTextContainer: { justifyContent: 'center' },
     headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333333' },
     headerSubtitle: { fontSize: 13, color: '#666666' },
+    overallBadge: { backgroundColor: '#FFEDD5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#FED7AA' },
+    overallBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#F97316' },
 
     // Filters
     filterContainer: { paddingHorizontal: 20, marginBottom: 5 },
@@ -441,18 +494,11 @@ const styles = StyleSheet.create({
     rowAlt: { backgroundColor: '#f8fafc' },
     td: { fontSize: 13, color: '#374151' },
     
-    // Remark Buttons (G, A, P)
+    // Remark Buttons
     remarkBtn: { width: 36, height: 36, borderRadius: 6, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
     remarkBtnText: { fontWeight: 'bold', fontSize: 14 },
-
-    // Rating Circles (1-5)
-    ratingCircle: {
-        width: 30, height: 30, borderRadius: 15, borderWidth: 1, 
-        justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF'
-    },
-    ratingText: { fontSize: 12, color: '#455a64' },
     
-    // Floating Save
+    // Save
     floatingSaveContainer: {
         position: 'absolute', bottom: 50, left: 0, right: 0, alignItems: 'center', paddingBottom: 10, zIndex: 10,
     },
@@ -467,11 +513,12 @@ const styles = StyleSheet.create({
         position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', 
         borderTopWidth: 1, borderTopColor: '#f0f0f0', height: 45, 
         flexDirection: 'row', justifyContent: 'center', alignItems: 'center', 
-        paddingHorizontal: 20, elevation: 10
+        paddingHorizontal: 15, elevation: 10
     },
-    legendContainer: { flexDirection: 'row', alignItems: 'center' },
-    legendItem: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 10 },
-    legendText: { fontSize: 12, color: '#6b7280', fontWeight: '500' },
+    legendGroup: { flexDirection: 'row', alignItems: 'center' },
+    legendLabel: { fontSize: 12, fontWeight: '700', color: '#333', marginRight: 4 },
+    legendText: { fontSize: 11, color: '#6b7280', fontWeight: '500' },
+    verticalDivider: { height: 16, width: 1, backgroundColor: '#e5e7eb', marginHorizontal: 12 },
     
     emptyContainer: { alignItems: 'center', marginTop: 50, width: '100%' },
     emptyText: { textAlign: 'center', marginTop: 10, color: '#94a3b8', fontSize: 14 },

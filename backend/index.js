@@ -9896,7 +9896,7 @@ app.put('/api/library/digital/:id', verifyToken, isAdmin, libraryUpload.fields([
 // --- STUDENT BEHAVIOUR / FEEDBACK API ROUTES ---
 // ==========================================================
 
-// 1. Get Distinct Classes (For Admin Filter Step 1)
+// 1. Get Distinct Classes
 app.get('/api/feedback/classes', async (req, res) => {
     try {
         const [rows] = await db.query("SELECT DISTINCT class_group FROM timetables ORDER BY class_group");
@@ -9907,7 +9907,7 @@ app.get('/api/feedback/classes', async (req, res) => {
     }
 });
 
-// 2. Get Subjects for a specific Class (For Filter Step 2)
+// 2. Get Subjects
 app.get('/api/feedback/subjects', async (req, res) => {
     const { class_group, teacher_id } = req.query; 
     try {
@@ -9928,7 +9928,7 @@ app.get('/api/feedback/subjects', async (req, res) => {
     }
 });
 
-// 3. Get Teachers for a specific Class & Subject (For Admin Filter Step 3)
+// 3. Get Teachers
 app.get('/api/feedback/teachers', async (req, res) => {
     const { class_group, subject } = req.query;
     try {
@@ -9946,7 +9946,7 @@ app.get('/api/feedback/teachers', async (req, res) => {
     }
 });
 
-// 4. Get classes assigned to a specific teacher
+// 4. Get classes assigned to a teacher
 app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     const { teacherId } = req.params;
     try {
@@ -9961,26 +9961,66 @@ app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     }
 });
 
-// 5. Get Students + Existing Feedback (UPDATED FOR NEW COLUMNS)
+// 5. Get Students + Feedback (MODIFIED for "All Subjects")
 app.get('/api/feedback/students', async (req, res) => {
-    const { class_group, teacher_id } = req.query;
+    const { class_group, teacher_id, mode } = req.query;
+
     try {
-        const sql = `
-            SELECT 
-                u.id as student_id, 
-                u.full_name, 
-                p.roll_no,
-                f.status_marks,
-                f.remarks_category
-            FROM users u
-            LEFT JOIN user_profiles p ON u.id = p.user_id
-            LEFT JOIN student_feedback f 
-                ON u.id = f.student_id 
-                AND f.teacher_id = ? 
-            WHERE u.role = 'student' AND u.class_group = ?
-            ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
-        `;
-        const [rows] = await db.query(sql, [teacher_id, class_group]);
+        let sql = "";
+        let params = [];
+
+        if (mode === 'overall') {
+            // --- ALL SUBJECTS VIEW (AGGREGATION) ---
+            // Calculates Average Stars and "Average" Remark (mapped to 1-3)
+            sql = `
+                SELECT 
+                    u.id as student_id, 
+                    u.full_name, 
+                    p.roll_no,
+                    ROUND(AVG(f.status_marks)) as status_marks,
+                    CASE ROUND(AVG(
+                        CASE f.remarks_category 
+                            WHEN 'Good' THEN 3 
+                            WHEN 'Average' THEN 2 
+                            WHEN 'Poor' THEN 1 
+                            ELSE NULL 
+                        END
+                    ))
+                        WHEN 3 THEN 'Good'
+                        WHEN 2 THEN 'Average'
+                        WHEN 1 THEN 'Poor'
+                        ELSE NULL
+                    END as remarks_category
+                FROM users u
+                LEFT JOIN user_profiles p ON u.id = p.user_id
+                LEFT JOIN student_feedback f ON u.id = f.student_id
+                WHERE u.role = 'student' AND u.class_group = ?
+                GROUP BY u.id
+                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
+            `;
+            params = [class_group];
+
+        } else {
+            // --- INDIVIDUAL TEACHER VIEW ---
+            sql = `
+                SELECT 
+                    u.id as student_id, 
+                    u.full_name, 
+                    p.roll_no,
+                    f.status_marks,
+                    f.remarks_category
+                FROM users u
+                LEFT JOIN user_profiles p ON u.id = p.user_id
+                LEFT JOIN student_feedback f 
+                    ON u.id = f.student_id 
+                    AND f.teacher_id = ? 
+                WHERE u.role = 'student' AND u.class_group = ?
+                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
+            `;
+            params = [teacher_id, class_group];
+        }
+
+        const [rows] = await db.query(sql, params);
         res.json(rows);
     } catch (err) {
         console.error(err);
@@ -9988,7 +10028,7 @@ app.get('/api/feedback/students', async (req, res) => {
     }
 });
 
-// 6. Save Feedback (UPDATED FOR NEW COLUMNS)
+// 6. Save Feedback
 app.post('/api/feedback', async (req, res) => {
     const { teacher_id, class_group, feedback_data } = req.body;
     const connection = await db.getConnection();
