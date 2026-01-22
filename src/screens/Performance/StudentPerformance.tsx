@@ -1,7 +1,7 @@
 /**
  * File: src/screens/report/StudentPerformance.tsx
  * Purpose: View class-wise student performance with Marks and Attendance.
- * Updates: Added Attendance Logic from reference, Table View, and Attendance Columns.
+ * Updated: Header Card Design Implementation.
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
@@ -37,10 +37,8 @@ const CLASS_SUBJECTS: any = {
     'Class 10': ['Telugu', 'English', 'Hindi', 'Maths', 'Science', 'Social']
 };
 
-// Define which classes use 20 marks for AT/UT
 const SENIOR_CLASSES = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 
-// Map API exam names to short codes
 const EXAM_NAME_TO_CODE: any = {
     'Assignment-1': 'AT1', 'Unitest-1': 'UT1', 
     'Assignment-2': 'AT2', 'Unitest-2': 'UT2',
@@ -51,41 +49,32 @@ const EXAM_NAME_TO_CODE: any = {
     'AT3': 'AT3', 'UT3': 'UT3', 'AT4': 'AT4', 'UT4': 'UT4'
 };
 
-// Strict Order for display
 const EXAM_ORDER = ['AT1', 'UT1', 'AT2', 'UT2', 'SA1', 'AT3', 'UT3', 'AT4', 'UT4', 'Pre-Final', 'SA2'];
 
 // --- COLORS ---
 const COLORS = {
-    primary: '#00897B',    // Teal
-    background: '#F5F7FA', // Light Grey-Blue
+    primary: '#008080',    // Teal (Updated)
+    background: '#F2F5F8', // Light Grey-Blue (Updated)
     cardBg: '#FFFFFF',
     textMain: '#263238',
     textSub: '#546E7A',
     
-    // STATUS COLORS
-    success: '#43A047',    // Green (85% - 100%)
-    average: '#1E88E5',    // Blue (50% - 85%)
-    poor: '#E53935',       // Red (0% - 50%)
+    success: '#43A047',    // Green
+    average: '#1E88E5',    // Blue
+    poor: '#E53935',       // Red
     
-    track: '#ECEFF1',      // Light Grey
+    track: '#ECEFF1',
     border: '#CFD8DC'
 };
 
-// --- HELPER: CUSTOM ROUNDING ---
+// --- HELPER ---
 const getRoundedPercentage = (value: number | string): number => {
     const floatVal = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(floatVal)) return 0;
-    
     const decimalPart = floatVal - Math.floor(floatVal);
-    
-    if (decimalPart > 0.5) {
-        return Math.ceil(floatVal);
-    } else {
-        return Math.floor(floatVal);
-    }
+    return decimalPart > 0.5 ? Math.ceil(floatVal) : Math.floor(floatVal);
 };
 
-// --- HELPER: STATUS COLOR LOGIC ---
 const getStatusColor = (perc: number | string) => {
     const val = getRoundedPercentage(perc);
     if (val >= 85) return COLORS.success; 
@@ -96,7 +85,6 @@ const getStatusColor = (perc: number | string) => {
 // --- COMPONENT: ANIMATED BAR ---
 const AnimatedBar = ({ percentage, marks, label, color, height = 200 }: any) => {
     const animatedHeight = useRef(new Animated.Value(0)).current;
-    
     const displayPercentage = getRoundedPercentage(percentage);
 
     useEffect(() => {
@@ -141,7 +129,7 @@ const StudentPerformance = () => {
     // Data
     const [students, setStudents] = useState<any[]>([]);
     const [marksData, setMarksData] = useState<any[]>([]);
-    const [attendanceMap, setAttendanceMap] = useState<any>({}); // Store attendance per student ID
+    const [attendanceMap, setAttendanceMap] = useState<any>({}); 
     
     // Filter State
     const [sortBy, setSortBy] = useState('roll_no');
@@ -155,7 +143,7 @@ const StudentPerformance = () => {
     const [compareExam, setCompareExam] = useState('Overall');
     const [compareSubject, setCompareSubject] = useState('All Subjects');
 
-    // --- 1. Fetch Classes ---
+    // --- FETCH DATA ---
     useEffect(() => {
         const fetchClasses = async () => {
             try {
@@ -170,7 +158,6 @@ const StudentPerformance = () => {
         fetchClasses();
     }, []);
 
-    // --- 2. Fetch Data (Marks + Attendance) ---
     useEffect(() => {
         if (selectedClass) {
             fetchAllData(selectedClass);
@@ -181,7 +168,6 @@ const StudentPerformance = () => {
     const fetchAllData = async (classGroup: string) => {
         setLoading(true);
         try {
-            // Parallel fetch for Marks and Attendance
             await Promise.all([
                 fetchClassPerformanceData(classGroup),
                 fetchAttendanceData(classGroup)
@@ -207,28 +193,20 @@ const StudentPerformance = () => {
 
     const fetchAttendanceData = async (classGroup: string) => {
         try {
-            // Using the endpoint from your provided reference
-            // viewMode=overall gets cumulative stats
             const response = await apiClient.get(`/attendance/admin-summary`, {
                 params: { classGroup: classGroup, viewMode: 'overall' }
             });
-            
             const attData = response.data?.studentDetails || [];
             const attMap: any = {};
-            
             attData.forEach((item: any) => {
                 const total = item.total_days || 0;
                 const present = item.present_days || 0;
                 const percentage = total > 0 ? (present / total) * 100 : 0;
-                // Key by student_id
                 attMap[item.student_id] = getRoundedPercentage(percentage);
             });
-            
             setAttendanceMap(attMap);
-
         } catch (error) {
             console.error('Error fetching attendance:', error);
-            // Don't block UI, just empty map
             setAttendanceMap({});
         }
     };
@@ -248,7 +226,7 @@ const StudentPerformance = () => {
         setIsGraphVisible(true);
     };
 
-    // --- 3. Process Data ---
+    // --- PROCESS DATA ---
     const processedData = useMemo(() => {
         if (!selectedClass || students.length === 0) return [];
 
@@ -256,7 +234,6 @@ const StudentPerformance = () => {
         const subjectCount = subjects.length;
         const isSeniorClass = SENIOR_CLASSES.includes(selectedClass);
 
-        // 1. Map Marks
         const marksMap: any = {};
         marksData.forEach(mark => {
             if (!marksMap[mark.student_id]) marksMap[mark.student_id] = {};
@@ -267,7 +244,6 @@ const StudentPerformance = () => {
             }
         });
 
-        // 2. Build Student Objects
         let results = students.map(student => {
             let studentTotalObtained = 0;
             let studentMaxTotal = 0; 
@@ -309,8 +285,6 @@ const StudentPerformance = () => {
 
             const rawOverallPerc = studentMaxTotal > 0 ? (studentTotalObtained / studentMaxTotal) * 100 : 0;
             const roundedOverallPerc = getRoundedPercentage(rawOverallPerc);
-            
-            // Inject Attendance Data
             const attendancePct = attendanceMap[student.id] !== undefined ? attendanceMap[student.id] : 0;
 
             return {
@@ -325,13 +299,11 @@ const StudentPerformance = () => {
             };
         });
 
-        // 3. Assign Ranks
         results.sort((a, b) => b.totalObtained - a.totalObtained);
         results = results.map((item, index) => ({ ...item, performanceRank: index + 1 }));
 
-        // 4. Final Sort
         if (sortBy === 'desc') {
-            // Already sorted by ranks (obtained)
+            // Already sorted
         } else if (sortBy === 'asc') {
             results.sort((a, b) => a.totalObtained - b.totalObtained);
         } else {
@@ -354,7 +326,6 @@ const StudentPerformance = () => {
     const studentList = processedData.students || [];
     const availableExams = ['Overall', ...(processedData.activeExams || [])];
 
-    // --- Comparison Data Logic ---
     const getComparisonData = () => {
         if (studentList.length === 0) return [];
         const isSeniorClass = SENIOR_CLASSES.includes(selectedClass);
@@ -420,10 +391,10 @@ const StudentPerformance = () => {
         return COLORS.textSub;
     };
 
-    // --- RENDER: TABLE VIEW ---
+    // --- RENDER TABLE ---
     const renderTableView = () => {
         return (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 15 }}>
                 <View style={styles.tableContainer}>
                     <View style={styles.tableHeaderRow}>
                         <Text style={[styles.tableHeaderCell, { width: 45 }]}>Rank</Text>
@@ -431,7 +402,6 @@ const StudentPerformance = () => {
                         <Text style={[styles.tableHeaderCell, { width: 60 }]}>Roll No</Text>
                         <Text style={[styles.tableHeaderCell, { width: 100 }]}>Marks</Text>
                         <Text style={[styles.tableHeaderCell, { width: 80 }]}>Perf %</Text>
-                        {/* Added Attendance Header */}
                         <Text style={[styles.tableHeaderCell, { width: 80 }]}>Attend %</Text>
                     </View>
 
@@ -463,7 +433,6 @@ const StudentPerformance = () => {
                                             {item.percentage}%
                                         </Text>
                                     </View>
-                                    {/* Added Attendance Cell */}
                                     <View style={{ width: 80, justifyContent: 'center', alignItems: 'center' }}>
                                         <Text style={{ fontWeight: 'bold', color: attendanceColor }}>
                                             {item.attendancePercentage}%
@@ -481,7 +450,7 @@ const StudentPerformance = () => {
         );
     };
 
-    // --- RENDER: CARD VIEW ---
+    // --- RENDER CARD ---
     const renderStudentItem = ({ item }: any) => {
         const rankColor = getColorForRank(item.performanceRank);
         const performanceColor = getStatusColor(item.percentage);
@@ -490,11 +459,7 @@ const StudentPerformance = () => {
 
         return (
             <View style={styles.card}>
-                <TouchableOpacity 
-                    style={styles.cardContent} 
-                    onPress={() => toggleExpand(item.id)}
-                    activeOpacity={0.8}
-                >
+                <TouchableOpacity style={styles.cardContent} onPress={() => toggleExpand(item.id)} activeOpacity={0.8}>
                     <View style={[styles.rankStrip, { backgroundColor: rankColor }]}>
                         <Text style={styles.rankText}>#{item.performanceRank}</Text>
                     </View>
@@ -508,9 +473,7 @@ const StudentPerformance = () => {
                                 <Text style={[styles.circleText, { color: performanceColor }]}>{item.percentage}%</Text>
                             </View>
                         </View>
-                        <Text style={styles.marksLabel}>
-                            Total Marks: <Text style={styles.marksValue}>{Math.round(item.totalObtained)} / {Math.round(item.maxTotal)}</Text>
-                        </Text>
+                        <Text style={styles.marksLabel}>Total Marks: <Text style={styles.marksValue}>{Math.round(item.totalObtained)} / {Math.round(item.maxTotal)}</Text></Text>
                         <View style={styles.progressTrack}>
                             <View style={[styles.progressFill, { width: `${Math.min(item.percentage, 100)}%`, backgroundColor: performanceColor }]} />
                         </View>
@@ -523,12 +486,10 @@ const StudentPerformance = () => {
 
                 {isExpanded && (
                     <View style={styles.expandedSection}>
-                        {/* Attendance Info in Card View */}
                         <View style={styles.attRow}>
                              <Text style={styles.attLabel}>Overall Attendance:</Text>
                              <Text style={[styles.attValue, { color: attendanceColor }]}>{item.attendancePercentage}%</Text>
                         </View>
-
                         <View style={styles.detailHeader}>
                             <Text style={styles.detailTitle}>Exam Breakdown</Text>
                             <TouchableOpacity style={styles.iconButton} onPress={() => handleOpenGraph(item.full_name, item.examBreakdown)}>
@@ -546,9 +507,7 @@ const StudentPerformance = () => {
                                 item.examBreakdown.map((exam: any, idx: number) => (
                                     <View key={idx} style={styles.bdRow}>
                                         <Text style={[styles.bdTxt, { flex: 1.5, fontWeight: '600' }]}>{exam.exam_type}</Text>
-                                        <Text style={[styles.bdTxt, { flex: 2, textAlign: 'center' }]}>
-                                            {Math.round(exam.total_obtained)} / {Math.round(exam.total_possible)}
-                                        </Text>
+                                        <Text style={[styles.bdTxt, { flex: 2, textAlign: 'center' }]}>{Math.round(exam.total_obtained)} / {Math.round(exam.total_possible)}</Text>
                                         <View style={{ flex: 1.5, alignItems: 'flex-end' }}>
                                             <View style={[styles.percentagePill, { backgroundColor: getStatusColor(exam.percentage) }]}>
                                                 <Text style={styles.pillText}>{exam.percentage}%</Text>
@@ -568,56 +527,58 @@ const StudentPerformance = () => {
 
     return (
         <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.headerContainer}>
-                <View style={styles.headerTitleRow}>
-                    <Text style={[styles.headerTitle, {flex: 1}]} numberOfLines={1}>Class Performance</Text>
-                    
-                    {/* BUTTON ROW: TABLE Toggle & Compare */}
-                    <View style={{flexDirection: 'row'}}>
-                        {/* Table View Toggle */}
-                        <TouchableOpacity 
-                            style={[styles.compareBtn, { backgroundColor: isTableView ? COLORS.success : '#546E7A', marginRight: 8 }]} 
-                            onPress={() => setIsTableView(!isTableView)}
-                        >
-                            <Icon name={isTableView ? "card-bulleted-outline" : "table-large"} size={14} color="#fff" />
-                            <Text style={styles.compareBtnText}>{isTableView ? "CARDS" : "TABLE"}</Text>
-                        </TouchableOpacity>
-
-                        {/* Compare Button */}
-                        <TouchableOpacity style={styles.compareBtn} onPress={() => setIsCompareVisible(true)}>
-                            <Icon name="scale-balance" size={14} color="#fff" />
-                            <Text style={styles.compareBtnText}>COMPARE</Text>
-                        </TouchableOpacity>
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <View style={styles.headerIconContainer}>
+                        <Icon name="poll" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Class Performance</Text>
+                        <Text style={styles.headerSubtitle}>Analytics & Reports</Text>
                     </View>
                 </View>
-
-                {/* Class & Sort Filters */}
-                <View style={styles.filterContainer}>
-                    <View style={styles.filterBox}>
-                        <Picker selectedValue={selectedClass} onValueChange={setSelectedClass} style={styles.picker}>
-                            {classList.map(c => <Picker.Item key={c} label={c} value={c} />)}
-                        </Picker>
-                    </View>
-                    <View style={styles.filterBox}>
-                        <Picker selectedValue={sortBy} onValueChange={setSortBy} style={styles.picker}>
-                            <Picker.Item label="Roll No" value="roll_no" />
-                            <Picker.Item label="High to Low" value="desc" />
-                            <Picker.Item label="Low to High" value="asc" />
-                        </Picker>
-                    </View>
+                
+                {/* Actions inside Header */}
+                <View style={{flexDirection: 'row', gap: 10}}>
+                     <TouchableOpacity style={styles.headerActionBtn} onPress={() => setIsTableView(!isTableView)}>
+                        <Icon name={isTableView ? "card-bulleted-outline" : "table-large"} size={22} color="#008080" />
+                     </TouchableOpacity>
+                     <TouchableOpacity style={styles.headerActionBtn} onPress={() => setIsCompareVisible(true)}>
+                        <Icon name="scale-balance" size={22} color="#008080" />
+                     </TouchableOpacity>
                 </View>
             </View>
 
-            {/* Content */}
+            {/* Filter Section */}
+            <View style={styles.filterContainer}>
+                <View style={styles.filterBox}>
+                    <Picker selectedValue={selectedClass} onValueChange={setSelectedClass} style={styles.picker}>
+                        {classList.map(c => <Picker.Item key={c} label={c} value={c} />)}
+                    </Picker>
+                </View>
+                <View style={styles.filterBox}>
+                    <Picker selectedValue={sortBy} onValueChange={setSortBy} style={styles.picker}>
+                        <Picker.Item label="Roll No" value="roll_no" />
+                        <Picker.Item label="High to Low" value="desc" />
+                        <Picker.Item label="Low to High" value="asc" />
+                    </Picker>
+                </View>
+            </View>
+
+            {/* Note Section */}
+            <View style={styles.noteContainer}>
+                <Text style={styles.noteText}>
+                    Note: Performance ranking based on total marks obtained across all exams.
+                </Text>
+            </View>
+
             {loading ? (
                 <View style={styles.loadingContainer}><ActivityIndicator size="large" color={COLORS.primary} /></View>
             ) : (
-                // Conditional Rendering: Table vs List
                 isTableView ? (
-                    <View style={{ flex: 1, backgroundColor: '#fff' }}>
-                        {renderTableView()}
-                    </View>
+                    <View style={{ flex: 1, backgroundColor: '#fff' }}>{renderTableView()}</View>
                 ) : (
                     <FlatList
                         data={studentList}
@@ -630,7 +591,7 @@ const StudentPerformance = () => {
                 )
             )}
 
-            {/* --- MODAL: INDIVIDUAL GRAPH --- */}
+            {/* --- MODAL: GRAPH --- */}
             <Modal visible={isGraphVisible} transparent={true} animationType="fade" onRequestClose={() => setIsGraphVisible(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.graphModalCard}>
@@ -656,9 +617,9 @@ const StudentPerformance = () => {
                             </ScrollView>
                         </View>
                         <View style={styles.legendRow}>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>85-100% (Topper)</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>50-85% (Avg)</Text></View>
-                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>0-50% (Least)</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.success}]} /><Text style={styles.legendTxt}>85-100%</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.average}]} /><Text style={styles.legendTxt}>50-85%</Text></View>
+                            <View style={styles.legendItem}><View style={[styles.dot, {backgroundColor: COLORS.poor}]} /><Text style={styles.legendTxt}>0-50%</Text></View>
                         </View>
                     </View>
                 </View>
@@ -721,28 +682,71 @@ const StudentPerformance = () => {
 };
 
 const styles = StyleSheet.create({
-    // Layout
     container: { flex: 1, backgroundColor: COLORS.background },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listPadding: { padding: 15, paddingBottom: 40 },
+    listPadding: { paddingHorizontal: 15, paddingBottom: 40 },
     emptyText: { textAlign: 'center', color: COLORS.textSub, marginTop: 30, fontStyle: 'italic' },
 
-    // Header
-    headerContainer: { backgroundColor: '#FFF', padding: 15, paddingBottom: 15, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, elevation: 4, shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.1, shadowRadius: 4 },
-    headerTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-    headerTitle: { fontSize: 18, fontWeight: '800', color: COLORS.primary, letterSpacing: 0.5 },
-    
-    // UPDATED BUTTON STYLES
-    compareBtn: { flexDirection: 'row', backgroundColor: '#a13815ff', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 25, alignItems: 'center', elevation: 3 },
-    compareBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 10, marginLeft: 5, letterSpacing: 0.5 },
-    
-    filterContainer: { flexDirection: 'row', gap: 12 },
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333333' },
+    headerSubtitle: { fontSize: 13, color: '#666666' },
+    headerActionBtn: {
+        padding: 5,
+        backgroundColor: '#f0fdfa',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#ccfbf1'
+    },
+
+    // --- FILTERS & NOTE ---
+    filterContainer: { flexDirection: 'row', gap: 12, paddingHorizontal: 15, marginBottom: 5 },
     filterBox: { flex: 1, backgroundColor: '#F0F2F5', borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#E0E0E0', height: 45, justifyContent: 'center' },
     picker: { width: '100%', color: COLORS.textMain },
+    
+    noteContainer: {
+        backgroundColor: '#FFF8E1', 
+        marginHorizontal: 15,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#FFE0B2', 
+        marginBottom: 10
+    },
+    noteText: { fontSize: 11, color: '#F57C00', fontWeight: 'bold', textAlign: 'center' },
 
     // --- TABLE STYLES ---
-    tableContainer: { padding: 10 },
-    tableHeaderRow: { flexDirection: 'row', backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 5, marginBottom: 5 },
+    tableContainer: { backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden', elevation: 2, marginBottom: 20 },
+    tableHeaderRow: { flexDirection: 'row', backgroundColor: COLORS.primary, paddingVertical: 10, paddingHorizontal: 5 },
     tableHeaderCell: { color: '#FFF', fontWeight: 'bold', fontSize: 11, textAlign: 'center' },
     tableRow: { flexDirection: 'row', backgroundColor: '#FFF', paddingVertical: 0, paddingHorizontal: 5, borderBottomWidth: 1, borderBottomColor: '#EEE', alignItems: 'center', minHeight: 50 },
     tableRowAlt: { backgroundColor: '#F9FAFB' },
@@ -780,7 +784,7 @@ const styles = StyleSheet.create({
     percentagePill: { paddingVertical: 2, paddingHorizontal: 8, borderRadius: 10 },
     pillText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
 
-    // Attendance Row in Expanded Card
+    // Attendance Row
     attRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#EEE' },
     attLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textMain },
     attValue: { fontSize: 16, fontWeight: 'bold' },
@@ -804,9 +808,9 @@ const styles = StyleSheet.create({
     noDataContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', width: SCREEN_WIDTH },
     noDataTxt: { marginTop: 10, color: COLORS.textSub },
 
-    // Animated Bar
+    // Bar Graph
     barWrapper: { width: 55, alignItems: 'center', justifyContent: 'flex-end', marginHorizontal: 8 },
-    barLabelTop: { marginBottom: 4, fontSize: 12, fontWeight: 'bold', textAlign: 'center', color: COLORS.textMain },
+    barLabelTop: { marginBottom: 4, fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
     barBackground: { width: 30, height: '80%', backgroundColor: COLORS.track, borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end', position: 'relative' },
     barFill: { width: '100%', borderRadius: 4 },
     barTextContainer: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'center', alignItems: 'center', zIndex: 10 },

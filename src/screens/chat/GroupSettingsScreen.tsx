@@ -4,11 +4,12 @@ import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { getProfileImageSource } from '../../utils/imageHelpers';
-import ImageViewing from 'react-native-image-viewing'; // Import the image viewer
+import ImageViewing from 'react-native-image-viewing';
 
-const THEME = { primary: '#007bff', background: '#f4f7fc', text: '#212529', border: '#dee2e6', white: '#ffffff', danger: '#dc3545', muted: '#6c757d' };
+const THEME = { primary: '#008080', background: '#F2F5F8', text: '#212529', border: '#dee2e6', white: '#ffffff', danger: '#dc3545', muted: '#6c757d', cardBg: '#FFFFFF' };
 
 const GroupSettingsScreen = () => {
     const { user } = useAuth();
@@ -18,9 +19,7 @@ const GroupSettingsScreen = () => {
     const [groupName, setGroupName] = useState(group.name);
     const [isSaving, setIsSaving] = useState(false);
     
-    // State to control the image viewer modal
     const [isViewerVisible, setViewerVisible] = useState(false);
-
     const isCreator = user?.id === group.created_by;
 
     const handlePickImage = () => {
@@ -71,34 +70,37 @@ const GroupSettingsScreen = () => {
         );
     };
 
-    // [THE FIX] This logic now correctly handles both network URLs and local default images.
     const imageSourceForDisplay = getProfileImageSource(group.group_dp_url);
-
-    const imagesForViewer = group.group_dp_url
-        ? [{ uri: imageSourceForDisplay.uri }] // If there's a URL, use the object format with uri
-        : [imageSourceForDisplay];             // If not, pass the direct require() reference (a number)
+    const imagesForViewer = group.group_dp_url ? [{ uri: imageSourceForDisplay.uri }] : [imageSourceForDisplay];
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* The ImageViewing component now receives the correctly formatted data */}
-            <ImageViewing
-                images={imagesForViewer}
-                imageIndex={0}
-                visible={isViewerVisible}
-                onRequestClose={() => setViewerVisible(false)}
-            />
+            <ImageViewing images={imagesForViewer} imageIndex={0} visible={isViewerVisible} onRequestClose={() => setViewerVisible(false)} />
+
+            {/* Header Card */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{marginRight: 10, padding: 4}}>
+                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="settings" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Settings</Text>
+                        <Text style={styles.headerSubtitle}>Group Info</Text>
+                    </View>
+                </View>
+            </View>
 
             <ScrollView contentContainerStyle={styles.scrollContainer}>
                 <View style={styles.dpContainer}>
-                    {/* TouchableOpacity to enlarge the image */}
                     <TouchableOpacity onPress={() => setViewerVisible(true)}>
                         <Image source={imageSourceForDisplay} style={styles.dpImage} />
                     </TouchableOpacity>
-
-                    {/* TouchableOpacity for the edit button (camera icon) */}
                     {isCreator && (
                         <TouchableOpacity style={styles.dpEditButton} onPress={handlePickImage}>
-                            <Icon name="camera" size={24} color={THEME.white} />
+                            <Icon name="camera" size={20} color={THEME.white} />
                         </TouchableOpacity>
                     )}
                 </View>
@@ -125,10 +127,43 @@ const GroupSettingsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: THEME.white },
+    container: { flex: 1, backgroundColor: THEME.background },
+    
+    // Header Card
+    headerCard: {
+        backgroundColor: THEME.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.text },
+    headerSubtitle: { fontSize: 13, color: THEME.muted },
+
     scrollContainer: { padding: 20, alignItems: 'center' },
     dpContainer: { marginBottom: 30, position: 'relative' },
-    dpImage: { width: 150, height: 150, borderRadius: 75, backgroundColor: '#ccc' },
+    dpImage: { width: 140, height: 140, borderRadius: 70, backgroundColor: '#ccc', borderWidth: 4, borderColor: '#fff' },
     dpEditButton: { 
         position: 'absolute', 
         bottom: 5, 
@@ -137,17 +172,13 @@ const styles = StyleSheet.create({
         padding: 10, 
         borderRadius: 20, 
         elevation: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 3,
     },
-    fieldContainer: { width: '100%', marginBottom: 20 },
-    label: { fontSize: 16, color: THEME.text, marginBottom: 8, fontWeight: '500' },
-    input: { backgroundColor: THEME.white, paddingHorizontal: 15, paddingVertical: 12, borderRadius: 8, fontSize: 16, borderWidth: 1, borderColor: THEME.border, width: '100%' },
-    disabledInput: { backgroundColor: THEME.background, color: THEME.muted },
-    saveButton: { backgroundColor: THEME.primary, paddingVertical: 14, borderRadius: 8, alignItems: 'center', width: '100%' },
-    deleteButton: { backgroundColor: THEME.danger, paddingVertical: 14, borderRadius: 8, alignItems: 'center', width: '100%' },
+    fieldContainer: { width: '100%', marginBottom: 20, backgroundColor: '#fff', padding: 20, borderRadius: 12, elevation: 1 },
+    label: { fontSize: 14, color: THEME.muted, marginBottom: 8, fontWeight: '600' },
+    input: { backgroundColor: '#f9f9f9', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 8, fontSize: 16, borderWidth: 1, borderColor: THEME.border, width: '100%' },
+    disabledInput: { backgroundColor: '#f0f0f0', color: THEME.muted },
+    saveButton: { backgroundColor: THEME.primary, paddingVertical: 14, borderRadius: 30, alignItems: 'center', width: '100%', elevation: 3 },
+    deleteButton: { backgroundColor: THEME.danger, paddingVertical: 14, borderRadius: 30, alignItems: 'center', width: '100%', elevation: 3 },
     disabledButton: { backgroundColor: THEME.muted },
     buttonText: { color: THEME.white, fontSize: 16, fontWeight: 'bold' },
 });

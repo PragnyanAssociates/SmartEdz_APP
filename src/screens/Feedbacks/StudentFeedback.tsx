@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, SafeAreaView, ScrollView,
-    TouchableOpacity, TextInput, ActivityIndicator, Alert
+    TouchableOpacity, ActivityIndicator, Alert
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -11,19 +11,20 @@ import { useAuth } from '../../context/AuthContext';
 // --- CONSTANTS ---
 const COL_WIDTHS = {
     ROLL: 50,      
-    NAME: 160,     
-    STATUS: 150,   
-    REMARKS: 320   
+    NAME: 150,     
+    STATUS: 200,   // Wider to fit numbers 1-5
+    REMARKS: 200   // Width to fit G/A/P buttons
 };
 
 const TABLE_MIN_WIDTH = COL_WIDTHS.ROLL + COL_WIDTHS.NAME + COL_WIDTHS.STATUS + COL_WIDTHS.REMARKS; 
 
+// Updated Interface to match new DB structure
 interface StudentFeedbackRow {
     student_id: number;
     full_name: string;
     roll_no: string;
-    behavior_status: 'Good' | 'Average' | 'Poor' | null;
-    remarks: string;
+    status_marks: number | null; // 1 to 5
+    remarks_category: 'Good' | 'Average' | 'Poor' | null;
 }
 
 interface Teacher {
@@ -56,8 +57,6 @@ const StudentFeedback = () => {
     }, [user]);
 
     // --- 2. API Calls for Filters ---
-
-    // Step 1: Fetch Classes (UPDATED to set default)
     const fetchClasses = async () => {
         try {
             let classesData = [];
@@ -68,26 +67,20 @@ const StudentFeedback = () => {
                 const response = await apiClient.get(`/teacher-classes/${user.id}`);
                 classesData = response.data;
             }
-            
             setAllClasses(classesData);
-
-            // --- UPDATE: Set Default Class ---
             if (classesData.length > 0) {
-                // If "Class 10" exists in the list, select it. Otherwise, select the first one.
                 const defaultClass = classesData.includes("Class 10") ? "Class 10" : classesData[0];
                 setSelectedClass(defaultClass);
             }
         } catch (error) { console.error('Error fetching classes', error); }
     };
 
-    // Step 2: When Class Changes -> Fetch Subjects
     useEffect(() => {
         if (!selectedClass) {
             setAvailableSubjects([]);
             setSelectedSubject('');
             return;
         }
-
         const fetchSubjects = async () => {
             try {
                 const params: any = { class_group: selectedClass };
@@ -95,24 +88,19 @@ const StudentFeedback = () => {
 
                 const response = await apiClient.get('/feedback/subjects', { params });
                 setAvailableSubjects(response.data);
-                
-                // Auto-select first subject if available
                 if (response.data.length > 0) setSelectedSubject(response.data[0]);
                 else setSelectedSubject('');
-
             } catch (error) { console.error('Error fetching subjects', error); }
         };
         fetchSubjects();
     }, [selectedClass, user]);
 
-    // Step 3: When Subject Changes -> Fetch Teachers
     useEffect(() => {
         if (!selectedClass || !selectedSubject) {
             setAvailableTeachers([]);
             if (user?.role === 'admin') setSelectedTeacherId(null);
             return;
         }
-
         if (user?.role === 'teacher') {
             setSelectedTeacherId(user.id);
         } else if (user?.role === 'admin') {
@@ -122,16 +110,13 @@ const StudentFeedback = () => {
                         params: { class_group: selectedClass, subject: selectedSubject }
                     });
                     setAvailableTeachers(response.data);
-                    
                     if (response.data.length > 0) setSelectedTeacherId(response.data[0].id);
                     else setSelectedTeacherId(null);
-
                 } catch (error) { console.error('Error fetching teachers', error); }
             };
             fetchTeachersForSubject();
         }
     }, [selectedClass, selectedSubject, user]);
-
 
     // --- 3. Fetch Student Data ---
     const fetchStudentData = useCallback(async () => {
@@ -145,10 +130,11 @@ const StudentFeedback = () => {
             const response = await apiClient.get('/feedback/students', {
                 params: { class_group: selectedClass, teacher_id: selectedTeacherId }
             });
+            // Map response to state
             const formattedData = response.data.map((s: any) => ({
                 ...s,
-                behavior_status: s.behavior_status || null,
-                remarks: s.remarks || ''
+                status_marks: s.status_marks || null,
+                remarks_category: s.remarks_category || null
             }));
             setStudents(formattedData);
             setHasChanges(false);
@@ -160,7 +146,6 @@ const StudentFeedback = () => {
         }
     }, [selectedClass, selectedTeacherId]);
 
-    // Trigger fetch when all filters are ready
     useEffect(() => {
         if (selectedClass && selectedSubject && selectedTeacherId) {
             fetchStudentData();
@@ -178,8 +163,8 @@ const StudentFeedback = () => {
                 class_group: selectedClass,
                 feedback_data: students.map(s => ({
                     student_id: s.student_id,
-                    behavior_status: s.behavior_status,
-                    remarks: s.remarks
+                    status_marks: s.status_marks,
+                    remarks_category: s.remarks_category
                 }))
             };
             await apiClient.post('/feedback', payload);
@@ -202,22 +187,24 @@ const StudentFeedback = () => {
         setHasChanges(true);
     };
 
-    // --- Components ---
-    const StatusButton = ({ label, currentStatus, targetStatus, color, onPress, disabled }: any) => {
-        const isSelected = currentStatus === targetStatus;
+    // --- Sub-Components ---
+
+    // Button for "Remarks" (Good/Avg/Poor)
+    const RemarkButton = ({ label, targetValue, currentValue, color, onPress, disabled }: any) => {
+        const isSelected = currentValue === targetValue;
         return (
             <TouchableOpacity 
                 style={[
-                    styles.statusBtn, 
+                    styles.remarkBtn, 
                     isSelected 
-                        ? { backgroundColor: color, borderColor: color, borderWidth: 1 } 
-                        : { borderColor: '#E0E0E0', backgroundColor: '#FFF', borderWidth: 1 }
+                        ? { backgroundColor: color, borderColor: color } 
+                        : { borderColor: '#E0E0E0', backgroundColor: '#FFF' }
                 ]}
                 onPress={onPress}
                 disabled={disabled}
             >
                 <Text style={[
-                    styles.statusBtnText, 
+                    styles.remarkBtnText, 
                     isSelected ? { color: '#FFF' } : { color: '#9e9e9e' }
                 ]}>
                     {label}
@@ -226,10 +213,29 @@ const StudentFeedback = () => {
         );
     };
 
+    // Button for "Status" (1, 2, 3, 4, 5)
+    const RatingCircle = ({ value, currentValue, onPress, disabled }: any) => {
+        const isSelected = currentValue === value;
+        return (
+            <TouchableOpacity 
+                style={[
+                    styles.ratingCircle,
+                    isSelected ? { backgroundColor: '#008080', borderColor: '#008080' } : { borderColor: '#CFD8DC' }
+                ]}
+                onPress={() => onPress(value)}
+                disabled={disabled}
+            >
+                <Text style={[styles.ratingText, isSelected && { color: '#FFF', fontWeight: 'bold' }]}>
+                    {value}
+                </Text>
+            </TouchableOpacity>
+        );
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             
-            {/* --- HEADER --- */}
+            {/* HEADER */}
             <View style={styles.headerCard}>
                 <View style={styles.headerLeft}>
                     <View style={styles.headerIconContainer}>
@@ -242,9 +248,8 @@ const StudentFeedback = () => {
                 </View>
             </View>
 
-            {/* --- FILTERS --- */}
+            {/* FILTERS */}
             <View style={styles.filterContainer}>
-                {/* 1. Class Filter */}
                 <View style={styles.pickerWrapper}>
                     <Picker
                         selectedValue={selectedClass}
@@ -257,7 +262,6 @@ const StudentFeedback = () => {
                     </Picker>
                 </View>
 
-                {/* 2. Subject Filter */}
                 {selectedClass !== '' && (
                     <View style={styles.pickerWrapper}>
                         <Picker
@@ -273,7 +277,6 @@ const StudentFeedback = () => {
                     </View>
                 )}
 
-                {/* 3. Teacher Filter (Admin Only) */}
                 {user?.role === 'admin' && selectedSubject !== '' && (
                     <View style={styles.pickerWrapper}>
                         <Picker
@@ -290,7 +293,7 @@ const StudentFeedback = () => {
                 )}
             </View>
 
-            {/* --- TABLE AREA --- */}
+            {/* TABLE */}
             <View style={{flex: 1}}>
                 <ScrollView 
                     horizontal 
@@ -303,8 +306,8 @@ const StudentFeedback = () => {
                         <View style={styles.tableHeader}>
                             <Text style={[styles.th, { width: COL_WIDTHS.ROLL, textAlign: 'center' }]}>Roll</Text>
                             <Text style={[styles.th, { width: COL_WIDTHS.NAME }]}>Student Name</Text>
-                            <Text style={[styles.th, { width: COL_WIDTHS.STATUS, textAlign: 'center' }]}>Status</Text>
-                            <Text style={[styles.th, { width: COL_WIDTHS.REMARKS, paddingLeft: 10 }]}>Remarks</Text>
+                            <Text style={[styles.th, { width: COL_WIDTHS.STATUS, textAlign: 'center' }]}>Status (1-5)</Text>
+                            <Text style={[styles.th, { width: COL_WIDTHS.REMARKS, textAlign: 'center' }]}>Remarks</Text>
                         </View>
 
                         {/* List */}
@@ -322,21 +325,24 @@ const StudentFeedback = () => {
                                                 {item.full_name}
                                             </Text>
                                             
-                                            <View style={{ width: COL_WIDTHS.STATUS, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
-                                                <StatusButton label="G" targetStatus="Good" currentStatus={item.behavior_status} color="#10b981" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'behavior_status', 'Good')} />
-                                                <StatusButton label="A" targetStatus="Average" currentStatus={item.behavior_status} color="#3b82f6" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'behavior_status', 'Average')} />
-                                                <StatusButton label="P" targetStatus="Poor" currentStatus={item.behavior_status} color="#ef4444" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'behavior_status', 'Poor')} />
+                                            {/* STATUS COLUMN (Marks 1-5) */}
+                                            <View style={{ width: COL_WIDTHS.STATUS, flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+                                                {[1, 2, 3, 4, 5].map((val) => (
+                                                    <RatingCircle 
+                                                        key={val} 
+                                                        value={val} 
+                                                        currentValue={item.status_marks} 
+                                                        disabled={user?.role === 'admin'}
+                                                        onPress={(v: number) => updateStudentFeedback(item.student_id, 'status_marks', v)}
+                                                    />
+                                                ))}
                                             </View>
 
-                                            <View style={{ width: COL_WIDTHS.REMARKS, paddingLeft: 10, paddingRight: 10 }}>
-                                                <TextInput 
-                                                    style={styles.input}
-                                                    placeholder="..."
-                                                    placeholderTextColor="#bdbdbd"
-                                                    value={item.remarks}
-                                                    editable={user?.role !== 'admin'}
-                                                    onChangeText={(text) => updateStudentFeedback(item.student_id, 'remarks', text)}
-                                                />
+                                            {/* REMARKS COLUMN (G/A/P) */}
+                                            <View style={{ width: COL_WIDTHS.REMARKS, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+                                                <RemarkButton label="G" targetValue="Good" currentValue={item.remarks_category} color="#10b981" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Good')} />
+                                                <RemarkButton label="A" targetValue="Average" currentValue={item.remarks_category} color="#3b82f6" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Average')} />
+                                                <RemarkButton label="P" targetValue="Poor" currentValue={item.remarks_category} color="#ef4444" disabled={user?.role === 'admin'} onPress={() => updateStudentFeedback(item.student_id, 'remarks_category', 'Poor')} />
                                             </View>
                                         </View>
                                     ))
@@ -354,7 +360,7 @@ const StudentFeedback = () => {
                 </ScrollView>
             </View>
 
-            {/* --- SAVE BUTTON --- */}
+            {/* SAVE BUTTON */}
             {user?.role === 'teacher' && hasChanges && (
                 <View style={styles.floatingSaveContainer}>
                     <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={loading}>
@@ -365,12 +371,13 @@ const StudentFeedback = () => {
                 </View>
             )}
 
-            {/* --- FOOTER LEGEND --- */}
+            {/* FOOTER LEGEND */}
             <View style={styles.footerContainer}>
                 <View style={styles.legendContainer}>
-                    <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#10b981' }]} /><Text style={styles.legendText}>Good</Text></View>
-                    <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#3b82f6' }]} /><Text style={styles.legendText}>Avg</Text></View>
-                    <View style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: '#ef4444' }]} /><Text style={styles.legendText}>Poor</Text></View>
+                    <Text style={[styles.legendText, {marginRight: 10}]}>Scale:</Text>
+                    <View style={styles.legendItem}><Text style={styles.legendText}>1 (Low)</Text></View>
+                    <Text style={{color:'#ccc'}}>|</Text>
+                    <View style={styles.legendItem}><Text style={styles.legendText}>5 (High)</Text></View>
                 </View>
             </View>
 
@@ -434,20 +441,16 @@ const styles = StyleSheet.create({
     rowAlt: { backgroundColor: '#f8fafc' },
     td: { fontSize: 13, color: '#374151' },
     
-    // Status Buttons
-    statusBtn: { width: 36, height: 36, borderRadius: 6, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
-    statusBtnText: { fontWeight: 'bold', fontSize: 14 },
-    
-    // Input
-    input: { 
-        borderBottomWidth: 1, 
-        borderBottomColor: '#cbd5e1', 
-        height: 40, 
-        fontSize: 13, 
-        paddingVertical: 5,
-        color: '#374151',
-        width: '100%' 
+    // Remark Buttons (G, A, P)
+    remarkBtn: { width: 36, height: 36, borderRadius: 6, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+    remarkBtnText: { fontWeight: 'bold', fontSize: 14 },
+
+    // Rating Circles (1-5)
+    ratingCircle: {
+        width: 30, height: 30, borderRadius: 15, borderWidth: 1, 
+        justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF'
     },
+    ratingText: { fontSize: 12, color: '#455a64' },
     
     // Floating Save
     floatingSaveContainer: {
@@ -468,7 +471,6 @@ const styles = StyleSheet.create({
     },
     legendContainer: { flexDirection: 'row', alignItems: 'center' },
     legendItem: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 10 },
-    legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 5 },
     legendText: { fontSize: 12, color: '#6b7280', fontWeight: '500' },
     
     emptyContainer: { alignItems: 'center', marginTop: 50, width: '100%' },

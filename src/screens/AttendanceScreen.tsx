@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; // Added for consistent icons
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 import { useNavigation } from '@react-navigation/native';
@@ -27,10 +28,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 // --- Constants ---
-const PRIMARY_COLOR = '#008080'; // Teal color from your image
-const TEXT_COLOR_DARK = '#37474F';
-const TEXT_COLOR_MEDIUM = '#566573';
-const BORDER_COLOR = '#E0E0E0';
+const PRIMARY_COLOR = '#008080'; // Teal
+const BACKGROUND_COLOR = '#F2F5F8';
+const CARD_BG = '#FFFFFF';
+const TEXT_COLOR_DARK = '#263238';
+const TEXT_COLOR_MEDIUM = '#546E7A';
+const BORDER_COLOR = '#CFD8DC';
 const GREEN = '#43A047';
 const RED = '#E53935';
 const BLUE = '#1E88E5';
@@ -40,7 +43,7 @@ const ORANGE = '#FB8C00';
 
 const CLASS_GROUPS = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 
-// --- Helper: Date Formatter (DD/MM/YYYY) ---
+// --- Helper: Date Formatter ---
 const formatDate = (date) => {
     if (!date) return '';
     const d = new Date(date);
@@ -74,27 +77,27 @@ const HistoryDayCard = ({ item, index }) => {
     );
 };
 
-// --- Main Router Component ---
+// --- Main Router ---
 const AttendanceScreen = ({ route }) => {
   const { user } = useAuth();
   if (!user) return <View style={styles.loaderContainer}><Text style={styles.noDataText}>User not found.</Text></View>;
 
   switch (user.role) {
     case 'teacher':
-      // If params exist (class_group, etc.), show Live View, otherwise Summary View
       return route?.params ? <TeacherLiveAttendanceView route={route} teacher={user} /> : <TeacherSummaryView teacher={user} />;
     case 'student':
       return <StudentAttendanceView student={user} />;
     case 'admin':
       return <AdminAttendanceView />;
     default:
-      return <View style={styles.loaderContainer}><Text style={styles.noDataText}>No attendance view available for your role.</Text></View>;
+      return <View style={styles.loaderContainer}><Text style={styles.noDataText}>No attendance view available.</Text></View>;
   }
 };
 
-// --- MODIFIED: Generic Student History Component with Yearly/Range ---
+// --- MODIFIED: Generic Student History Component ---
 const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
-    const [viewMode, setViewMode] = useState('monthly');
+    // UPDATED: Default set to 'daily'
+    const [viewMode, setViewMode] = useState('daily');
     const [data, setData] = useState({ summary: {}, history: [] });
     const [isLoading, setIsLoading] = useState(true);
     
@@ -103,7 +106,7 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     const [fromDate, setFromDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)));
     const [toDate, setToDate] = useState(new Date());
 
-    // Picker Visibility
+    // Pickers
     const [showMainPicker, setShowMainPicker] = useState(false);
     const [showFromPicker, setShowFromPicker] = useState(false);
     const [showToPicker, setShowToPicker] = useState(false);
@@ -130,7 +133,6 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
         }
     };
 
-    // Auto fetch on mode/date change (except custom range)
     useEffect(() => {
         if (viewMode !== 'custom') fetchHistory();
     }, [studentId, viewMode, selectedDate]);
@@ -155,45 +157,54 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
         return ((data.summary.present_days / data.summary.total_days) * 100).toFixed(1);
     }, [data.summary]);
 
+    // Subtitle Logic
+    let subTitle = '';
+    if (viewMode === 'daily') subTitle = `Date: ${formatDate(selectedDate)}`;
+    else if (viewMode === 'monthly') subTitle = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    else if (viewMode === 'yearly') subTitle = `Year: ${selectedDate.getFullYear()}`;
+    else subTitle = 'Custom Range';
+
     return (
         <SafeAreaView style={styles.container}>
-            <Animatable.View animation="fadeInDown" duration={500}>
-                <View style={styles.header}>
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
                     {onBack && (
-                        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                            <Icon name="arrow-left" size={24} color={TEXT_COLOR_DARK} />
+                        <TouchableOpacity onPress={onBack} style={{marginRight: 10, padding: 4}}>
+                            <MaterialIcons name="arrow-back" size={24} color="#333" />
                         </TouchableOpacity>
                     )}
-                    <View style={{flex: 1, alignItems: 'center', paddingRight: onBack ? 30 : 0 }}>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="history" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
                         <Text style={styles.headerTitle}>{headerTitle}</Text>
-                        {viewMode === 'daily' && <Text style={styles.headerSubtitleSmall}>Date: {formatDate(selectedDate)}</Text>}
-                        {viewMode === 'monthly' && <Text style={styles.headerSubtitleSmall}>{selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>}
-                        {viewMode === 'yearly' && <Text style={styles.headerSubtitleSmall}>Year: {selectedDate.getFullYear()}</Text>}
-                        {viewMode === 'custom' && <Text style={styles.headerSubtitleSmall}>Custom Range</Text>}
+                        <Text style={styles.headerSubtitle}>{subTitle}</Text>
                     </View>
                 </View>
-            </Animatable.View>
-
-            {/* TABS: Daily | Monthly | Yearly | Range */}
-            <View style={styles.toggleContainer}>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'daily' && styles.toggleButtonActive]} onPress={() => setViewMode('daily')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'daily' && styles.toggleButtonTextActive]}>Daily</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'monthly' && styles.toggleButtonActive]} onPress={() => setViewMode('monthly')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'monthly' && styles.toggleButtonTextActive]}>Monthly</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'yearly' && styles.toggleButtonActive]} onPress={() => setViewMode('yearly')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'yearly' && styles.toggleButtonTextActive]}>Yearly</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'custom' && styles.toggleButtonActive]} onPress={() => setViewMode('custom')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'custom' && styles.toggleButtonTextActive]}>Range</Text>
-                </TouchableOpacity>
                 
+                {/* Date Picker Button in Header */}
                 {viewMode !== 'custom' && (
-                    <TouchableOpacity style={styles.calendarButton} onPress={() => setShowMainPicker(true)}>
-                        <Icon name="calendar" size={22} color={PRIMARY_COLOR} />
+                    <TouchableOpacity style={styles.headerActionBtn} onPress={() => setShowMainPicker(true)}>
+                        <MaterialIcons name="calendar-today" size={20} color="#008080" />
                     </TouchableOpacity>
                 )}
+            </View>
+
+            {/* TABS */}
+            <View style={styles.toggleContainer}>
+                {['daily', 'monthly', 'yearly', 'custom'].map(mode => (
+                    <TouchableOpacity 
+                        key={mode}
+                        style={[styles.toggleButton, viewMode === mode && styles.toggleButtonActive]} 
+                        onPress={() => setViewMode(mode)}
+                    >
+                        <Text style={[styles.toggleButtonText, viewMode === mode && styles.toggleButtonTextActive]}>
+                            {capitalize(mode)}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
             </View>
 
             {/* Range Inputs */}
@@ -214,6 +225,7 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
                 </Animatable.View>
             )}
 
+            {/* Pickers */}
             {showMainPicker && <DateTimePicker value={selectedDate} mode="date" onChange={onMainDateChange} />}
             {showFromPicker && <DateTimePicker value={fromDate} mode="date" onChange={onFromDateChange} />}
             {showToPicker && <DateTimePicker value={toDate} mode="date" onChange={onToDateChange} />}
@@ -222,14 +234,13 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
                 <>
                     <View style={styles.summaryContainer}>
                         <SummaryCard label="Overall" value={`${percentage}%`} color={BLUE} delay={100} />
-                        <SummaryCard label="Days Present" value={data.summary.present_days || 0} color={GREEN} delay={200} />
-                        <SummaryCard label="Days Absent" value={data.summary.absent_days || 0} color={RED} delay={300} />
+                        <SummaryCard label="Present" value={data.summary.present_days || 0} color={GREEN} delay={200} />
+                        <SummaryCard label="Absent" value={data.summary.absent_days || 0} color={RED} delay={300} />
                     </View>
                     <FlatList
                         data={data.history}
                         keyExtractor={(item) => item.attendance_date}
                         renderItem={({ item, index }) => <HistoryDayCard item={item} index={index} />}
-                        ListHeaderComponent={<Text style={styles.historyTitle}>Detailed History ({capitalize(viewMode)})</Text>}
                         ListEmptyComponent={<Text style={styles.noDataText}>No records found.</Text>}
                         contentContainerStyle={{ paddingBottom: 20 }}
                     />
@@ -239,10 +250,10 @@ const GenericStudentHistoryView = ({ studentId, headerTitle, onBack }) => {
     );
 };
 
-const StudentAttendanceView = ({ student }) => <GenericStudentHistoryView studentId={student.id} headerTitle="My Attendance Report" />;
-const AdminStudentDetailView = ({ student, onBack }) => <GenericStudentHistoryView studentId={student.student_id} headerTitle={`${student.full_name}'s Report`} onBack={onBack} />;
+const StudentAttendanceView = ({ student }) => <GenericStudentHistoryView studentId={student.id} headerTitle="My Attendance" />;
+const AdminStudentDetailView = ({ student, onBack }) => <GenericStudentHistoryView studentId={student.student_id} headerTitle={student.full_name} onBack={onBack} />;
 
-// --- Generic Summary View (Teacher & Admin Class List) ---
+// --- Generic Summary View (Teacher & Admin) ---
 const GenericSummaryView = ({
     picker1, picker2, listData,
     summaryData, isLoading, viewMode, setViewMode, 
@@ -257,7 +268,6 @@ const GenericSummaryView = ({
     const [showMainPicker, setShowMainPicker] = useState(false);
     const [showFromPicker, setShowFromPicker] = useState(false);
     const [showToPicker, setShowToPicker] = useState(false);
-    
     const [searchQuery, setSearchQuery] = useState('');
 
     const filteredListData = useMemo(() => {
@@ -280,77 +290,62 @@ const GenericSummaryView = ({
         if (date && setToDate) setToDate(date);
     };
 
-    const handleSearch = (text) => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setSearchQuery(text);
-    };
-
-    const renderSummaryCards = () => {
-        if (viewMode === 'daily') {
-            return (
-                <View style={styles.summaryContainer}>
-                    <SummaryCard label="Class Attendance %" value={`${Number(summary.overall_percentage ?? 0).toFixed(1)}%`} color={BLUE} delay={100} />
-                    <SummaryCard label="Students Present" value={summary.students_present ?? 0} color={GREEN} delay={200} />
-                    <SummaryCard label="Students Absent" value={summary.students_absent ?? 0} color={RED} delay={300} />
-                </View>
-            );
-        } else {
-            return (
-                <View style={styles.summaryContainer}>
-                    <SummaryCard label="Class Attendance %" value={`${Number(summary.overall_percentage ?? 0).toFixed(1)}%`} color={BLUE} delay={100} />
-                    <SummaryCard label="Avg. Daily Attendance" value={`${Number(summary.avg_daily_attendance ?? 0).toFixed(1)}%`} color={ORANGE} delay={200} />
-                    <SummaryCard label="Students Below 75%" value={summary.students_below_threshold ?? 0} color={RED} delay={300} />
-                </View>
-            );
-        }
-    };
+    // Subtitle
+    let subTitle = '';
+    if (viewMode === 'daily') subTitle = `Date: ${formatDate(selectedDate)}`;
+    else if (viewMode === 'monthly') subTitle = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    else if (viewMode === 'yearly') subTitle = `Year: ${selectedDate.getFullYear()}`;
+    else subTitle = 'Custom Range';
 
     return (
         <SafeAreaView style={styles.container}>
-            <Animatable.View animation="fadeInDown" duration={500}>
-                <View style={styles.pickerContainer}>
-                    <View style={styles.pickerWrapper}>{picker1}</View>
-                    {picker2 && <View style={styles.pickerWrapper}>{picker2}</View>} 
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="assessment" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Attendance Report</Text>
+                        <Text style={styles.headerSubtitle}>{subTitle}</Text>
+                    </View>
                 </View>
-                <View style={{alignItems: 'center', marginBottom: 5}}>
-                     {viewMode === 'daily' && <Text style={styles.headerSubtitleSmall}>Date: {formatDate(selectedDate)}</Text>}
-                     {viewMode === 'monthly' && <Text style={styles.headerSubtitleSmall}>Month: {selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</Text>}
-                     {viewMode === 'yearly' && <Text style={styles.headerSubtitleSmall}>Year: {selectedDate.getFullYear()}</Text>}
-                     {viewMode === 'custom' && <Text style={styles.headerSubtitleSmall}>Custom Range</Text>}
-                </View>
-            </Animatable.View>
-
-            <View style={styles.toggleContainer}>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'daily' && styles.toggleButtonActive]} onPress={() => setViewMode('daily')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'daily' && styles.toggleButtonTextActive]}>Daily</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'monthly' && styles.toggleButtonActive]} onPress={() => setViewMode('monthly')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'monthly' && styles.toggleButtonTextActive]}>Monthly</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'yearly' && styles.toggleButtonActive]} onPress={() => setViewMode('yearly')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'yearly' && styles.toggleButtonTextActive]}>Yearly</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.toggleButton, viewMode === 'custom' && styles.toggleButtonActive]} onPress={() => setViewMode('custom')}>
-                    <Text style={[styles.toggleButtonText, viewMode === 'custom' && styles.toggleButtonTextActive]}>Range</Text>
-                </TouchableOpacity>
-                
                 {viewMode !== 'custom' && (
-                    <TouchableOpacity style={styles.calendarButton} onPress={() => setShowMainPicker(true)}>
-                        <Icon name="calendar" size={22} color={PRIMARY_COLOR} />
+                    <TouchableOpacity style={styles.headerActionBtn} onPress={() => setShowMainPicker(true)}>
+                        <MaterialIcons name="calendar-today" size={20} color="#008080" />
                     </TouchableOpacity>
                 )}
+            </View>
+
+            {/* Pickers & Search */}
+            <View style={styles.pickerContainer}>
+                <View style={styles.pickerWrapper}>{picker1}</View>
+                {picker2 && <View style={styles.pickerWrapper}>{picker2}</View>} 
+            </View>
+
+            <View style={styles.toggleContainer}>
+                {['daily', 'monthly', 'yearly', 'custom'].map(mode => (
+                    <TouchableOpacity 
+                        key={mode}
+                        style={[styles.toggleButton, viewMode === mode && styles.toggleButtonActive]} 
+                        onPress={() => setViewMode(mode)}
+                    >
+                        <Text style={[styles.toggleButtonText, viewMode === mode && styles.toggleButtonTextActive]}>
+                            {capitalize(mode)}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
             </View>
 
             {/* Range Inputs */}
             {viewMode === 'custom' && (
                 <Animatable.View animation="fadeIn" duration={300} style={styles.rangeContainer}>
                     <TouchableOpacity style={styles.dateInputBox} onPress={() => setShowFromPicker(true)}>
-                        <Icon name="calendar-today" size={18} color={TEXT_COLOR_MEDIUM} style={{marginRight:5}}/>
                         <Text style={styles.dateInputText}>{formatDate(fromDate)}</Text>
                     </TouchableOpacity>
                     <Icon name="arrow-right" size={20} color={TEXT_COLOR_MEDIUM} />
                     <TouchableOpacity style={styles.dateInputBox} onPress={() => setShowToPicker(true)}>
-                        <Icon name="calendar-today" size={18} color={TEXT_COLOR_MEDIUM} style={{marginRight:5}}/>
                         <Text style={styles.dateInputText}>{formatDate(toDate)}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.goButton} onPress={onRangeFetch}>
@@ -359,7 +354,6 @@ const GenericSummaryView = ({
                 </Animatable.View>
             )}
 
-            {/* Pickers */}
             {showMainPicker && <DateTimePicker value={selectedDate} mode="date" onChange={handleMainDateChange} />}
             {showFromPicker && <DateTimePicker value={fromDate} mode="date" onChange={handleFromDateChange} />}
             {showToPicker && <DateTimePicker value={toDate} mode="date" onChange={handleToDateChange} />}
@@ -370,44 +364,49 @@ const GenericSummaryView = ({
                     keyExtractor={(item) => item.student_id.toString()}
                     ListHeaderComponent={
                         <>
-                            {renderSummaryCards()}
-                            <Animatable.View animation="fadeIn" duration={600} delay={400} style={styles.searchBarContainer}>
-                                <Icon name="magnify" size={22} color={TEXT_COLOR_MEDIUM} style={styles.searchIcon} />
+                            <View style={styles.summaryContainer}>
+                                <SummaryCard label="Attendance %" value={`${Number(summary.overall_percentage ?? 0).toFixed(1)}%`} color={BLUE} delay={100} />
+                                <SummaryCard label={viewMode === 'daily' ? 'Present' : 'Avg Daily'} value={viewMode === 'daily' ? (summary.students_present ?? 0) : `${Number(summary.avg_daily_attendance ?? 0).toFixed(1)}%`} color={GREEN} delay={200} />
+                                <SummaryCard label={viewMode === 'daily' ? 'Absent' : '< 75%'} value={viewMode === 'daily' ? (summary.students_absent ?? 0) : (summary.students_below_threshold ?? 0)} color={RED} delay={300} />
+                            </View>
+                            <View style={styles.searchBarContainer}>
+                                <Icon name="magnify" size={20} color={TEXT_COLOR_MEDIUM} style={styles.searchIcon} />
                                 <TextInput
                                     style={styles.searchBar}
-                                    placeholder="Search student by name..."
+                                    placeholder="Search student..."
                                     value={searchQuery}
-                                    onChangeText={handleSearch}
-                                    placeholderTextColor={TEXT_COLOR_MEDIUM}
+                                    onChangeText={(text) => {
+                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                        setSearchQuery(text);
+                                    }}
+                                    placeholderTextColor="#999"
                                 />
-                            </Animatable.View>
+                            </View>
                         </>
                     }
                     renderItem={({ item, index }) => {
                         const studentPercentage = item.total_days > 0 ? (item.present_days / item.total_days) * 100 : 0;
                         const percentageColor = studentPercentage >= 75 ? GREEN : studentPercentage >= 50 ? YELLOW : RED;
                         return (
-                            <Animatable.View animation="fadeInUp" duration={400} delay={index * 75}>
+                            <Animatable.View animation="fadeInUp" duration={400} delay={index * 50}>
                                 <TouchableOpacity onPress={() => onSelectStudent && onSelectStudent(item)}>
                                     <View style={styles.summaryStudentRow}>
                                         <View style={{flex: 1}}>
                                             <Text style={styles.studentName}>{item.full_name}</Text>
                                             <Text style={styles.studentDetailText}>
-                                                Roll No: {item.roll_no || 'N/A'} | Days Present: {item.present_days} / {item.total_days}
+                                                Roll: {item.roll_no || '-'} | {item.present_days}/{item.total_days} Days
                                             </Text>
                                         </View>
-                                        <Text style={[styles.percentageText, { color: percentageColor }]}>{studentPercentage.toFixed(0)}%</Text>
+                                        <View style={[styles.percentageBadge, { borderColor: percentageColor }]}>
+                                            <Text style={[styles.percentageText, { color: percentageColor }]}>{studentPercentage.toFixed(0)}%</Text>
+                                        </View>
                                     </View>
                                 </TouchableOpacity>
                             </Animatable.View>
                         );
                     }}
                     ListEmptyComponent={
-                        <View style={styles.loaderContainer}>
-                            <Text style={styles.noDataText}>
-                                {searchQuery ? 'No students match your search.' : 'No attendance data for this selection.'}
-                            </Text>
-                        </View>
+                        <Text style={styles.noDataText}>No data found.</Text>
                     }
                     contentContainerStyle={{ paddingBottom: 20 }}
                 />
@@ -416,14 +415,15 @@ const GenericSummaryView = ({
     );
 };
 
-// --- Teacher View ---
+// --- Teacher View Wrapper ---
 const TeacherSummaryView = ({ teacher }) => {
     const [assignments, setAssignments] = useState([]);
     const [selectedClass, setSelectedClass] = useState('');
     const [selectedSubject, setSelectedSubject] = useState('');
     const [summaryData, setSummaryData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [viewMode, setViewMode] = useState('overall');
+    // UPDATED: Default set to 'daily'
+    const [viewMode, setViewMode] = useState('daily');
     const [selectedDate, setSelectedDate] = useState(new Date());
     
     const [fromDate, setFromDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)));
@@ -486,13 +486,13 @@ const TeacherSummaryView = ({ teacher }) => {
     };
 
     const picker1 = (
-        <Picker selectedValue={selectedClass} onValueChange={handleClassChange} enabled={uniqueClasses.length > 0}>
+        <Picker selectedValue={selectedClass} onValueChange={handleClassChange} enabled={uniqueClasses.length > 0} style={styles.picker}>
             {uniqueClasses.length > 0 ? uniqueClasses.map(c => <Picker.Item key={c} label={c} value={c} />) : <Picker.Item label="No classes..." value="" enabled={false} />}
         </Picker>
     );
 
     const picker2 = (
-        <Picker selectedValue={selectedSubject} onValueChange={setSelectedSubject} enabled={subjectsForSelectedClass.length > 0}>
+        <Picker selectedValue={selectedSubject} onValueChange={setSelectedSubject} enabled={subjectsForSelectedClass.length > 0} style={styles.picker}>
              {subjectsForSelectedClass.length > 0 ? subjectsForSelectedClass.map(s => <Picker.Item key={s} label={s} value={s} />) : <Picker.Item label="No subjects..." value="" enabled={false} />}
         </Picker>
     );
@@ -515,12 +515,13 @@ const TeacherSummaryView = ({ teacher }) => {
     );
 };
 
-// --- Admin View ---
+// --- Admin View Wrapper ---
 const AdminAttendanceView = () => {
   const [selectedClass, setSelectedClass] = useState(CLASS_GROUPS[0]);
   const [summaryData, setSummaryData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [viewMode, setViewMode] = useState('overall');
+  // UPDATED: Default set to 'daily'
+  const [viewMode, setViewMode] = useState('daily');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   
@@ -556,7 +557,7 @@ const AdminAttendanceView = () => {
   }
 
   const picker1 = (
-    <Picker selectedValue={selectedClass} onValueChange={setSelectedClass}>
+    <Picker selectedValue={selectedClass} onValueChange={setSelectedClass} style={styles.picker}>
         {CLASS_GROUPS.map(c => <Picker.Item key={c} label={c} value={c} />)}
     </Picker>
   );
@@ -579,9 +580,7 @@ const AdminAttendanceView = () => {
   );
 };
 
-// ==========================================================
-// --- MODIFIED TEACHER LIVE ATTENDANCE VIEW ---
-// ==========================================================
+// --- Teacher Live Attendance View (For Redirection) ---
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
     const navigation = useNavigation();
     const { class_group, subject_name, date, period_number } = route?.params || {};
@@ -589,36 +588,25 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
     const [students, setStudents] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
-    // State to toggle between "Already Marked" view and "Edit/List" view
     const [attendanceAlreadyMarked, setAttendanceAlreadyMarked] = useState(false);
 
-    // Initial Data Fetch
     useEffect(() => {
         const init = async () => {
             setIsLoading(true);
             try {
-                // 1. Check if attendance is already marked
                 const statusRes = await apiClient.get('/attendance/status', {
                     params: { class_group, date, period_number, subject_name }
                 });
-                
-                if (statusRes.data.isMarked) {
-                    setAttendanceAlreadyMarked(true);
-                }
+                if (statusRes.data.isMarked) setAttendanceAlreadyMarked(true);
 
-                // 2. Fetch the student list (we need it regardless, to populate state)
                 const sheetRes = await apiClient.get('/attendance/sheet', {
                     params: { class_group, date, period_number }
                 });
-
-                // Map response: if status is null (not marked yet), default to 'Present'
                 const formattedData = sheetRes.data.map(student => ({
                     ...student,
                     status: student.status || 'Present' 
                 }));
                 setStudents(formattedData);
-
             } catch (error) {
                 console.error("Init Error:", error);
                 Alert.alert('Error', 'Failed to load attendance data.');
@@ -626,11 +614,9 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
                 setIsLoading(false);
             }
         };
-
         if (class_group) init();
     }, [class_group, date, period_number, subject_name]);
 
-    // Set Status (Present / Absent)
     const setStatus = (id, newStatus) => {
         setStudents(currentStudents => 
             currentStudents.map(student => 
@@ -639,7 +625,6 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
         );
     };
 
-    // Submit Attendance
     const handleSubmit = async () => {
         if (students.length === 0) return;
         setIsSubmitting(true);
@@ -652,9 +637,8 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
                 teacher_id: teacher.id,
                 attendanceData: students.map(s => ({ student_id: s.id, status: s.status }))
             };
-
             await apiClient.post('/attendance', payload);
-            setAttendanceAlreadyMarked(true); // Switch to "Marked" view
+            setAttendanceAlreadyMarked(true);
         } catch (error) {
             Alert.alert('Error', 'Failed to save attendance.');
         } finally {
@@ -662,11 +646,8 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
         }
     };
 
-    if (isLoading) {
-        return <View style={styles.loaderContainer}><ActivityIndicator size="large" color={PRIMARY_COLOR} /></View>;
-    }
+    if (isLoading) return <View style={styles.loaderContainer}><ActivityIndicator size="large" color={PRIMARY_COLOR} /></View>;
 
-    // --- VIEW 1: ATTENDANCE ALREADY MARKED (Success Screen) ---
     if (attendanceAlreadyMarked) {
         return (
             <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -674,75 +655,49 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
                     <View style={styles.successCircle}>
                         <Icon name="check" size={60} color={WHITE} />
                     </View>
-                    <Text style={styles.successTitle}>Attendance Marked!</Text>
-                    <Text style={styles.successSubtitle}>
-                        Attendance for {formatDate(date)} has been saved successfully. You can click "Edit Attendance" to make any changes.
-                    </Text>
-                    
-                    <TouchableOpacity 
-                        style={styles.editButton} 
-                        onPress={() => setAttendanceAlreadyMarked(false)}
-                    >
-                        <Text style={styles.editButtonText}>Edit Attendance</Text>
+                    <Text style={styles.successTitle}>Done!</Text>
+                    <Text style={styles.successSubtitle}>Attendance for {formatDate(date)} saved.</Text>
+                    <TouchableOpacity style={styles.editButton} onPress={() => setAttendanceAlreadyMarked(false)}>
+                        <Text style={styles.editButtonText}>Edit</Text>
                     </TouchableOpacity>
                 </Animatable.View>
             </SafeAreaView>
         );
     }
 
-    // --- VIEW 2: LIST VIEW (Marking Screen) ---
     return (
         <SafeAreaView style={styles.container}>
-            {/* Header */}
-            <View style={styles.listHeader}>
-                <Text style={styles.listHeaderTitle}>
-                     {class_group} List ({students.length})
-                </Text>
+            {/* Header Card */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="edit-note" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>{class_group}</Text>
+                        <Text style={styles.headerSubtitle}>Live Attendance</Text>
+                    </View>
+                </View>
             </View>
 
-            {/* Student List */}
             <FlatList
                 data={students}
                 keyExtractor={(item) => item.id.toString()}
-                contentContainerStyle={{ paddingBottom: 100 }}
-                renderItem={({ item, index }) => {
+                contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 100 }}
+                renderItem={({ item }) => {
                     const isPresent = item.status === 'Present';
                     return (
-                        <View style={styles.attendanceRow}>
-                            {/* Left Side: Name & Info */}
+                        <View style={styles.summaryStudentRow}>
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.rowName}>{item.full_name}</Text>
-                                <Text style={styles.rowSubText}>{item.subject || 'Maths, P.S'}</Text>
+                                <Text style={styles.studentName}>{item.full_name}</Text>
+                                <Text style={styles.studentDetailText}>{item.subject || 'Subject'}</Text>
                             </View>
-
-                            {/* Right Side: P / A Buttons */}
-                            <View style={styles.actionButtonsContainer}>
-                                {/* Present Button */}
-                                <TouchableOpacity 
-                                    style={[
-                                        styles.statusCircle, 
-                                        isPresent ? styles.circleGreenFilled : styles.circleGreenOutline
-                                    ]}
-                                    onPress={() => setStatus(item.id, 'Present')}
-                                >
-                                    <Text style={[
-                                        styles.statusText, 
-                                        isPresent ? { color: WHITE } : { color: GREEN }
-                                    ]}>P</Text>
+                            <View style={{flexDirection: 'row', gap: 10}}>
+                                <TouchableOpacity style={[styles.statusBtn, isPresent ? styles.btnPresent : styles.btnInactive]} onPress={() => setStatus(item.id, 'Present')}>
+                                    <Text style={[styles.statusText, isPresent ? {color: '#fff'} : {color: GREEN}]}>P</Text>
                                 </TouchableOpacity>
-
-                                {/* Absent Button */}
-                                <TouchableOpacity 
-                                    style={[
-                                        styles.statusCircle, 
-                                        !isPresent ? styles.circleRedFilled : styles.circleRedOutline
-                                    ]}
-                                    onPress={() => setStatus(item.id, 'Absent')}
-                                >
-                                    <Text style={[
-                                        styles.statusText, 
-                                        !isPresent ? { color: WHITE } : { color: RED }
-                                    ]}>A</Text>
+                                <TouchableOpacity style={[styles.statusBtn, !isPresent ? styles.btnAbsent : styles.btnInactive]} onPress={() => setStatus(item.id, 'Absent')}>
+                                    <Text style={[styles.statusText, !isPresent ? {color: '#fff'} : {color: RED}]}>A</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -750,18 +705,9 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
                 }}
             />
 
-            {/* Footer Submit Button */}
             <View style={styles.footerContainer}>
-                <TouchableOpacity 
-                    style={styles.submitFooterButton}
-                    onPress={handleSubmit}
-                    disabled={isSubmitting}
-                >
-                    {isSubmitting ? (
-                        <ActivityIndicator color={WHITE} />
-                    ) : (
-                        <Text style={styles.submitFooterText}>SUBMIT ATTENDANCE</Text>
-                    )}
+                <TouchableOpacity style={styles.submitFooterButton} onPress={handleSubmit} disabled={isSubmitting}>
+                    {isSubmitting ? <ActivityIndicator color={WHITE} /> : <Text style={styles.submitFooterText}>SUBMIT</Text>}
                 </TouchableOpacity>
             </View>
         </SafeAreaView>
@@ -770,92 +716,111 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
 
 // --- Styles ---
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: WHITE },
-  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: WHITE },
+  container: { flex: 1, backgroundColor: BACKGROUND_COLOR },
+  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: BACKGROUND_COLOR },
   noDataText: { textAlign: 'center', marginTop: 20, color: TEXT_COLOR_MEDIUM, fontSize: 16 },
   
-  // Generic Headers
-  header: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 20, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
-  headerTitle: { fontSize: 22, fontWeight: 'bold', color: TEXT_COLOR_DARK, textAlign: 'center' },
-  headerSubtitleSmall: { fontSize: 14, color: TEXT_COLOR_MEDIUM, marginTop: 2, textAlign: 'center' },
-  backButton: { position: 'absolute', left: 15, zIndex: 1, padding: 5 },
-  
-  // Pickers
-  pickerContainer: { flexDirection: 'row', padding: 10, backgroundColor: WHITE, borderBottomColor: BORDER_COLOR, borderBottomWidth: 1, alignItems: 'center' },
-  pickerWrapper: { flex: 1, marginHorizontal: 5, backgroundColor: '#F0F4F8', borderWidth: 1, borderColor: BORDER_COLOR, borderRadius: 8, height: 50, justifyContent: 'center' },
+  // --- HEADER CARD STYLES ---
+  headerCard: {
+      backgroundColor: CARD_BG,
+      paddingHorizontal: 15,
+      paddingVertical: 12,
+      width: '96%', 
+      alignSelf: 'center',
+      marginTop: 15,
+      marginBottom: 10,
+      borderRadius: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      elevation: 3,
+      shadowColor: '#000', 
+      shadowOpacity: 0.1, 
+      shadowRadius: 4, 
+      shadowOffset: { width: 0, height: 2 },
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center' },
+  headerIconContainer: {
+      backgroundColor: '#E0F2F1', // Teal bg
+      borderRadius: 30,
+      width: 45,
+      height: 45,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+  },
+  headerTextContainer: { justifyContent: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: TEXT_COLOR_DARK },
+  headerSubtitle: { fontSize: 13, color: TEXT_COLOR_MEDIUM },
+  headerSubtitleSmall: { fontSize: 12, color: TEXT_COLOR_MEDIUM, fontWeight: '500' },
+  headerActionBtn: {
+      padding: 8,
+      backgroundColor: '#f0fdfa',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#ccfbf1'
+  },
+
+  // Pickers & Filters
+  pickerContainer: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 5, gap: 10 },
+  pickerWrapper: { flex: 1, borderWidth: 1, borderColor: BORDER_COLOR, borderRadius: 8, backgroundColor: '#FFF', height: 45, justifyContent: 'center' },
+  picker: { width: '100%', color: TEXT_COLOR_DARK },
   
   // Summary Cards
-  summaryContainer: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 15, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
-  summaryBox: { alignItems: 'center', flex: 1, paddingVertical: 10, paddingHorizontal: 5 },
-  summaryValue: { fontSize: 22, fontWeight: 'bold' },
-  summaryLabel: { fontSize: 12, color: TEXT_COLOR_MEDIUM, marginTop: 5, fontWeight: '500', textAlign: 'center' },
+  summaryContainer: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 15, marginHorizontal: 15, marginBottom: 10, backgroundColor: CARD_BG, borderRadius: 12, elevation: 2 },
+  summaryBox: { alignItems: 'center', flex: 1 },
+  summaryValue: { fontSize: 18, fontWeight: 'bold' },
+  summaryLabel: { fontSize: 11, color: TEXT_COLOR_MEDIUM, marginTop: 4, fontWeight: '500', textAlign: 'center' },
   
   // Search Bar
-  searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, marginHorizontal: 15, marginTop: 15, borderRadius: 8, borderWidth: 1, borderColor: BORDER_COLOR, paddingHorizontal: 10 },
-  searchBar: { flex: 1, height: 45, fontSize: 16, color: TEXT_COLOR_DARK },
+  searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: CARD_BG, marginHorizontal: 15, marginBottom: 10, borderRadius: 8, borderWidth: 1, borderColor: BORDER_COLOR, paddingHorizontal: 10, height: 45 },
+  searchBar: { flex: 1, fontSize: 14, color: TEXT_COLOR_DARK },
   searchIcon: { marginRight: 8 },
-  summaryStudentRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, padding: 15, marginHorizontal: 15, marginVertical: 6, borderRadius: 8, elevation: 1, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
-  studentName: { fontSize: 16, color: TEXT_COLOR_DARK, fontWeight: '600' },
-  studentDetailText: { fontSize: 12, color: TEXT_COLOR_MEDIUM, marginTop: 4 },
-  percentageText: { fontSize: 20, fontWeight: 'bold' },
+
+  // List Rows
+  summaryStudentRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: CARD_BG, padding: 15, marginHorizontal: 15, marginVertical: 5, borderRadius: 10, elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } },
+  studentName: { fontSize: 15, color: TEXT_COLOR_DARK, fontWeight: '600' },
+  studentDetailText: { fontSize: 12, color: TEXT_COLOR_MEDIUM, marginTop: 2 },
+  percentageBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, borderWidth: 1 },
+  percentageText: { fontSize: 12, fontWeight: 'bold' },
   
   // Toggles
-  toggleContainer: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 2, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR, alignItems: 'center', flexWrap: 'wrap' },
-  toggleButton: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, marginHorizontal: 3, backgroundColor: '#E0E0E0', marginBottom: 5 },
+  toggleContainer: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 5, marginBottom: 10 },
+  toggleButton: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, marginHorizontal: 4, backgroundColor: '#E0E0E0' },
   toggleButtonActive: { backgroundColor: PRIMARY_COLOR },
-  toggleButtonText: { color: TEXT_COLOR_DARK, fontWeight: '600', fontSize: 13 },
+  toggleButtonText: { color: TEXT_COLOR_DARK, fontWeight: '600', fontSize: 12 },
   toggleButtonTextActive: { color: WHITE },
-  calendarButton: { padding: 8, marginLeft: 5, justifyContent: 'center', alignItems: 'center' },
+  calendarButton: { padding: 5, marginLeft: 5 },
   
   // Range
-  rangeContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 10, backgroundColor: '#f9f9f9', borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
-  dateInputBox: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0E0E0', padding: 10, borderRadius: 6, marginHorizontal: 5, justifyContent: 'center' },
-  dateInputText: { color: TEXT_COLOR_DARK, fontSize: 13, fontWeight: '500' },
-  goButton: { backgroundColor: GREEN, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 6, marginLeft: 5 },
-  goButtonText: { color: WHITE, fontWeight: 'bold' },
+  rangeContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, marginBottom: 10 },
+  dateInputBox: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 8, borderRadius: 6, marginHorizontal: 5, borderWidth: 1, borderColor: BORDER_COLOR, justifyContent: 'center' },
+  dateInputText: { color: TEXT_COLOR_DARK, fontSize: 12, fontWeight: '500' },
+  goButton: { backgroundColor: GREEN, paddingVertical: 8, paddingHorizontal: 15, borderRadius: 6, marginLeft: 5 },
+  goButtonText: { color: WHITE, fontWeight: 'bold', fontSize: 12 },
 
   // History List
-  historyTitle: { fontSize: 18, fontWeight: 'bold', paddingHorizontal: 20, marginTop: 15, marginBottom: 10, color: TEXT_COLOR_DARK },
-  historyDayCard: { backgroundColor: WHITE, marginHorizontal: 15, marginVertical: 8, borderRadius: 8, elevation: 2, shadowColor: '#999', shadowOpacity: 0.1, shadowRadius: 5 },
-  historyDayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
-  historyDate: { fontSize: 16, fontWeight: '600', color: TEXT_COLOR_DARK },
+  historyDayCard: { backgroundColor: CARD_BG, marginHorizontal: 15, marginVertical: 6, borderRadius: 8, padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 1 },
+  historyDate: { fontSize: 14, fontWeight: '600', color: TEXT_COLOR_DARK },
   historyStatus: { fontSize: 14, fontWeight: 'bold' },
 
-  // ===================================
-  // --- NEW STYLES FOR ATTENDANCE ---
-  // ===================================
+  // Success View
+  successCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: GREEN, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  successTitle: { fontSize: 20, fontWeight: 'bold', color: TEXT_COLOR_DARK, marginBottom: 8 },
+  successSubtitle: { fontSize: 14, color: TEXT_COLOR_MEDIUM, textAlign: 'center', marginBottom: 25 },
+  editButton: { backgroundColor: PRIMARY_COLOR, paddingVertical: 10, paddingHorizontal: 30, borderRadius: 8 },
+  editButtonText: { color: WHITE, fontSize: 14, fontWeight: 'bold' },
 
-  // Success View Styles
-  successCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#43A047', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  successTitle: { fontSize: 22, fontWeight: 'bold', color: '#37474F', marginBottom: 10 },
-  successSubtitle: { fontSize: 14, color: '#566573', textAlign: 'center', paddingHorizontal: 40, lineHeight: 20, marginBottom: 30 },
-  editButton: { backgroundColor: '#008080', paddingVertical: 12, paddingHorizontal: 30, borderRadius: 8 },
-  editButtonText: { color: WHITE, fontSize: 16, fontWeight: 'bold' },
+  // Live Marking Buttons
+  statusBtn: { width: 36, height: 36, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+  btnPresent: { backgroundColor: GREEN, borderColor: GREEN },
+  btnAbsent: { backgroundColor: RED, borderColor: RED },
+  btnInactive: { backgroundColor: '#fff', borderColor: '#E0E0E0' },
+  statusText: { fontSize: 14, fontWeight: 'bold' },
 
-  // List View Styles
-  listHeader: { paddingVertical: 15, paddingHorizontal: 20, backgroundColor: '#E0E0E0' },
-  listHeaderTitle: { fontSize: 16, fontWeight: 'bold', color: '#37474F' },
-  
-  attendanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  rowName: { fontSize: 16, fontWeight: 'bold', color: '#37474F', textTransform: 'uppercase' },
-  rowSubText: { fontSize: 12, color: '#78909C', marginTop: 4 },
-  
-  actionButtonsContainer: { flexDirection: 'row', alignItems: 'center' },
-  statusCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginLeft: 15 },
-  
-  // P (Present) Styling
-  circleGreenFilled: { backgroundColor: '#43A047', borderWidth: 0 },
-  circleGreenOutline: { backgroundColor: WHITE, borderWidth: 1.5, borderColor: '#43A047' },
-  
-  // A (Absent) Styling
-  circleRedFilled: { backgroundColor: '#E53935', borderWidth: 0 },
-  circleRedOutline: { backgroundColor: WHITE, borderWidth: 1.5, borderColor: '#E53935' },
-  
-  statusText: { fontSize: 16, fontWeight: 'bold' },
-
-  // Footer Submit
-  footerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#008080' },
-  submitFooterButton: { paddingVertical: 18, alignItems: 'center', justifyContent: 'center' },
+  // Footer
+  footerContainer: { position: 'absolute', bottom: 20, left: 20, right: 20 },
+  submitFooterButton: { backgroundColor: PRIMARY_COLOR, paddingVertical: 15, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 },
   submitFooterText: { color: WHITE, fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
 });
 

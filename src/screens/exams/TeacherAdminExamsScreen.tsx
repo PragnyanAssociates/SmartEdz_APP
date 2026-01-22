@@ -1,10 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView, TextInput, Modal, SafeAreaView } from 'react-native';
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { Picker } from '@react-native-picker/picker';
 import { useIsFocused } from '@react-navigation/native';
+import * as Animatable from 'react-native-animatable';
+
+// --- COLORS ---
+const COLORS = {
+    primary: '#008080',    // Teal
+    background: '#F2F5F8', 
+    cardBg: '#FFFFFF',
+    textMain: '#263238',
+    textSub: '#546E7A',
+    success: '#43A047',
+    danger: '#E53935',
+    border: '#CFD8DC',
+    blue: '#007bff'
+};
 
 // --- Main Router Component ---
 const TeacherAdminExamsScreen = () => {
@@ -68,32 +82,58 @@ const ExamList = ({ onCreateNew, onEdit, onViewSubmissions }) => {
     };
 
     return (
-        <View style={styles.container}>
-            <View style={styles.headerContainer}><Text style={styles.headerTitle}>My Created Exams</Text></View>
+        <SafeAreaView style={styles.container}>
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="assignment" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Exam Manager</Text>
+                        <Text style={styles.headerSubtitle}>Create & Manage Exams</Text>
+                    </View>
+                </View>
+                <TouchableOpacity style={styles.headerBtn} onPress={onCreateNew}>
+                    <MaterialIcons name="add" size={18} color="#fff" />
+                    <Text style={styles.headerBtnText}>Add</Text>
+                </TouchableOpacity>
+            </View>
+
             <FlatList
                 data={exams}
                 keyExtractor={(item) => item.exam_id.toString()}
-                renderItem={({ item }) => (
-                    <View style={styles.card}>
-                        <View style={styles.cardHeader}>
-                            <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-                            <View style={styles.actionIcons}>
-                                <TouchableOpacity onPress={() => onEdit(item)}><MaterialIcons name="edit" size={24} color="#007bff" /></TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleDelete(item)} style={{ marginLeft: 15 }}><MaterialIcons name="delete" size={24} color="#dc3545" /></TouchableOpacity>
+                renderItem={({ item, index }) => (
+                    <Animatable.View animation="fadeInUp" duration={600} delay={index * 100}>
+                        <View style={styles.card}>
+                            <View style={styles.cardHeaderRow}>
+                                <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+                                <View style={styles.actionIconContainer}>
+                                    <TouchableOpacity onPress={() => onEdit(item)} style={styles.iconBtn}><MaterialIcons name="edit" size={20} color={COLORS.blue} /></TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleDelete(item)} style={[styles.iconBtn, {backgroundColor: '#fee2e2'}]}><MaterialIcons name="delete" size={20} color={COLORS.danger} /></TouchableOpacity>
+                                </View>
+                            </View>
+                            <Text style={styles.cardSubtitle}>For: {item.class_group}</Text>
+                            
+                            <View style={styles.footerRow}>
+                                <View style={item.submission_count > 0 ? styles.badge : styles.badgeMuted}>
+                                    <Text style={styles.badgeText}>{item.submission_count} Submitted</Text>
+                                </View>
+                                <TouchableOpacity style={styles.viewSubmissionsBtn} onPress={() => onViewSubmissions(item)}>
+                                    <Text style={styles.viewSubmissionsBtnText}>View & Grade</Text>
+                                    <MaterialIcons name="arrow-forward" size={16} color="#fff" />
+                                </TouchableOpacity>
                             </View>
                         </View>
-                        <Text style={styles.cardSubtitle}>For: {item.class_group}</Text>
-                        <View style={item.submission_count > 0 ? styles.badge : styles.badgeMuted}><Text style={styles.badgeText}>{item.submission_count} Submission(s)</Text></View>
-                        <TouchableOpacity style={styles.viewSubmissionsBtn} onPress={() => onViewSubmissions(item)}><Text style={styles.viewSubmissionsBtnText}>View Submissions & Grade</Text></TouchableOpacity>
-                    </View>
+                    </Animatable.View>
                 )}
                 onRefresh={fetchExams}
                 refreshing={isLoading}
                 ListEmptyComponent={!isLoading ? <Text style={styles.emptyText}>You have not created any exams yet.</Text> : null}
-                ListFooterComponent={<TouchableOpacity style={styles.addButton} onPress={onCreateNew}><MaterialIcons name="add" size={24} color="#fff" /><Text style={styles.addButtonText}>Create New Exam</Text></TouchableOpacity>}
-                contentContainerStyle={{ flexGrow: 1 }}
+                contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 20 }}
             />
-        </View>
+        </SafeAreaView>
     );
 };
 
@@ -134,12 +174,8 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
     const handleQuestionChange = (id, field, value) => {
         setQuestions(questions.map(q => {
             if (q.id !== id) return q;
-
             let newQ = { ...q, [field]: value };
-
             if (field === 'question_type') {
-                 // ★★★★★ FIX APPLIED HERE ★★★★★
-                 // When type is not MCQ, remove MCQ-specific properties to keep state clean.
                 if (value !== 'multiple_choice') {
                     const { options, correct_answer, ...rest } = newQ;
                     return rest;
@@ -158,60 +194,95 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
     const handleSave = async () => {
         if (!user?.id) return Alert.alert("Session Error", "Could not identify user.");
         if (!examDetails.title || !examDetails.class_group || questions.length === 0) return Alert.alert('Validation Error', 'Title, Class Group, and at least one question are required.');
-        
         setIsSaving(true);
-        
         const sanitizedQuestions = questions.map(q => {
-            const questionPayload: any = {
-                question_text: q.question_text,
-                question_type: q.question_type,
-                marks: parseInt(q.marks, 10) || 1, 
-            };
-
-            if (q.question_type === 'multiple_choice') {
-                questionPayload.options = q.options;
-                questionPayload.correct_answer = q.correct_answer;
-            }
+            const questionPayload: any = { question_text: q.question_text, question_type: q.question_type, marks: parseInt(q.marks, 10) || 1, };
+            if (q.question_type === 'multiple_choice') { questionPayload.options = q.options; questionPayload.correct_answer = q.correct_answer; }
             return questionPayload;
         });
-
         const payload = { ...examDetails, questions: sanitizedQuestions, teacher_id: user.id };
-        
         try {
-            if (isEditMode) {
-                await apiClient.put(`/exams/${examToEdit.exam_id}`, payload);
-            } else {
-                await apiClient.post('/exams', payload);
-            }
+            if (isEditMode) { await apiClient.put(`/exams/${examToEdit.exam_id}`, payload); } else { await apiClient.post('/exams', payload); }
             Alert.alert('Success', `Exam ${isEditMode ? 'updated' : 'created'}!`);
             onFinish();
-        } catch (e: any) { 
-            console.error("API Error on Save:", e.response?.data || e.message);
-            Alert.alert('Error', e.response?.data?.message || "Failed to save exam."); 
-        } 
+        } catch (e: any) { Alert.alert('Error', e.response?.data?.message || "Failed to save exam."); } 
         finally { setIsSaving(false); }
     };
 
-    if (isLoading) return <View style={styles.centered}><ActivityIndicator size="large" /><Text>Loading Exam Data...</Text></View>
-    return ( <ScrollView style={styles.containerDark}><TouchableOpacity onPress={onFinish} style={styles.backButton}><MaterialIcons name="arrow-back" size={24} color="#333" /><Text style={styles.backButtonText}>Back to Exam List</Text></TouchableOpacity><Text style={styles.headerTitle}>{isEditMode ? 'Edit Exam' : 'Create New Exam'}</Text><View style={styles.formSection}><Text style={styles.label}>Exam Title *</Text><TextInput style={styles.input} value={examDetails.title} onChangeText={t => setExamDetails({ ...examDetails, title: t })} /><Text style={styles.label}>Class *</Text><View style={styles.pickerContainer}><Picker selectedValue={examDetails.class_group} onValueChange={v => setExamDetails({ ...examDetails, class_group: v })}><Picker.Item label="-- Select a Class --" value="" />{studentClasses.map(c => <Picker.Item key={c} label={c} value={c} />)}</Picker></View><Text style={styles.label}>Time Limit (minutes)</Text><TextInput style={styles.input} keyboardType="number-pad" value={examDetails.time_limit_mins} onChangeText={t => setExamDetails({ ...examDetails, time_limit_mins: t })} /></View><View style={styles.formSection}><Text style={styles.headerTitleSecondary}>Questions</Text>{questions.map((q: any, index) => (<View key={q.id} style={styles.questionEditor}><View style={styles.cardHeader}><Text style={styles.questionEditorTitle}>Question {index + 1}</Text><TouchableOpacity onPress={() => handleRemoveQuestion(q.id)}><MaterialIcons name="close" size={22} color="#dc3545" /></TouchableOpacity></View><TextInput style={styles.input} multiline placeholder="Enter question text..." value={q.question_text} onChangeText={t => handleQuestionChange(q.id, 'question_text', t)} />
+    if (isLoading) return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primary}/></View>
     
-    <Text style={styles.label}>Question Type</Text>
-    <View style={styles.pickerContainer}>
-        <Picker selectedValue={q.question_type} onValueChange={v => handleQuestionChange(q.id, 'question_type', v)}>
-            <Picker.Item label="Multiple Choice" value="multiple_choice" />
-             {/* ★★★★★ FIX APPLIED HERE ★★★★★ */}
-             {/* Changed value from "written_answer" to "short_answer" to match the DB ENUM */}
-            <Picker.Item label="Written Answer" value="short_answer" />
-        </Picker>
-    </View>
-    
-    {q.question_type === 'multiple_choice' && q.options && (<>
-        {Object.keys(q.options).map(key => (<TextInput key={key} style={styles.input} placeholder={`Option ${key}`} value={q.options[key]} onChangeText={t => handleOptionChange(q.id, key, t)} />))}
-        <Text style={styles.label}>Correct Answer</Text>
-        <View style={styles.pickerContainer}><Picker selectedValue={q.correct_answer} onValueChange={v => handleQuestionChange(q.id, 'correct_answer', v)}><Picker.Item label="-- Select correct option --" value="" />{Object.keys(q.options).map(key => q.options[key] && <Picker.Item key={key} label={`Option ${key}`} value={key} />)}</Picker></View>
-    </>)}
+    return ( 
+        <SafeAreaView style={styles.container}>
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <TouchableOpacity onPress={onFinish} style={{marginRight: 10, padding: 4}}>
+                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>{isEditMode ? 'Edit Exam' : 'Create Exam'}</Text>
+                    </View>
+                </View>
+            </View>
 
-    <Text style={styles.label}>Marks</Text><TextInput style={styles.input} keyboardType="number-pad" value={String(q.marks)} onChangeText={t => handleQuestionChange(q.id, 'marks', t)} /></View>))}<TouchableOpacity style={styles.addQuestionBtn} onPress={addQuestion}><Text style={styles.addQuestionBtnText}>+ Add Another Question</Text></TouchableOpacity></View><TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={isSaving}>{isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>{isEditMode ? 'Save Changes' : 'Save and Publish Exam'}</Text>}</TouchableOpacity></ScrollView> );
+            <ScrollView style={{flex: 1}} contentContainerStyle={{padding: 15, paddingBottom: 50}}>
+                <View style={styles.formSection}>
+                    <Text style={styles.label}>Exam Title *</Text>
+                    <TextInput style={styles.input} value={examDetails.title} onChangeText={t => setExamDetails({ ...examDetails, title: t })} />
+                    
+                    <Text style={styles.label}>Class *</Text>
+                    <View style={styles.pickerContainer}>
+                        <Picker selectedValue={examDetails.class_group} onValueChange={v => setExamDetails({ ...examDetails, class_group: v })}>
+                            <Picker.Item label="-- Select a Class --" value="" />
+                            {studentClasses.map(c => <Picker.Item key={c} label={c} value={c} />)}
+                        </Picker>
+                    </View>
+                    
+                    <Text style={styles.label}>Time Limit (minutes)</Text>
+                    <TextInput style={styles.input} keyboardType="number-pad" value={examDetails.time_limit_mins} onChangeText={t => setExamDetails({ ...examDetails, time_limit_mins: t })} />
+                </View>
+
+                <Text style={styles.headerTitleSecondary}>Questions</Text>
+                
+                {questions.map((q: any, index) => (
+                    <View key={q.id} style={styles.questionEditor}>
+                        <View style={styles.cardHeaderRow}>
+                            <Text style={styles.questionEditorTitle}>Question {index + 1}</Text>
+                            <TouchableOpacity onPress={() => handleRemoveQuestion(q.id)}>
+                                <MaterialIcons name="close" size={22} color="#dc3545" />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        <TextInput style={styles.input} multiline placeholder="Enter question text..." value={q.question_text} onChangeText={t => handleQuestionChange(q.id, 'question_text', t)} />
+                        
+                        <Text style={styles.label}>Type</Text>
+                        <View style={styles.pickerContainer}>
+                            <Picker selectedValue={q.question_type} onValueChange={v => handleQuestionChange(q.id, 'question_type', v)}>
+                                <Picker.Item label="Multiple Choice" value="multiple_choice" />
+                                <Picker.Item label="Written Answer" value="short_answer" />
+                            </Picker>
+                        </View>
+                        
+                        {q.question_type === 'multiple_choice' && q.options && (<>
+                            {Object.keys(q.options).map(key => (<TextInput key={key} style={styles.input} placeholder={`Option ${key}`} value={q.options[key]} onChangeText={t => handleOptionChange(q.id, key, t)} />))}
+                            <Text style={styles.label}>Correct Answer</Text>
+                            <View style={styles.pickerContainer}><Picker selectedValue={q.correct_answer} onValueChange={v => handleQuestionChange(q.id, 'correct_answer', v)}><Picker.Item label="-- Select correct option --" value="" />{Object.keys(q.options).map(key => q.options[key] && <Picker.Item key={key} label={`Option ${key}`} value={key} />)}</Picker></View>
+                        </>)}
+
+                        <Text style={styles.label}>Marks</Text>
+                        <TextInput style={styles.input} keyboardType="number-pad" value={String(q.marks)} onChangeText={t => handleQuestionChange(q.id, 'marks', t)} />
+                    </View>
+                ))}
+                
+                <TouchableOpacity style={styles.addQuestionBtn} onPress={addQuestion}>
+                    <Text style={styles.addQuestionBtnText}>+ Add Another Question</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={isSaving}>
+                    {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>{isEditMode ? 'Save Changes' : 'Save and Publish Exam'}</Text>}
+                </TouchableOpacity>
+            </ScrollView> 
+        </SafeAreaView> 
+    );
 };
 
 // --- View 3: Submissions View ---
@@ -223,7 +294,6 @@ const SubmissionsView = ({ exam, onBack }) => {
     const [submissionDetails, setSubmissionDetails] = useState([]);
     const [gradedAnswers, setGradedAnswers] = useState({});
     const [isSubmittingGrade, setIsSubmittingGrade] = useState(false);
-    // ★★★★★ MODIFICATION: State for search query ★★★★★
     const [searchQuery, setSearchQuery] = useState('');
 
     const fetchSubmissions = useCallback(async () => {
@@ -265,7 +335,6 @@ const SubmissionsView = ({ exam, onBack }) => {
         finally { setIsSubmittingGrade(false); }
     };
 
-    // ★★★★★ MODIFICATION: Filter logic for search ★★★★★
     const filteredSubmissions = submissions.filter(submission => {
         const query = searchQuery.toLowerCase();
         const nameMatch = submission.student_name.toLowerCase().includes(query);
@@ -274,31 +343,52 @@ const SubmissionsView = ({ exam, onBack }) => {
     });
     
     return (
-        <View style={styles.container}>
-            <TouchableOpacity onPress={onBack} style={styles.backButton}><MaterialIcons name="arrow-back" size={24} color="#333" /><Text style={styles.backButtonText}>Back to Exam List</Text></TouchableOpacity>
-            <Text style={styles.headerTitle}>Submissions for "{exam.title}"</Text>
+        <SafeAreaView style={styles.container}>
+            
+            {/* --- HEADER CARD (Submissions) --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <TouchableOpacity onPress={onBack} style={{marginRight: 10, padding: 4}}>
+                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="fact-check" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Submissions</Text>
+                        <Text style={styles.headerSubtitle} numberOfLines={1}>{exam.title}</Text>
+                    </View>
+                </View>
+            </View>
 
-            {/* ★★★★★ MODIFICATION: Added Search Bar UI ★★★★★ */}
             <View style={styles.searchContainer}>
-                <MaterialIcons name="search" size={22} color="#888" style={styles.searchIcon} />
+                <MaterialIcons name="search" size={22} color={COLORS.textSub} style={styles.searchIcon} />
                 <TextInput
                     style={styles.searchInput}
-                    placeholder="Search by student name or roll no..."
+                    placeholder="Search by name or roll no..."
                     value={searchQuery}
                     onChangeText={setSearchQuery}
-                    placeholderTextColor="#888"
+                    placeholderTextColor={COLORS.textSub}
                 />
             </View>
 
             <FlatList
-                data={filteredSubmissions} // Use filtered data
+                data={filteredSubmissions}
                 keyExtractor={(item) => item.attempt_id.toString()}
                 renderItem={({ item }) => (
-                    <View style={styles.submissionCard}>
-                        <Text style={styles.cardTitle}>{item.student_name}</Text>
-                        {/* ★★★★★ MODIFICATION: Display Roll No ★★★★★ */}
-                        <Text style={styles.cardDetail}>Roll No: {item.roll_no || 'N/A'}</Text>
-                        <Text style={styles.cardDetail}>Status: {item.status}</Text>
+                    <View style={styles.card}>
+                        <View style={styles.cardHeaderRow}>
+                            <Text style={styles.cardTitle} numberOfLines={1}>
+                                {item.roll_no ? `(${item.roll_no}) ` : ''}{item.student_name}
+                            </Text>
+                            {item.grade && (
+                                <View style={styles.gradeBadge}>
+                                   <MaterialIcons name="star" size={14} color="#fff"/>
+                                   <Text style={styles.gradeBadgeText}>{item.grade}</Text>
+                                </View>
+                            )}
+                        </View>
+                        <Text style={styles.cardDetail}>Status: <Text style={{fontWeight: 'bold', color: item.status === 'graded' ? COLORS.success : COLORS.textSub}}>{item.status}</Text></Text>
                         {item.status === 'graded' && <Text style={styles.cardDetail}>Score: {item.final_score} / {exam.total_marks}</Text>}
                         <TouchableOpacity style={styles.gradeButton} onPress={() => openGradingModal(item)}><Text style={styles.gradeButtonText}>{item.status === 'graded' ? 'Update Grade' : 'Grade Now'}</Text></TouchableOpacity>
                     </View>
@@ -306,8 +396,9 @@ const SubmissionsView = ({ exam, onBack }) => {
                 onRefresh={fetchSubmissions}
                 refreshing={isLoading}
                 ListEmptyComponent={!isLoading ? <Text style={styles.emptyText}>No students have submitted this exam yet.</Text> : null}
-                contentContainerStyle={{ flexGrow: 1 }}
+                contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 20 }}
             />
+            
             <Modal visible={!!gradingSubmission} onRequestClose={() => setGradingSubmission(null)} animationType="slide">
                 <ScrollView style={styles.modalView}>
                     <Text style={styles.modalTitle}>Grading: {gradingSubmission?.student_name}</Text>
@@ -321,11 +412,7 @@ const SubmissionsView = ({ exam, onBack }) => {
                             <View key={item.question_id} style={styles.gradingItem}>
                                 <Text style={styles.questionText}>{index + 1}. {item.question_text}</Text>
                                 <Text style={styles.studentAnswer}>Student Answer: <Text style={{ fontWeight: 'normal' }}>{item.answer_text || 'Not answered'}</Text></Text>
-                                
-                                {item.question_type === 'multiple_choice' &&
-                                    <Text style={styles.correctAnswerText}>Correct Answer: <Text style={{ fontWeight: 'normal' }}>{correctAnswerDisplay}</Text></Text>
-                                }
-                                
+                                {item.question_type === 'multiple_choice' && <Text style={styles.correctAnswerText}>Correct Answer: <Text style={{ fontWeight: 'normal' }}>{correctAnswerDisplay}</Text></Text>}
                                 <Text style={styles.label}>Award Marks (out of {item.marks})</Text>
                                 <TextInput style={styles.input} keyboardType="number-pad" placeholder={`Max ${item.marks}`} value={String(gradedAnswers[item.question_id] ?? '')} onChangeText={text => handleGradeChange(item.question_id, text)} />
                             </View>
@@ -337,81 +424,108 @@ const SubmissionsView = ({ exam, onBack }) => {
                     </View>
                 </ScrollView>
             </Modal>
-        </View>
+        </SafeAreaView>
     );
 };
 
-
 // Styles
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f4f6f8' },
-    containerDark: { flex: 1, backgroundColor: '#eceff1' },
+    container: { flex: 1, backgroundColor: COLORS.background },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    headerContainer: { paddingBottom: 10, paddingTop: 10, backgroundColor: '#f4f6f8' },
-    headerTitle: { fontSize: 24, fontWeight: 'bold', paddingHorizontal: 15, color: '#333' },
-    headerTitleSecondary: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-    card: { backgroundColor: '#fff', borderRadius: 8, marginHorizontal: 15, marginVertical: 8, padding: 15, elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 3 },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-    actionIcons: { flexDirection: 'row' },
-    cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#37474f', flex: 1, marginRight: 10 },
-    cardSubtitle: { fontSize: 14, color: '#546e7a', marginTop: 2 },
-    badge: { backgroundColor: '#ffb300', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10, alignSelf: 'flex-start', marginTop: 10 },
-    badgeMuted: { backgroundColor: '#e0e0e0', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10, alignSelf: 'flex-start', marginTop: 10 },
-    badgeText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
-    viewSubmissionsBtn: { marginTop: 12, backgroundColor: '#007bff', paddingVertical: 10, borderRadius: 5, alignItems: 'center' },
-    viewSubmissionsBtnText: { color: '#fff', fontWeight: 'bold' },
-    addButton: { flexDirection: 'row', backgroundColor: '#28a745', padding: 15, marginHorizontal: 15, marginTop: 10, marginBottom: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', elevation: 3 },
-    addButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginLeft: 10 },
-    emptyText: { textAlign: 'center', marginTop: 50, fontSize: 16, color: '#777' },
-    backButton: { flexDirection: 'row', alignItems: 'center', padding: 15 },
-    backButtonText: { marginLeft: 5, fontSize: 18, color: '#333', fontWeight: '500' },
-    formSection: { backgroundColor: '#fff', padding: 15, borderRadius: 8, marginHorizontal: 10, marginVertical: 8 },
-    label: { fontSize: 16, fontWeight: '500', color: '#444', marginBottom: 5, marginLeft: 5 },
-    input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 8, marginBottom: 15, fontSize: 16 },
-    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 15, backgroundColor: '#f9f9f9' },
+    
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: COLORS.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textMain },
+    headerSubtitle: { fontSize: 13, color: COLORS.textSub },
+    headerBtn: {
+        backgroundColor: COLORS.primary,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginLeft: 10,
+    },
+    headerBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+
+    // Card Styles
+    card: { backgroundColor: COLORS.cardBg, borderRadius: 12, marginBottom: 15, padding: 15, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 2 } },
+    cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+    actionIconContainer: { flexDirection: 'row', gap: 10 },
+    iconBtn: { padding: 6, backgroundColor: '#e0f2f1', borderRadius: 8 },
+    cardTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.textMain, flex: 1, marginRight: 10 },
+    cardSubtitle: { fontSize: 13, color: COLORS.textSub, marginTop: 2, marginBottom: 4 },
+    footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
+    viewSubmissionsBtn: { flexDirection: 'row', backgroundColor: COLORS.blue, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, alignItems: 'center', gap: 5 },
+    viewSubmissionsBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+    badge: { backgroundColor: '#fff3cd', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: '#ffecb5' },
+    badgeMuted: { backgroundColor: '#f8f9fa', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8, borderWidth: 1, borderColor: '#e9ecef' },
+    badgeText: { color: '#856404', fontSize: 11, fontWeight: 'bold' },
+
+    // Form Styles
+    formSection: { backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10 },
+    label: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 5, marginTop: 10 },
+    input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 8, marginBottom: 10, fontSize: 15 },
+    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 15, backgroundColor: '#fff' },
     questionEditor: { borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 10, marginVertical: 10, backgroundColor: '#fafafa' },
-    questionEditorTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10, paddingBottom: 5 },
-    addQuestionBtn: { backgroundColor: '#e8eaf6', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+    questionEditorTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 10, color: COLORS.textMain },
+    headerTitleSecondary: { fontSize: 18, fontWeight: 'bold', color: '#333', marginTop: 10 },
+    addQuestionBtn: { backgroundColor: '#e8eaf6', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 10, marginBottom: 20 },
     addQuestionBtnText: { color: '#3f51b5', fontWeight: 'bold' },
-    saveButton: { backgroundColor: '#28a745', padding: 15, margin: 15, borderRadius: 10, alignItems: 'center' },
+    saveButton: { backgroundColor: COLORS.success, padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 30 },
     saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-    submissionCard: { backgroundColor: '#fff', borderRadius: 8, marginHorizontal: 15, marginVertical: 8, padding: 15, elevation: 2 },
-    cardDetail: { fontSize: 14, color: '#777', marginTop: 5 },
+
+    // Submission List
+    searchContainer: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 8, marginHorizontal: 15, marginBottom: 15, alignItems: 'center', elevation: 2, paddingHorizontal: 10, borderWidth: 1, borderColor: COLORS.border },
+    searchIcon: { marginRight: 8 },
+    searchInput: { flex: 1, height: 45, fontSize: 15, color: COLORS.textMain },
+    cardDetail: { fontSize: 13, color: '#777', marginTop: 2 },
     gradeButton: { marginTop: 12, backgroundColor: '#ffc107', paddingVertical: 10, borderRadius: 5, alignItems: 'center' },
     gradeButtonText: { color: '#212529', fontWeight: 'bold' },
+    gradeBadge: { flexDirection: 'row', backgroundColor: COLORS.blue, borderRadius: 12, paddingVertical: 2, paddingHorizontal: 8, alignItems: 'center' },
+    gradeBadgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold', marginLeft: 4 },
+
+    // Modal
     modalView: { flex: 1, padding: 20, backgroundColor: '#f9f9f9' },
-    modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
     gradingItem: { marginVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 },
-    questionText: { fontSize: 16, fontWeight: '500' },
-    studentAnswer: { fontStyle: 'italic', color: '#333', marginVertical: 8, padding: 8, backgroundColor: '#f0f0f0', borderRadius: 5, fontWeight: 'bold' },
-    correctAnswerText: { fontStyle: 'italic', color: '#28a745', marginVertical: 8, padding: 8, backgroundColor: '#e9f5e9', borderRadius: 5, fontWeight: 'bold' },
+    questionText: { fontSize: 15, fontWeight: '500' },
+    studentAnswer: { fontStyle: 'italic', color: '#333', marginVertical: 5, padding: 8, backgroundColor: '#f0f0f0', borderRadius: 5 },
+    correctAnswerText: { fontStyle: 'italic', color: COLORS.success, marginVertical: 5, padding: 8, backgroundColor: '#e9f5e9', borderRadius: 5 },
     modalActions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 30, marginBottom: 50 },
     modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
     modalBtnText: { color: '#fff', fontWeight: 'bold' },
     cancelBtn: { backgroundColor: '#6c757d', marginRight: 10 },
-    // ★★★★★ MODIFICATION: New styles for search bar ★★★★★
-    searchContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        marginHorizontal: 15,
-        marginVertical: 10,
-        paddingHorizontal: 10,
-        elevation: 2,
-        shadowColor: '#000', 
-        shadowOpacity: 0.1, 
-        shadowRadius: 3
-    },
-    searchIcon: {
-        marginRight: 10,
-    },
-    searchInput: {
-        flex: 1,
-        height: 45,
-        fontSize: 16,
-        color: '#333',
-    },
+    emptyText: { textAlign: 'center', marginTop: 50, fontSize: 15, color: '#777' },
 });
 
 export default TeacherAdminExamsScreen;

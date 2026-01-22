@@ -5,34 +5,23 @@ import { useAuth } from '../../context/AuthContext';
 import DateTimePicker from '@react-native-community/datetimepicker'; 
 import TeacherReportView from './TeacherReportView';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import * as Animatable from 'react-native-animatable';
 
-// --- Local Interfaces ---
-interface Teacher {
-  id: number;
-  full_name: string;
-  username: string;
-  subjects_taught?: string[]; 
-}
-
-interface TeacherMarking extends Teacher {
-  status: 'P' | 'A' | 'L'; 
-  isMarked?: boolean; // NEW FIELD
-}
-
-// --- Theme Constants ---
+// --- Constants ---
 const PRIMARY_COLOR = '#008080';
-const TEXT_COLOR_DARK = '#37474F';
-const TEXT_COLOR_MEDIUM = '#566573';
-const BORDER_COLOR = '#E0E0E0';
+const BACKGROUND_COLOR = '#F2F5F8';
+const CARD_BG = '#FFFFFF';
+const TEXT_COLOR_DARK = '#263238';
+const TEXT_COLOR_MEDIUM = '#546E7A';
+const BORDER_COLOR = '#CFD8DC';
 const GREEN = '#43A047';
 const RED = '#E53935';
 const WHITE = '#FFFFFF';
 
 const API_BASE_URL = '/teacher-attendance';
 
-// --- DATE FORMATTER HELPER (DD/MM/YYYY) ---
-const formatDate = (date: Date) => {
+const formatDate = (date) => {
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
@@ -41,44 +30,27 @@ const formatDate = (date: Date) => {
 
 const TeacherAttendanceMarkingScreen = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'marking' | 'reporting'>('marking');
-  const [teachers, setTeachers] = useState<TeacherMarking[]>([]); 
-  const [allTeachersForReport, setAllTeachersForReport] = useState<Teacher[]>([]);
+  const [activeTab, setActiveTab] = useState('marking');
+  const [teachers, setTeachers] = useState([]); 
+  const [allTeachersForReport, setAllTeachersForReport] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [attendanceDate, setAttendanceDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
-  const [markingState, setMarkingState] = useState<'LOADING' | 'MARKING' | 'SUCCESS_SUMMARY'>('LOADING');
+  const [selectedTeacherId, setSelectedTeacherId] = useState(null);
+  const [markingState, setMarkingState] = useState('LOADING');
 
-  
-  // --- CORE FUNCTION TO FETCH LIST AND CHECK STATUS ---
-  const loadMarkingDataForDate = useCallback(async (dateToCheck: Date) => {
-    // API expects YYYY-MM-DD
+  const loadMarkingDataForDate = useCallback(async (dateToCheck) => {
     const dateString = dateToCheck.toISOString().slice(0, 10);
-    
     try {
-        // 1. Fetch the attendance sheet for the specified date
-        const response = await apiClient.get<TeacherMarking[]>(`${API_BASE_URL}/sheet?date=${dateString}`);
+        const response = await apiClient.get(`${API_BASE_URL}/sheet?date=${dateString}`);
         const teachersData = response.data; 
-
         setTeachers(teachersData);
         setAllTeachersForReport(teachersData); 
-
-        // 2. Check if attendance is already marked in DB
-        // We now check the 'isMarked' flag from backend (which relies on DB ID existence)
-        // If even one teacher has isMarked=true, the whole day is considered marked.
         const isAlreadyMarked = teachersData.length > 0 && teachersData.some(t => t.isMarked);
-        
-        if (isAlreadyMarked) {
-            setMarkingState('SUCCESS_SUMMARY'); 
-        } else {
-            setMarkingState('MARKING'); 
-        }
-
-    } catch (error: any) {
-        console.error("Failed to load teacher base data:", error.response?.data || error.message);
+        setMarkingState(isAlreadyMarked ? 'SUCCESS_SUMMARY' : 'MARKING'); 
+    } catch (error) {
         Alert.alert("Error", error.response?.data?.message || "Failed to load teacher base data.");
         setMarkingState('MARKING'); 
     } finally {
@@ -86,63 +58,40 @@ const TeacherAttendanceMarkingScreen = () => {
     }
   }, []);
   
-  // Load data when component mounts or attendanceDate changes
   useEffect(() => {
       setIsLoading(true);
       loadMarkingDataForDate(attendanceDate);
   }, [attendanceDate, loadMarkingDataForDate]); 
 
-
-  const handleStatusChange = (teacherId: number, status: 'P' | 'A' | 'L') => {
-    setTeachers(prev =>
-      prev.map(t => (t.id === teacherId ? { ...t, status } : t))
-    );
+  const handleStatusChange = (teacherId, status) => {
+    setTeachers(prev => prev.map(t => (t.id === teacherId ? { ...t, status } : t)));
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setAttendanceDate(selectedDate);
-    }
+  const handleDateChange = (event, selectedDate) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) setAttendanceDate(selectedDate);
   };
 
   const handleSubmitAttendance = async () => {
-    if (!user || user.role !== 'admin') {
-      return Alert.alert("Error", "Only Admins can submit attendance.");
-    }
-    
+    if (!user || user.role !== 'admin') return Alert.alert("Error", "Only Admins can submit attendance.");
     const dateString = attendanceDate.toISOString().slice(0, 10);
-    
-    const attendanceData = teachers.map(t => ({
-      teacher_id: t.id,
-      status: t.status,
-    }));
+    const attendanceData = teachers.map(t => ({ teacher_id: t.id, status: t.status }));
 
-    if (attendanceData.length === 0) {
-      return Alert.alert("Error", "No teachers selected.");
-    }
+    if (attendanceData.length === 0) return Alert.alert("Error", "No teachers selected.");
 
     try {
       setIsLoading(true);
-      await apiClient.post(`${API_BASE_URL}/mark`, {
-        date: dateString,
-        attendanceData,
-      });
-
-      // SUCCESS: Switch to Summary View immediately
+      await apiClient.post(`${API_BASE_URL}/mark`, { date: dateString, attendanceData });
       setMarkingState('SUCCESS_SUMMARY');
-      
-      // Optional: Reload data to ensure 'isMarked' is set in local state (though UI is already handled)
       loadMarkingDataForDate(attendanceDate);
-
-    } catch (error: any) {
+    } catch (error) {
       Alert.alert("Submission Error", error.response?.data?.message || 'Failed to submit attendance.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSearch = (text: string) => {
+  const handleSearch = (text) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setSearchQuery(text);
   };
@@ -157,8 +106,7 @@ const TeacherAttendanceMarkingScreen = () => {
   }, [allTeachersForReport, searchQuery]);
 
   // --- Render Functions ---
-
-  const renderTeacherMarkingItem = ({ item }: { item: TeacherMarking }) => (
+  const renderTeacherMarkingItem = ({ item }) => (
     <View style={styles.teacherRow}>
       <View style={styles.teacherInfo}>
         <Text style={styles.teacherName}>{item.full_name}</Text>
@@ -166,140 +114,107 @@ const TeacherAttendanceMarkingScreen = () => {
             { (item.subjects_taught?.length ? item.subjects_taught.join(', ') : `ID: ${item.id}`) }
         </Text>
       </View>
-      
       <View style={styles.statusButtons}>
-        <TouchableOpacity
-          style={[styles.statusButton, styles.presentButton, item.status === 'P' && styles.presentActive]}
-          onPress={() => handleStatusChange(item.id, 'P')}
-        >
-          <Text style={item.status === 'P' ? styles.activeText : styles.presentText}>P</Text>
+        <TouchableOpacity style={[styles.statusButton, item.status === 'P' ? styles.presentActive : styles.btnInactive]} onPress={() => handleStatusChange(item.id, 'P')}>
+          <Text style={[styles.statusBtnText, item.status === 'P' ? {color: '#fff'} : {color: GREEN}]}>P</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.statusButton, styles.absentButton, item.status === 'A' && styles.absentActive]}
-          onPress={() => handleStatusChange(item.id, 'A')}
-        >
-          <Text style={item.status === 'A' ? styles.activeText : styles.absentText}>A</Text>
+        <TouchableOpacity style={[styles.statusButton, item.status === 'A' ? styles.absentActive : styles.btnInactive]} onPress={() => handleStatusChange(item.id, 'A')}>
+          <Text style={[styles.statusBtnText, item.status === 'A' ? {color: '#fff'} : {color: RED}]}>A</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  const renderTeacherReportSelectionItem = ({ item, index }: { item: Teacher, index: number }) => (
+  const renderTeacherReportSelectionItem = ({ item, index }) => (
     <Animatable.View animation="fadeInUp" duration={400} delay={index * 50}>
-      <TouchableOpacity 
-        style={styles.reportSelectionRow}
-        onPress={() => setSelectedTeacherId(item.id.toString())}
-      >
+      <TouchableOpacity style={styles.reportSelectionRow} onPress={() => setSelectedTeacherId(item.id.toString())}>
         <View style={styles.teacherInfo}>
             <Text style={styles.teacherName}>{item.full_name}</Text>
-            <Text style={styles.teacherSubjects}>
-                { (item.subjects_taught?.length ? item.subjects_taught.join(', ') : `ID: ${item.id}`) }
-            </Text>
+            <Text style={styles.teacherSubjects}>{ (item.subjects_taught?.length ? item.subjects_taught.join(', ') : `ID: ${item.id}`) }</Text>
         </View>
         <Icon name="chevron-right" size={24} color={TEXT_COLOR_MEDIUM} />
       </TouchableOpacity>
     </Animatable.View>
   );
 
-  // --- Render Success Summary View ---
   const renderSuccessSummary = () => (
       <Animatable.View animation="fadeIn" duration={500} style={styles.summaryContainer}>
           <View style={styles.successIconContainer}>
             <Icon name="check" size={50} color={WHITE} />
           </View>
-          
           <Text style={styles.summaryTitle}>Attendance Marked!</Text>
-          <Text style={styles.summaryMessage}>
-              Attendance for {formatDate(attendanceDate)} has been saved successfully.
-              You can click "Edit Attendance" to make any changes.
-          </Text>
-          
-          <TouchableOpacity 
-              style={styles.editButton}
-              onPress={() => {
-                  // Switch back to MARKING state to allow edits
-                  setMarkingState('MARKING');
-              }}
-          >
+          <Text style={styles.summaryMessage}>Attendance for {formatDate(attendanceDate)} has been saved successfully.</Text>
+          <TouchableOpacity style={styles.editButton} onPress={() => setMarkingState('MARKING')}>
               <Text style={styles.editButtonText}>Edit Attendance</Text>
           </TouchableOpacity>
       </Animatable.View>
   );
 
-
-  // --- Conditional Rendering for Report View ---
   if (selectedTeacherId) {
     const teacherName = allTeachersForReport.find(t => t.id.toString() === selectedTeacherId)?.full_name || "Unknown Teacher";
-    return (
-        <TeacherReportView 
-            teacherId={selectedTeacherId} 
-            headerTitle={`Report: ${teacherName}`} 
-            onBack={() => setSelectedTeacherId(null)}
-        />
-    );
+    return <TeacherReportView teacherId={selectedTeacherId} headerTitle={`Report: ${teacherName}`} onBack={() => setSelectedTeacherId(null)} />;
   }
 
-  // --- Main Admin Tabbed View ---
   return (
     <SafeAreaView style={styles.container}>
-        <View style={styles.tabBar}>
-            <TouchableOpacity 
-                style={[styles.tabButton, activeTab === 'marking' && styles.tabActive]} 
-                onPress={() => setActiveTab('marking')}
-            >
+        
+        {/* --- HEADER CARD --- */}
+        <View style={styles.headerCard}>
+            <View style={styles.headerLeft}>
+                <View style={styles.headerIconContainer}>
+                    <MaterialIcons name="person-pin" size={24} color="#008080" />
+                </View>
+                <View style={styles.headerTextContainer}>
+                    <Text style={styles.headerTitle}>Teacher Attendance</Text>
+                    <Text style={styles.headerSubtitle}>Admin Control Panel</Text>
+                </View>
+            </View>
+            {activeTab === 'marking' && (
+                <TouchableOpacity style={styles.headerActionBtn} onPress={() => setShowDatePicker(true)}>
+                    <MaterialIcons name="calendar-today" size={20} color="#008080" />
+                </TouchableOpacity>
+            )}
+        </View>
+
+        {/* Tabs */}
+        <View style={styles.tabContainer}>
+            <TouchableOpacity style={[styles.tabButton, activeTab === 'marking' && styles.tabButtonActive]} onPress={() => setActiveTab('marking')}>
                 <Text style={[styles.tabButtonText, activeTab === 'marking' && styles.tabButtonTextActive]}>Mark Attendance</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-                style={[styles.tabButton, activeTab === 'reporting' && styles.tabActive]} 
-                onPress={() => setActiveTab('reporting')}
-            >
-                <Text style={[styles.tabButtonText, activeTab === 'reporting' && styles.tabButtonTextActive]}>Check Reports</Text>
+            <TouchableOpacity style={[styles.tabButton, activeTab === 'reporting' && styles.tabButtonActive]} onPress={() => setActiveTab('reporting')}>
+                <Text style={[styles.tabButtonText, activeTab === 'reporting' && styles.tabButtonTextActive]}>View Reports</Text>
             </TouchableOpacity>
         </View>
 
+        {showDatePicker && <DateTimePicker value={attendanceDate} mode="date" display="default" onChange={handleDateChange} />}
+
         {activeTab === 'marking' && (
             <View style={{flex: 1}}>
-                <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Mark Teacher Attendance</Text>
-                    <View style={styles.dateSelector}>
-                        <Text style={styles.label}>Date:</Text>
-                        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateInput}>
-                            <Text>{formatDate(attendanceDate)}</Text>
-                        </TouchableOpacity>
-                    </View>
-                    {showDatePicker && (
-                        <DateTimePicker
-                            value={attendanceDate}
-                            mode="date"
-                            display="default"
-                            onChange={handleDateChange}
-                        />
-                    )}
+                {/* Date Subtitle */}
+                <View style={styles.dateSubtitleContainer}>
+                    <Text style={styles.dateSubtitleText}>Date: {formatDate(attendanceDate)}</Text>
                 </View>
-                
-                {/* LOADING/SUMMARY/MARKING Views */}
+
                 {isLoading && <View style={styles.center}><ActivityIndicator size="large" color={PRIMARY_COLOR} /></View>}
                 
                 {!isLoading && markingState === 'SUCCESS_SUMMARY' && renderSuccessSummary()}
                 
                 {!isLoading && markingState === 'MARKING' && (
                     <>
-                        <Text style={styles.listTitle}>Teacher List ({teachers.length})</Text>
-
                         <FlatList
                             data={teachers}
                             keyExtractor={(item) => item.id.toString()}
                             renderItem={renderTeacherMarkingItem}
-                            contentContainerStyle={{ paddingBottom: 100 }}
+                            contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 100 }}
                             ListEmptyComponent={<Text style={styles.emptyText}>No teacher records found.</Text>}
                         />
-
-                        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmitAttendance} disabled={isLoading}>
-                            <Text style={styles.submitBtnText}>SUBMIT ATTENDANCE</Text>
-                        </TouchableOpacity>
+                        <View style={styles.footerContainer}>
+                            <TouchableOpacity style={styles.submitFooterButton} onPress={handleSubmitAttendance} disabled={isLoading}>
+                                <Text style={styles.submitFooterText}>SUBMIT ATTENDANCE</Text>
+                            </TouchableOpacity>
+                        </View>
                     </>
                 )}
-
             </View>
         )}
 
@@ -309,7 +224,7 @@ const TeacherAttendanceMarkingScreen = () => {
                     <Icon name="magnify" size={22} color={TEXT_COLOR_MEDIUM} style={styles.searchIcon} />
                     <TextInput
                         style={styles.searchBar}
-                        placeholder="Search teacher by name or subject..."
+                        placeholder="Search teacher..."
                         value={searchQuery}
                         onChangeText={handleSearch}
                         placeholderTextColor={TEXT_COLOR_MEDIUM}
@@ -323,7 +238,7 @@ const TeacherAttendanceMarkingScreen = () => {
                         data={filteredReportList}
                         keyExtractor={(item) => item.id.toString()}
                         renderItem={renderTeacherReportSelectionItem}
-                        contentContainerStyle={{ paddingBottom: 20 }}
+                        contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 20 }}
                         ListEmptyComponent={<Text style={styles.emptyText}>No teachers found matching search criteria.</Text>}
                     />
                 )}
@@ -334,56 +249,87 @@ const TeacherAttendanceMarkingScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f4f7' },
+  container: { flex: 1, backgroundColor: BACKGROUND_COLOR },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   
-  tabBar: { flexDirection: 'row', backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
-  tabButton: { flex: 1, paddingVertical: 15, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
-  tabActive: { borderBottomColor: PRIMARY_COLOR },
-  tabButtonText: { color: TEXT_COLOR_MEDIUM, fontWeight: '600' },
+  // --- HEADER CARD STYLES ---
+  headerCard: {
+      backgroundColor: CARD_BG,
+      paddingHorizontal: 15,
+      paddingVertical: 12,
+      width: '96%', 
+      alignSelf: 'center',
+      marginTop: 15,
+      marginBottom: 10,
+      borderRadius: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      elevation: 3,
+      shadowColor: '#000', 
+      shadowOpacity: 0.1, 
+      shadowRadius: 4, 
+      shadowOffset: { width: 0, height: 2 },
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center' },
+  headerIconContainer: {
+      backgroundColor: '#E0F2F1', 
+      borderRadius: 30,
+      width: 45,
+      height: 45,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+  },
+  headerTextContainer: { justifyContent: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: TEXT_COLOR_DARK },
+  headerSubtitle: { fontSize: 13, color: TEXT_COLOR_MEDIUM },
+  headerActionBtn: { padding: 8, backgroundColor: '#f0fdfa', borderRadius: 8, borderWidth: 1, borderColor: '#ccfbf1' },
+
+  // Tabs
+  tabContainer: { flexDirection: 'row', marginHorizontal: 15, marginBottom: 10, backgroundColor: CARD_BG, borderRadius: 8, overflow: 'hidden', elevation: 2, borderWidth: 1, borderColor: BORDER_COLOR },
+  tabButton: { flex: 1, paddingVertical: 12, alignItems: 'center' },
+  tabButtonActive: { backgroundColor: '#F0FDF4', borderBottomWidth: 3, borderBottomColor: PRIMARY_COLOR },
+  tabButtonText: { fontSize: 14, fontWeight: '600', color: TEXT_COLOR_MEDIUM },
   tabButtonTextActive: { color: PRIMARY_COLOR },
 
-  header: { paddingHorizontal: 20, paddingTop: 15, backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER_COLOR },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: TEXT_COLOR_DARK, marginBottom: 10, textAlign: 'left' },
-  dateSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', paddingVertical: 10, paddingBottom: 20 },
-  label: { fontSize: 16, fontWeight: '500', color: TEXT_COLOR_DARK, marginRight: 15 },
-  dateInput: { borderWidth: 1, borderColor: BORDER_COLOR, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 5, backgroundColor: WHITE },
-  listTitle: { fontSize: 16, fontWeight: 'bold', padding: 10, backgroundColor: '#E0E0E0', color: TEXT_COLOR_DARK },
-  
-  teacherRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#eee', backgroundColor: WHITE },
+  // Date Subtitle
+  dateSubtitleContainer: { alignItems: 'center', marginBottom: 10 },
+  dateSubtitleText: { fontSize: 14, color: TEXT_COLOR_MEDIUM, fontWeight: '500' },
+
+  // List Rows
+  teacherRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, marginVertical: 5, backgroundColor: CARD_BG, borderRadius: 10, elevation: 1 },
   teacherInfo: { flex: 1, marginRight: 10 },
   teacherName: { fontSize: 16, fontWeight: 'bold', color: TEXT_COLOR_DARK },
   teacherSubjects: { fontSize: 13, color: TEXT_COLOR_MEDIUM, marginTop: 2 },
   
-  statusButtons: { flexDirection: 'row' },
-  statusButton: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginLeft: 10, borderWidth: 1.5 },
-  
-  presentButton: { borderColor: GREEN },
-  absentButton: { borderColor: RED, backgroundColor: WHITE },
-  
-  presentText: { color: GREEN, fontWeight: 'bold' },
-  absentText: { color: RED, fontWeight: 'bold' },
-
+  statusButtons: { flexDirection: 'row', gap: 10 },
+  statusButton: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   presentActive: { backgroundColor: GREEN, borderColor: GREEN },
   absentActive: { backgroundColor: RED, borderColor: RED },
-  activeText: { color: WHITE, fontWeight: 'bold' },
+  btnInactive: { backgroundColor: WHITE, borderColor: BORDER_COLOR },
+  statusBtnText: { fontWeight: 'bold', fontSize: 16 },
 
-  submitBtn: { backgroundColor: PRIMARY_COLOR, padding: 15, alignItems: 'center', position: 'absolute', bottom: 0, left: 0, right: 0 },
-  submitBtnText: { color: WHITE, fontSize: 18, fontWeight: 'bold' },
   emptyText: { textAlign: 'center', marginTop: 20, color: TEXT_COLOR_MEDIUM },
 
-  searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: WHITE, marginHorizontal: 15, marginVertical: 15, borderRadius: 8, borderWidth: 1, borderColor: BORDER_COLOR, paddingHorizontal: 10 },
+  // Search
+  searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: CARD_BG, marginHorizontal: 15, marginBottom: 10, borderRadius: 8, borderWidth: 1, borderColor: BORDER_COLOR, paddingHorizontal: 10 },
   searchBar: { flex: 1, height: 45, fontSize: 16, color: TEXT_COLOR_DARK },
   searchIcon: { marginRight: 8 },
-  reportSelectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, paddingHorizontal: 20, marginHorizontal: 10, marginVertical: 4, backgroundColor: WHITE, borderRadius: 8, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4 },
+  reportSelectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, marginVertical: 4, backgroundColor: CARD_BG, borderRadius: 10, elevation: 1 },
 
-  // --- Success Summary View Styles (Updated to match your image) ---
-  summaryContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30, backgroundColor: WHITE },
+  // Summary View
+  summaryContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30, backgroundColor: CARD_BG },
   successIconContainer: { width: 80, height: 80, borderRadius: 40, backgroundColor: GREEN, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   summaryTitle: { fontSize: 24, fontWeight: 'bold', color: TEXT_COLOR_DARK, marginBottom: 10 },
-  summaryMessage: { fontSize: 16, color: TEXT_COLOR_MEDIUM, textAlign: 'center', marginBottom: 30, paddingHorizontal: 20 },
+  summaryMessage: { fontSize: 16, color: TEXT_COLOR_MEDIUM, textAlign: 'center', marginBottom: 30 },
   editButton: { backgroundColor: PRIMARY_COLOR, paddingVertical: 12, paddingHorizontal: 40, borderRadius: 8 },
   editButtonText: { color: WHITE, fontSize: 16, fontWeight: 'bold' },
+
+  // Footer
+  footerContainer: { position: 'absolute', bottom: 20, left: 20, right: 20 },
+  submitFooterButton: { backgroundColor: PRIMARY_COLOR, paddingVertical: 15, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 },
+  submitFooterText: { color: WHITE, fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
 });
 
 export default TeacherAttendanceMarkingScreen;

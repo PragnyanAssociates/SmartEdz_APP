@@ -17,8 +17,8 @@ const ReportNavigator = () => {
     return (
         <Stack.Navigator
             screenOptions={{
-                headerStyle: { backgroundColor: '#008080' },
-                headerTintColor: '#ffffff',
+                headerStyle: { backgroundColor: '#e0f2f7' },
+                headerTintColor: '#008080',
                 headerTitleStyle: { fontWeight: 'bold' },
             }}
         >

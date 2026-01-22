@@ -4,11 +4,12 @@ import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { getProfileImageSource } from '../../utils/imageHelpers';
 import { io, Socket } from 'socket.io-client';
 import { SERVER_URL } from '../../../apiConfig';
 
-const THEME = { primary: '#007bff', background: '#f4f7fc', text: '#212529', muted: '#86909c', border: '#dee2e6', white: '#ffffff', accent: '#28a745' };
+const THEME = { primary: '#008080', background: '#F2F5F8', text: '#212529', muted: '#86909c', border: '#dee2e6', white: '#ffffff', accent: '#28a745', cardBg: '#FFFFFF' };
 
 const GroupListScreen = () => {
     const { user } = useAuth();
@@ -38,18 +39,10 @@ const GroupListScreen = () => {
 
     useEffect(() => {
         if (!user) return;
-        
         socketRef.current = io(SERVER_URL, { transports: ['websocket'] });
-
-        socketRef.current.on('updateGroupList', () => {
-            fetchGroups(false); 
-        });
-
-        return () => {
-            socketRef.current?.disconnect();
-        };
+        socketRef.current.on('updateGroupList', () => { fetchGroups(false); });
+        return () => { socketRef.current?.disconnect(); };
     }, [user, fetchGroups]);
-
 
     const filteredGroups = useMemo(() =>
         groups.filter(group => group.name.toLowerCase().includes(searchQuery.toLowerCase())),
@@ -86,19 +79,30 @@ const GroupListScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Groups</Text>
-                <View style={styles.searchContainer}>
-                    <Icon name="magnify" size={20} color={THEME.muted} />
-                    <TextInput style={styles.searchInput} placeholder="Search groups..." value={searchQuery} onChangeText={setSearchQuery} />
+            {/* Header Card */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="forum" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Groups</Text>
+                        <Text style={styles.headerSubtitle}>Discussions</Text>
+                    </View>
                 </View>
             </View>
+
+            <View style={styles.searchContainer}>
+                <Icon name="magnify" size={20} color={THEME.muted} />
+                <TextInput style={styles.searchInput} placeholder="Search groups..." value={searchQuery} onChangeText={setSearchQuery} />
+            </View>
+
             <FlatList
                 data={filteredGroups}
                 renderItem={renderGroupItem}
                 keyExtractor={(item) => item.id.toString()}
                 ListEmptyComponent={<View style={styles.emptyContainer}><Text style={styles.emptyText}>No groups found.</Text></View>}
-                contentContainerStyle={{ flexGrow: 1 }}
+                contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 10 }}
             />
             {(user?.role === 'admin' || user?.role === 'teacher') && (
                 <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('CreateGroup')}>
@@ -110,16 +114,48 @@ const GroupListScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: THEME.white },
+    container: { flex: 1, backgroundColor: THEME.background },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { paddingTop: Platform.OS === 'android' ? 15 : 0, paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: THEME.border, backgroundColor: THEME.white },
-    headerTitle: { fontSize: 28, fontWeight: 'bold', color: THEME.text, marginBottom: 10 },
-    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', borderRadius: 10, paddingHorizontal: 10, marginBottom: 10 },
+    
+    // Header Card
+    headerCard: {
+        backgroundColor: THEME.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.text },
+    headerSubtitle: { fontSize: 13, color: THEME.muted },
+
+    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 10, marginHorizontal: 15, paddingHorizontal: 10, marginBottom: 10, borderWidth: 1, borderColor: THEME.border, height: 45 },
     searchInput: { flex: 1, height: 40, fontSize: 16, marginLeft: 8, color: THEME.text },
-    groupItem: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: THEME.white, borderBottomWidth: 1, borderBottomColor: THEME.border },
+    
+    groupItem: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: THEME.white, marginBottom: 10, borderRadius: 12, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3 },
     avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#e9ecef', marginRight: 15 },
     groupInfo: { flex: 1 },
-    groupName: { fontSize: 18, fontWeight: '600', color: THEME.text },
+    groupName: { fontSize: 16, fontWeight: '600', color: THEME.text },
     groupDesc: { fontSize: 14, color: THEME.muted, marginTop: 2 },
     metaInfo: { alignItems: 'flex-end' },
     timestamp: { fontSize: 12, color: THEME.muted, marginBottom: 4 },

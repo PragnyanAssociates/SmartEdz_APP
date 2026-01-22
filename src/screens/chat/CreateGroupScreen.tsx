@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, FlatList, Alert, ActivityIndicator, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, FlatList, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 
-const THEME = { primary: '#007bff', background: '#f4f7fc', text: '#212529', muted: '#86909c', border: '#dee2e6', white: '#ffffff' };
+const THEME = { primary: '#008080', background: '#F2F5F8', text: '#212529', muted: '#86909c', border: '#dee2e6', white: '#ffffff', cardBg: '#FFFFFF' };
 const BG_COLORS = ['#e5ddd5', '#fce6e6', '#e6f2fc', '#e6fcf2', '#fcf2e6', '#f2e6fc'];
 
 const CreateGroupScreen = () => {
@@ -83,6 +84,22 @@ const CreateGroupScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
+            {/* Header Card */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{marginRight: 10, padding: 4}}>
+                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="group-add" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>New Group</Text>
+                        <Text style={styles.headerSubtitle}>Create & Customize</Text>
+                    </View>
+                </View>
+            </View>
+
             <View style={styles.form}>
                 <TextInput style={styles.input} placeholder="Group Name (e.g., Class 10 Announcements)" placeholderTextColor={THEME.muted} value={groupName} onChangeText={setGroupName} />
                 <View style={styles.colorPickerContainer}>
@@ -120,7 +137,40 @@ const CreateGroupScreen = () => {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: THEME.background },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    form: { padding: 16, backgroundColor: THEME.white, borderBottomWidth: 1, borderBottomColor: THEME.border },
+    
+    // Header Card
+    headerCard: {
+        backgroundColor: THEME.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.text },
+    headerSubtitle: { fontSize: 13, color: THEME.muted },
+
+    form: { padding: 16, backgroundColor: THEME.white, borderBottomWidth: 1, borderBottomColor: THEME.border, borderRadius: 12, marginHorizontal: 10, marginBottom: 10, elevation: 1 },
     input: { backgroundColor: '#f0f0f0', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 8, fontSize: 16, borderWidth: 1, borderColor: THEME.border, marginBottom: 16 },
     searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f0f0', borderRadius: 8, borderWidth: 1, borderColor: THEME.border },
     searchIcon: { paddingLeft: 12 },
@@ -128,13 +178,13 @@ const styles = StyleSheet.create({
     colorPickerContainer: { marginBottom: 16 },
     colorLabel: { fontSize: 14, color: THEME.muted, marginBottom: 8 },
     colorSwatch: { width: 40, height: 40, borderRadius: 20, marginRight: 10, justifyContent: 'center', alignItems: 'center' },
-    listHeader: { fontSize: 18, fontWeight: '600', color: THEME.text, paddingHorizontal: 16, paddingTop: 20, paddingBottom: 10 },
+    listHeader: { fontSize: 16, fontWeight: '600', color: THEME.text, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10 },
     userItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20, backgroundColor: THEME.white, borderBottomWidth: 1, borderBottomColor: THEME.border },
     userInfo: { flex: 1 },
     userName: { fontSize: 16, fontWeight: '500', color: THEME.text },
     emptyText: { textAlign: 'center', marginTop: 30, color: THEME.muted, fontSize: 16 },
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, backgroundColor: THEME.white, borderTopWidth: 1, borderTopColor: THEME.border },
-    createButton: { backgroundColor: THEME.primary, paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
+    footer: { position: 'absolute', bottom: 20, left: 20, right: 20 },
+    createButton: { backgroundColor: THEME.primary, paddingVertical: 14, borderRadius: 30, alignItems: 'center', elevation: 5 },
     disabledButton: { backgroundColor: THEME.muted },
     createButtonText: { color: THEME.white, fontSize: 18, fontWeight: 'bold' },
 });

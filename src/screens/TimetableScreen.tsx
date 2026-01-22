@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
-  Dimensions, TouchableOpacity, Modal, ActivityIndicator, Alert, Image,
+  Dimensions, TouchableOpacity, Modal, ActivityIndicator, Alert
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as Animatable from 'react-native-animatable';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // --- Type Definitions ---
 type RootStackParamList = { Attendance: { class_group: string; subject_name: string; period_number: number; date: string; }; };
@@ -18,7 +18,7 @@ interface PeriodDefinition { period: number; time: string; isBreak?: boolean; }
 interface RenderablePeriod { subject?: string; teacher?: string; teacher_id?: number; isBreak?: boolean; class_group?: string; }
 type Day = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday';
 
-// --- Constants (Updated for Aesthetic) ---
+// --- Constants ---
 const CLASS_GROUPS = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 const DAYS: Day[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const PERIOD_DEFINITIONS: PeriodDefinition[] = [ { period: 1, time: '09:00-09:45' }, { period: 2, time: '09:45-10:30' }, { period: 3, time: '10:30-10:45', isBreak: true }, { period: 4, time: '10:45-11:30' }, { period: 5, time: '11:30-12:15' }, { period: 6, time: '12:15-01:00', }, { period: 7, time: '01:00-01:45', isBreak: true }, { period: 8, time: '01:45-02:30' }, { period: 9, time: '02:30-03:15' }, { period: 10, time: '03:15-04:00' }, ];
@@ -28,18 +28,15 @@ const tableContentWidth = width - TABLE_HORIZONTAL_MARGIN * 2;
 const timeColumnWidth = Math.floor(tableContentWidth * 0.20);
 const dayColumnWidth = Math.floor((tableContentWidth * 0.80) / 6);
 
-// New, cleaner header definitions
-const headerBaseColor = '#F4F4F9';
+// Header definitions
 const headerTextColor = '#455A64';
 const tableHeaders = [ { name: 'TIME', color: '#EBEBEB', textColor: '#343A40', width: timeColumnWidth }, { name: 'MON', color: '#E0F7FA', textColor: headerTextColor, width: dayColumnWidth }, { name: 'TUE', color: '#FFFDE7', textColor: headerTextColor, width: dayColumnWidth }, { name: 'WED', color: '#FCE4EC', textColor: headerTextColor, width: dayColumnWidth }, { name: 'THU', color: '#EDE7F6', textColor: headerTextColor, width: dayColumnWidth }, { name: 'FRI', color: '#E8EAF6', textColor: headerTextColor, width: dayColumnWidth }, { name: 'SAT', color: '#F1F8E9', textColor: headerTextColor, width: dayColumnWidth }, ];
 
-// Updated subject color palette for a softer look
+// Subject colors
 const subjectColorPalette = [ '#B39DDB', '#80DEEA', '#FFAB91', '#A5D6A7', '#FFE082', '#F48FB1', '#C5CAE9', '#DCE775', '#FFCC80', '#B0BEC5', ];
-
 const subjectColorMap = new Map<string, string>();
 let colorIndex = 0;
 const getSubjectColor = (subject?: string): string => { if (!subject) return '#FFFFFF'; if (subjectColorMap.has(subject)) { return subjectColorMap.get(subject)!; } const color = subjectColorPalette[colorIndex % subjectColorPalette.length]; subjectColorMap.set(subject, color); colorIndex++; return color; };
-
 
 // --- Reusable Component for Admin Slot Editing Modal ---
 const EditSlotModal = ({ isVisible, onClose, onSave, slotInfo, teachers, currentData, selectedClass }: { isVisible: boolean; onClose: () => void; onSave: (slot: { subject_name?: string; teacher_id?: number }) => void; slotInfo: { day: Day; period: number; class_group?: string }; teachers: Teacher[]; currentData?: TimetableSlotFromAPI; selectedClass: string; }) => {
@@ -54,7 +51,6 @@ const EditSlotModal = ({ isVisible, onClose, onSave, slotInfo, teachers, current
         </Modal>
     );
 };
-
 
 const TimetableScreen = ({ teacherId: propTeacherId, isEmbedded = false }) => {
     const { user, isLoading: isAuthLoading } = useAuth();
@@ -88,26 +84,16 @@ const TimetableScreen = ({ teacherId: propTeacherId, isEmbedded = false }) => {
         setIsTimetableLoading(true);
         setApiTimetableData([]);
 
-        // --- EMBEDDED LOGIC: Only fetch for the specific teacher ---
         if (isEmbedded) {
-            if (!propTeacherId) {
-                console.log("Embedded timetable but no teacher ID provided.");
-                setIsTimetableLoading(false);
-                return;
-            }
+            if (!propTeacherId) { setIsTimetableLoading(false); return; }
             try {
                 const response = await apiClient.get(`/timetable/teacher/${propTeacherId}`);
                 setApiTimetableData(response.data);
-            } catch (error: any) {
-                Alert.alert('Error', 'Failed to load teacher\'s timetable.');
-                setApiTimetableData([]);
-            } finally {
-                setIsTimetableLoading(false);
-            }
+            } catch (error: any) { setApiTimetableData([]); } 
+            finally { setIsTimetableLoading(false); }
             return;
         }
 
-        // --- ORIGINAL LOGIC: For standalone screen ---
         if (isAuthLoading || !user) return;
 
         try {
@@ -145,17 +131,17 @@ const TimetableScreen = ({ teacherId: propTeacherId, isEmbedded = false }) => {
 
         let title = 'Schedule';
         if (!isEmbedded) {
-            if (activeTab === 'academic') { title = `Academic Timetable - ${selectedClass}`; }
+            if (activeTab === 'academic') { title = `Academic: ${selectedClass}`; }
             else if (activeTab === 'personal') {
-                const teacherName = user?.role === 'admin' ? teachers.find(t => t.id === selectedTeacherId)?.full_name || 'Teachers Timetable' : user?.full_name || 'My Timetable';
-                title = `${teacherName}'s Schedule`;
+                const teacherName = user?.role === 'admin' ? teachers.find(t => t.id === selectedTeacherId)?.full_name || 'Teachers Timetable' : 'My Timetable';
+                title = teacherName;
             }
         }
         return { scheduleData: data, headerTitle: title };
     }, [apiTimetableData, activeTab, selectedClass, selectedTeacherId, teachers, user, isEmbedded]);
 
     const handleSlotPress = (day: Day, period: number, currentSlotData?: RenderablePeriod) => {
-        if (isEmbedded || user?.role !== 'admin') return; // Interactions disabled in embedded mode
+        if (isEmbedded || user?.role !== 'admin') return; 
         let classGroupToModify;
         if (activeTab === 'academic') { classGroupToModify = selectedClass; }
         else {
@@ -178,7 +164,7 @@ const TimetableScreen = ({ teacherId: propTeacherId, isEmbedded = false }) => {
     };
 
     const handleAttendancePress = (slotData: RenderablePeriod, periodNumber: number, dayOfColumn: Day) => {
-        if (isEmbedded) return; // Interactions disabled in embedded mode
+        if (isEmbedded) return; 
         const today = new Date(); const currentDayOfWeek = today.toLocaleString('en-US', { weekday: 'long' }) as Day;
         if (dayOfColumn !== currentDayOfWeek) { Alert.alert('Invalid Day', `Attendance can only be marked for today (${currentDayOfWeek}).`); return; }
         if (periodNumber !== 1) { Alert.alert('Attendance Rule', 'Attendance is only taken for the first period to mark the full day.'); return; }
@@ -193,7 +179,7 @@ const TimetableScreen = ({ teacherId: propTeacherId, isEmbedded = false }) => {
         return activeTab === 'academic' && period.teacher_id && String(period.teacher_id) === String(user?.id);
     };
 
-    if (!isEmbedded && isAuthLoading) { return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#5E35B1" /></View>; }
+    if (!isEmbedded && isAuthLoading) { return <View style={styles.loaderContainer}><ActivityIndicator size="large" color="#008080" /></View>; }
 
     const showClassPicker = activeTab === 'academic' && user?.role !== 'student';
     const showTeacherPicker = activeTab === 'personal' && user?.role === 'admin';
@@ -201,7 +187,7 @@ const TimetableScreen = ({ teacherId: propTeacherId, isEmbedded = false }) => {
 
     // --- RENDER TIMETABLE GRID ---
     const TimetableGrid = (
-        isTimetableLoading ? (<ActivityIndicator size="large" color="#5E35B1" style={{ marginTop: 50 }} />) : (
+        isTimetableLoading ? (<ActivityIndicator size="large" color="#008080" style={{ marginTop: 50 }} />) : (
             <Animatable.View animation="fadeInUp" duration={700} delay={isEmbedded ? 0 : 300} style={[styles.tableOuterContainer, isEmbedded && styles.embeddedTable]}>
                 <View style={styles.tableHeaderRow}>{tableHeaders.map(h => (<View key={h.name} style={[styles.tableHeaderCell, { backgroundColor: h.color, width: h.width }]}><Text style={[styles.tableHeaderText, { color: h.textColor }]}>{h.name}</Text></View>))}</View>
                 {scheduleData.map((row, rowIndex) => (
@@ -232,45 +218,123 @@ const TimetableScreen = ({ teacherId: propTeacherId, isEmbedded = false }) => {
         )
     );
 
-    // --- RENDER DECISION: Return only grid if embedded, or full screen otherwise ---
-    if (isEmbedded) {
-        return <View>{TimetableGrid}</View>;
-    }
+    if (isEmbedded) { return <View>{TimetableGrid}</View>; }
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <ScrollView contentContainerStyle={styles.pageContainer}>
-                <Animatable.View animation="fadeInDown" duration={600}><View style={styles.pageHeaderContainer}><Image source={{ uri: 'https://cdn-icons-png.flaticon.com/128/2693/2693507.png' }} style={styles.pageHeaderIcon} /><View style={styles.pageHeaderTextContainer}><Text style={styles.pageMainTitle}>{headerTitle}</Text><Text style={styles.pageSubTitle}>Logged in as: {user?.full_name}</Text></View></View></Animatable.View>
-                {(user?.role === 'admin' || user?.role === 'teacher') && (<Animatable.View animation="fadeIn" duration={500} style={styles.tabContainer}><TouchableOpacity style={[styles.tabButton, activeTab === 'academic' && styles.tabButtonActive]} onPress={() => setActiveTab('academic')}><Text style={[styles.tabButtonText, activeTab === 'academic' && styles.tabButtonTextActive]}>Academic Timetable</Text></TouchableOpacity><TouchableOpacity style={[styles.tabButton, activeTab === 'personal' && styles.tabButtonActive]} onPress={() => setActiveTab('personal')}><Text style={[styles.tabButtonText, activeTab === 'personal' && styles.tabButtonTextActive]}>{user.role === 'admin' ? 'Teachers Timetable' : 'My Timetable'}</Text></TouchableOpacity></Animatable.View>)}
-                {(showClassPicker || showTeacherPicker || user?.role === 'student') && (<Animatable.View animation="fadeIn" duration={500} delay={200} style={styles.adminPickerWrapper}>{(showClassPicker || user?.role === 'student') && (<View style={styles.pickerStyle}><Picker selectedValue={selectedClass} onValueChange={(itemValue: string) => setSelectedClass(itemValue)} style={styles.picker} itemStyle={styles.pickerItem} dropdownIconColor="#333" enabled={user?.role !== 'student'}>{CLASS_GROUPS.map(option => (<Picker.Item key={option} label={option} value={option} />))}</Picker></View>)}{showTeacherPicker && (<View style={styles.pickerStyle}><Picker selectedValue={selectedTeacherId?.toString()} onValueChange={(itemValue: string) => setSelectedTeacherId(parseInt(itemValue))} style={styles.picker} itemStyle={styles.pickerItem} dropdownIconColor="#333">{displayableTeacherList.map(t => (<Picker.Item key={t.id} label={t.full_name} value={t.id.toString()} />))}</Picker></View>)}</Animatable.View>)}
+                
+                {/* --- HEADER CARD --- */}
+                <Animatable.View animation="fadeInDown" duration={600}>
+                    <View style={styles.headerCard}>
+                        <View style={styles.headerLeft}>
+                            <View style={styles.headerIconContainer}>
+                                <Icon name="calendar-clock" size={24} color="#008080" />
+                            </View>
+                            <View style={styles.headerTextContainer}>
+                                <Text style={styles.headerTitle}>{headerTitle}</Text>
+                                <Text style={styles.headerSubtitle}>Logged in as: {user?.full_name}</Text>
+                            </View>
+                        </View>
+                    </View>
+                </Animatable.View>
+
+                {/* Tabs */}
+                {(user?.role === 'admin' || user?.role === 'teacher') && (
+                    <Animatable.View animation="fadeIn" duration={500} style={styles.tabContainer}>
+                        <TouchableOpacity style={[styles.tabButton, activeTab === 'academic' && styles.tabButtonActive]} onPress={() => setActiveTab('academic')}>
+                            <Text style={[styles.tabButtonText, activeTab === 'academic' && styles.tabButtonTextActive]}>Academic Timetable</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.tabButton, activeTab === 'personal' && styles.tabButtonActive]} onPress={() => setActiveTab('personal')}>
+                            <Text style={[styles.tabButtonText, activeTab === 'personal' && styles.tabButtonTextActive]}>{user.role === 'admin' ? 'Teachers Timetable' : 'My Timetable'}</Text>
+                        </TouchableOpacity>
+                    </Animatable.View>
+                )}
+
+                {/* Filters/Pickers */}
+                {(showClassPicker || showTeacherPicker || user?.role === 'student') && (
+                    <Animatable.View animation="fadeIn" duration={500} delay={200} style={styles.filterContainer}>
+                        {(showClassPicker || user?.role === 'student') && (
+                            <View style={styles.pickerWrapper}>
+                                <Picker selectedValue={selectedClass} onValueChange={(itemValue: string) => setSelectedClass(itemValue)} style={styles.picker} itemStyle={styles.pickerItem} dropdownIconColor="#333" enabled={user?.role !== 'student'}>
+                                    {CLASS_GROUPS.map(option => (<Picker.Item key={option} label={option} value={option} />))}
+                                </Picker>
+                            </View>
+                        )}
+                        {showTeacherPicker && (
+                            <View style={styles.pickerWrapper}>
+                                <Picker selectedValue={selectedTeacherId?.toString()} onValueChange={(itemValue: string) => setSelectedTeacherId(parseInt(itemValue))} style={styles.picker} itemStyle={styles.pickerItem} dropdownIconColor="#333">
+                                    {displayableTeacherList.map(t => (<Picker.Item key={t.id} label={t.full_name} value={t.id.toString()} />))}
+                                </Picker>
+                            </View>
+                        )}
+                    </Animatable.View>
+                )}
+
                 {TimetableGrid}
             </ScrollView>
-            {selectedSlot && (<EditSlotModal isVisible={isModalVisible} onClose={() => setIsModalVisible(false)} onSave={handleSaveChanges} slotInfo={selectedSlot} teachers={teachers} selectedClass={selectedClass} currentData={apiTimetableData.find(d => d.day_of_week === selectedSlot.day && d.period_number === selectedSlot.period && d.class_group === (selectedSlot.class_group || selected))} />)}
+            
+            {/* Edit Modal */}
+            {selectedSlot && (<EditSlotModal isVisible={isModalVisible} onClose={() => setIsModalVisible(false)} onSave={handleSaveChanges} slotInfo={selectedSlot} teachers={teachers} selectedClass={selectedClass} currentData={apiTimetableData.find(d => d.day_of_week === selectedSlot.day && d.period_number === selectedSlot.period && d.class_group === (selectedSlot.class_group || selectedSlot.class_group))} />)}
         </SafeAreaView>
     );
 };
 
 
-// --- Styles (Updated for Aesthetic) ---
+// --- Styles ---
 const styles = StyleSheet.create({
-    safeArea: { flex: 1, backgroundColor: '#F4F6F8' },
-    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F4F6F8' },
+    safeArea: { flex: 1, backgroundColor: '#F2F5F8' }, // Matched Background
+    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F2F5F8' },
     pageContainer: { paddingBottom: 30 },
-    pageHeaderContainer: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, paddingHorizontal: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E0E0E0', marginBottom: 15, },
-    pageHeaderIcon: { width: 32, height: 32, marginRight: 15, resizeMode: 'contain', },
-    pageHeaderTextContainer: { flex: 1 },
-    pageMainTitle: { fontSize: 18, fontWeight: 'bold', color: '#2C3E50' },
-    pageSubTitle: { fontSize: 14, color: '#566573', paddingTop: 2 },
-    tabContainer: { flexDirection: 'row', marginHorizontal: 10, marginBottom: 15, backgroundColor: '#FFFFFF', borderRadius: 12, overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 5, borderWidth: 1, borderColor: '#EFEFEF', },
+    
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 15,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333333' },
+    headerSubtitle: { fontSize: 13, color: '#666666' },
+
+    // Tabs
+    tabContainer: { flexDirection: 'row', marginHorizontal: 15, marginBottom: 15, backgroundColor: '#FFFFFF', borderRadius: 8, overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 5, borderWidth: 1, borderColor: '#EFEFEF', },
     tabButton: { flex: 1, paddingVertical: 12, alignItems: 'center', },
-    tabButtonActive: { backgroundColor: '#F3E5F5', borderBottomWidth: 3, borderBottomColor: '#8E24AA', },
+    tabButtonActive: { backgroundColor: '#F0FDF4', borderBottomWidth: 3, borderBottomColor: '#008080', },
     tabButtonText: { fontSize: 14, fontWeight: '600', color: '#777', },
-    tabButtonTextActive: { color: '#5E35B1', },
-    adminPickerWrapper: { marginHorizontal: 10, marginBottom: 15, backgroundColor: '#FFFFFF', borderRadius: 12, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, padding: 5, borderWidth: 1, borderColor: '#E0E0E0', },
-    pickerStyle: { borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 8, marginVertical: 5, backgroundColor: '#F9F9F9', },
-    picker: { height: 50, width: '100%', color: '#333', },
+    tabButtonTextActive: { color: '#008080', },
+
+    // Filters
+    filterContainer: { marginHorizontal: 15, marginBottom: 15 },
+    pickerWrapper: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, marginVertical: 5, backgroundColor: '#FFFFFF', overflow: 'hidden', height: 45, justifyContent: 'center' },
+    picker: { width: '100%', color: '#333', },
     pickerItem: { fontSize: 16, color: '#333', textAlign: 'left', },
-    tableOuterContainer: { marginHorizontal: TABLE_HORIZONTAL_MARGIN, backgroundColor: '#FFFFFF', borderRadius: 12, overflow: 'hidden', elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6, borderWidth: 1, borderColor: '#DDD', },
+
+    // Table
+    tableOuterContainer: { marginHorizontal: TABLE_HORIZONTAL_MARGIN, backgroundColor: '#FFFFFF', borderRadius: 12, overflow: 'hidden', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, borderWidth: 1, borderColor: '#EEE', },
     tableHeaderRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#CFD8DC' },
     tableHeaderCell: { paddingVertical: 12, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: '#ECEFF1', },
     tableHeaderText: { fontSize: 12, fontWeight: 'bold', textAlign: 'center', textTransform: 'uppercase' },
@@ -278,12 +342,14 @@ const styles = StyleSheet.create({
     tableCell: { paddingVertical: 12, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#F1F3F4', minHeight: 70, },
     timeCell: { alignItems: 'center', backgroundColor: '#F8F9FA' },
     timeText: { fontSize: 11, color: '#495057', fontWeight: '600', textAlign: 'center' },
-    myPeriodCell: { backgroundColor: '#D1C4E9', borderWidth: 2, borderColor: '#5E35B1', elevation: 5, },
-    subjectText: { fontSize: 10, fontWeight: '800', color: '#37474F', marginBottom: 3, textAlign: 'center', textShadowColor: 'rgba(0, 0, 0, 0.1)', textShadowOffset: { width: 0.5, height: 0.5 }, textShadowRadius: 1, },
-    teacherContextText: { fontSize: 9, color: '#0e8ac8ff', textAlign: 'center', marginTop: 2, fontWeight: '500', },
-    classGroupText: { fontSize: 10, color: '#5E35B1', fontWeight: '700', textAlign: 'center', marginTop: 2, },
+    myPeriodCell: { backgroundColor: '#E0F2F1', borderWidth: 2, borderColor: '#008080', elevation: 2, },
+    subjectText: { fontSize: 10, fontWeight: '800', color: '#37474F', marginBottom: 3, textAlign: 'center', },
+    teacherContextText: { fontSize: 9, color: '#0288D1', textAlign: 'center', marginTop: 2, fontWeight: '500', },
+    classGroupText: { fontSize: 10, color: '#008080', fontWeight: '700', textAlign: 'center', marginTop: 2, },
     breakCell: { alignItems: 'center', backgroundColor: '#EAECEE', },
     breakTextSubject: { fontSize: 12, fontWeight: '600', color: '#546E7A', textAlign: 'center' },
+    
+    // Modal
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', },
     modalContent: { width: '90%', backgroundColor: 'white', borderRadius: 15, padding: 20, elevation: 10, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, },
     modalPickerStyle: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, marginBottom: 10, backgroundColor: '#F9F9F9', },
@@ -297,7 +363,7 @@ const styles = StyleSheet.create({
     modalButtonText: { color: 'white', fontWeight: 'bold' },
     closeButton: { marginTop: 15, padding: 10 },
     closeButtonText: { textAlign: 'center', color: '#3498DB', fontSize: 16, fontWeight: '600' },
-    noDataText: { textAlign: 'center', marginTop: 50, fontSize: 16, color: '#666', },
+    
     embeddedTable: { marginHorizontal: 0, elevation: 0, shadowOpacity: 0, borderWidth: 0, borderRadius: 0, shadowRadius: 0, },
 });
 

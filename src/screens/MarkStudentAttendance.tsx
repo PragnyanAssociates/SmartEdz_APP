@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; // Added for Header consistency
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Animatable from 'react-native-animatable';
 import { useNavigation } from '@react-navigation/native';
@@ -21,14 +22,17 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 
-// --- Constants ---
-const PRIMARY_COLOR = '#008080';
-const WHITE = '#FFFFFF';
-const TEXT_COLOR_DARK = '#37474F';
-const TEXT_COLOR_MEDIUM = '#566573';
-const BORDER_COLOR = '#E0E0E0';
-const GREEN = '#43A047';
-const RED = '#E53935';
+// --- COLORS ---
+const COLORS = {
+    primary: '#008080',    // Teal
+    background: '#F2F5F8', 
+    cardBg: '#FFFFFF',
+    textMain: '#263238',
+    textSub: '#546E7A',
+    success: '#43A047',
+    error: '#E53935',
+    border: '#CFD8DC'
+};
 
 const CLASS_GROUPS = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -46,7 +50,7 @@ const MarkStudentAttendance = () => {
     const [viewState, setViewState] = useState('selection'); // 'selection' | 'success' | 'marking'
     const [isLoading, setIsLoading] = useState(false);
     const [students, setStudents] = useState([]);
-    const [subjectName, setSubjectName] = useState(''); // To be fetched from timetable
+    const [subjectName, setSubjectName] = useState(''); 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // --- Format Date Helper ---
@@ -64,12 +68,12 @@ const MarkStudentAttendance = () => {
         if (date) setSelectedDate(date);
     };
 
-    // --- MAIN LOGIC: Check Status & Fetch Data ---
+    // --- MAIN LOGIC ---
     const handleProceed = async () => {
         setIsLoading(true);
         try {
             const dateString = selectedDate.toISOString().split('T')[0];
-            const periodNumber = 1; // Assuming Daily Attendance is always Period 1
+            const periodNumber = 1; 
             const dayOfWeek = DAYS[selectedDate.getDay()];
 
             if (dayOfWeek === 'Sunday') {
@@ -78,18 +82,14 @@ const MarkStudentAttendance = () => {
                 return;
             }
 
-            // 1. Fetch Timetable to get Subject Name for Period 1 on this day
-            // We need this to check status correctly and save correctly
             const timetableRes = await apiClient.get(`/timetable/${selectedClass}`);
             const slot = timetableRes.data.find(
                 s => s.day_of_week === dayOfWeek && s.period_number === periodNumber
             );
             
-            // If no subject assigned, fallback to "General Attendance" or alert
             const resolvedSubject = slot ? slot.subject_name : "General Attendance";
             setSubjectName(resolvedSubject);
 
-            // 2. Check if Attendance is already marked
             const statusRes = await apiClient.get('/attendance/status', {
                 params: { 
                     class_group: selectedClass, 
@@ -102,7 +102,6 @@ const MarkStudentAttendance = () => {
             if (statusRes.data.isMarked) {
                 setViewState('success');
             } else {
-                // 3. Not marked: Fetch Sheet to mark it
                 await fetchStudentSheet(periodNumber, dateString);
                 setViewState('marking');
             }
@@ -115,7 +114,6 @@ const MarkStudentAttendance = () => {
         }
     };
 
-    // --- Fetch Student Sheet ---
     const fetchStudentSheet = async (periodNumber, dateString) => {
         const sheetRes = await apiClient.get('/attendance/sheet', {
             params: { class_group: selectedClass, date: dateString, period_number: periodNumber }
@@ -128,12 +126,10 @@ const MarkStudentAttendance = () => {
         setStudents(formattedData);
     };
 
-    // --- Toggle P/A ---
     const toggleStatus = (id, status) => {
         setStudents(prev => prev.map(s => s.id === id ? { ...s, status } : s));
     };
 
-    // --- Submit Attendance ---
     const handleSubmit = async () => {
         setIsSubmitting(true);
         try {
@@ -142,7 +138,7 @@ const MarkStudentAttendance = () => {
                 subject_name: subjectName,
                 period_number: 1,
                 date: selectedDate.toISOString().split('T')[0],
-                teacher_id: user.id, // Admin ID passed here
+                teacher_id: user.id, 
                 attendanceData: students.map(s => ({ student_id: s.id, status: s.status }))
             };
 
@@ -160,41 +156,49 @@ const MarkStudentAttendance = () => {
     if (isLoading) {
         return (
             <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" color={PRIMARY_COLOR} />
-                <Text style={{marginTop: 10, color: TEXT_COLOR_MEDIUM}}>Checking records...</Text>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={{marginTop: 10, color: COLORS.textSub}}>Checking records...</Text>
             </View>
         );
     }
 
-    // --- VIEW 1: SELECTION (Admin picks Class & Date) ---
+    // --- VIEW 1: SELECTION ---
     if (viewState === 'selection') {
         return (
             <SafeAreaView style={styles.container}>
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                        {/* <Icon name="arrow-left" size={24} color={TEXT_COLOR_DARK} /> */}
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Mark Attendance</Text>
+                
+                {/* --- HEADER CARD --- */}
+                <View style={styles.headerCard}>
+                    <View style={styles.headerLeft}>
+                        <View style={styles.headerIconContainer}>
+                            <MaterialIcons name="assignment-turned-in" size={24} color="#008080" />
+                        </View>
+                        <View style={styles.headerTextContainer}>
+                            <Text style={styles.headerTitle}>Mark Attendance</Text>
+                            <Text style={styles.headerSubtitle}>Daily Entry</Text>
+                        </View>
+                    </View>
                 </View>
 
-                <View style={styles.selectionContent}>
+                <View style={styles.contentContainer}>
                     <Text style={styles.label}>Select Class</Text>
                     <View style={styles.pickerWrapper}>
                         <Picker
                             selectedValue={selectedClass}
                             onValueChange={(itemValue) => setSelectedClass(itemValue)}
-                            dropdownIconColor={TEXT_COLOR_DARK}
+                            dropdownIconColor={COLORS.textMain}
+                            style={styles.picker}
                         >
                             {CLASS_GROUPS.map((cls) => (
-                                <Picker.Item key={cls} label={cls} value={cls} style={styles.pickerItem} />
+                                <Picker.Item key={cls} label={cls} value={cls} color={COLORS.textMain} />
                             ))}
                         </Picker>
                     </View>
 
                     <Text style={styles.label}>Select Date</Text>
                     <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowDatePicker(true)}>
-                        <Icon name="calendar" size={20} color={TEXT_COLOR_DARK} style={{marginRight: 10}} />
                         <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
+                        <Icon name="calendar" size={20} color={COLORS.primary} />
                     </TouchableOpacity>
                     {showDatePicker && (
                         <DateTimePicker
@@ -206,86 +210,100 @@ const MarkStudentAttendance = () => {
                     )}
 
                     <TouchableOpacity style={styles.proceedBtn} onPress={handleProceed}>
-                        <Text style={styles.proceedBtnText}>PROCEED TO MARK</Text>
+                        <Text style={styles.proceedBtnText}>PROCEED</Text>
+                        <Icon name="arrow-right" size={20} color="#fff" />
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
         );
     }
 
-    // --- VIEW 2: SUCCESS (Already Marked) ---
+    // --- VIEW 2: SUCCESS ---
     if (viewState === 'success') {
         return (
-            <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-                <TouchableOpacity onPress={() => setViewState('selection')} style={[styles.backButton, {top: 20, left: 20}]}>
-                    <Icon name="close" size={24} color={TEXT_COLOR_DARK} />
-                </TouchableOpacity>
-
-                <Animatable.View animation="zoomIn" duration={600} style={{ alignItems: 'center' }}>
-                    <View style={styles.successCircle}>
-                        <Icon name="check" size={60} color={WHITE} />
-                    </View>
-                    <Text style={styles.successTitle}>Attendance Marked!</Text>
-                    <Text style={styles.successSubtitle}>
-                        Attendance for {formatDate(selectedDate)} has been saved successfully. You can click "Edit Attendance" to make any changes.
-                    </Text>
-                    
-                    <TouchableOpacity 
-                        style={styles.editButton} 
-                        onPress={async () => {
-                            setIsLoading(true);
-                            await fetchStudentSheet(1, selectedDate.toISOString().split('T')[0]);
-                            setIsLoading(false);
-                            setViewState('marking');
-                        }}
-                    >
-                        <Text style={styles.editButtonText}>Edit Attendance</Text>
+            <SafeAreaView style={styles.container}>
+                <View style={[styles.contentContainer, { justifyContent: 'center', alignItems: 'center', flex: 1 }]}>
+                    <TouchableOpacity onPress={() => setViewState('selection')} style={styles.closeIcon}>
+                        <Icon name="close" size={24} color={COLORS.textMain} />
                     </TouchableOpacity>
-                </Animatable.View>
+
+                    <Animatable.View animation="zoomIn" duration={600} style={{ alignItems: 'center', width: '100%' }}>
+                        <View style={styles.successCircle}>
+                            <Icon name="check" size={50} color="#fff" />
+                        </View>
+                        <Text style={styles.successTitle}>Done!</Text>
+                        <Text style={styles.successSubtitle}>
+                            Attendance for <Text style={{fontWeight: 'bold'}}>{formatDate(selectedDate)}</Text> has been marked.
+                        </Text>
+                        
+                        <TouchableOpacity 
+                            style={styles.editButton} 
+                            onPress={async () => {
+                                setIsLoading(true);
+                                await fetchStudentSheet(1, selectedDate.toISOString().split('T')[0]);
+                                setIsLoading(false);
+                                setViewState('marking');
+                            }}
+                        >
+                            <Text style={styles.editButtonText}>Edit Record</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity style={{marginTop: 20}} onPress={() => setViewState('selection')}>
+                            <Text style={{color: COLORS.textSub}}>Back to Selection</Text>
+                        </TouchableOpacity>
+                    </Animatable.View>
+                </View>
             </SafeAreaView>
         );
     }
 
-    // --- VIEW 3: MARKING LIST (P/A Toggles) ---
+    // --- VIEW 3: MARKING LIST ---
     if (viewState === 'marking') {
         return (
             <SafeAreaView style={styles.container}>
-                <View style={styles.listHeader}>
-                    <TouchableOpacity onPress={() => setViewState('selection')}>
-                        <Icon name="arrow-left" size={24} color={TEXT_COLOR_DARK} />
-                    </TouchableOpacity>
-                    <Text style={styles.listHeaderTitle}>
-                        {selectedClass} List ({students.length})
-                    </Text>
-                    <View style={{width: 24}} /> 
+                
+                {/* --- HEADER CARD (With Back) --- */}
+                <View style={styles.headerCard}>
+                    <View style={styles.headerLeft}>
+                        <TouchableOpacity onPress={() => setViewState('selection')} style={{marginRight: 10, padding: 4}}>
+                            <MaterialIcons name="arrow-back" size={24} color="#333" />
+                        </TouchableOpacity>
+                        <View style={styles.headerIconContainer}>
+                            <MaterialIcons name="edit-note" size={24} color="#008080" />
+                        </View>
+                        <View style={styles.headerTextContainer}>
+                            <Text style={styles.headerTitle}>{selectedClass}</Text>
+                            <Text style={styles.headerSubtitle}>{students.length} Students • {formatDate(selectedDate)}</Text>
+                        </View>
+                    </View>
                 </View>
 
                 <FlatList
                     data={students}
                     keyExtractor={(item) => item.id.toString()}
-                    contentContainerStyle={{ paddingBottom: 100 }}
+                    contentContainerStyle={{ paddingHorizontal: 15, paddingBottom: 100 }}
                     renderItem={({ item }) => {
                         const isPresent = item.status === 'Present';
                         return (
-                            <View style={styles.attendanceRow}>
+                            <View style={styles.studentCard}>
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.rowName}>{item.full_name}</Text>
-                                    <Text style={styles.rowSubText}>{item.roll_no ? `Roll: ${item.roll_no}` : 'No Roll No'}</Text>
+                                    <Text style={styles.rowSubText}>{item.roll_no ? `Roll: ${item.roll_no}` : '-'}</Text>
                                 </View>
 
                                 <View style={styles.actionButtonsContainer}>
                                     <TouchableOpacity 
-                                        style={[styles.statusCircle, isPresent ? styles.circleGreenFilled : styles.circleGreenOutline]}
+                                        style={[styles.statusBtn, isPresent ? styles.btnPresent : styles.btnInactive]}
                                         onPress={() => toggleStatus(item.id, 'Present')}
                                     >
-                                        <Text style={[styles.statusText, isPresent ? { color: WHITE } : { color: GREEN }]}>P</Text>
+                                        <Text style={[styles.statusText, isPresent ? {color: '#fff'} : {color: COLORS.success}]}>P</Text>
                                     </TouchableOpacity>
 
                                     <TouchableOpacity 
-                                        style={[styles.statusCircle, !isPresent ? styles.circleRedFilled : styles.circleRedOutline]}
+                                        style={[styles.statusBtn, !isPresent ? styles.btnAbsent : styles.btnInactive]}
                                         onPress={() => toggleStatus(item.id, 'Absent')}
                                     >
-                                        <Text style={[styles.statusText, !isPresent ? { color: WHITE } : { color: RED }]}>A</Text>
+                                        <Text style={[styles.statusText, !isPresent ? {color: '#fff'} : {color: COLORS.error}]}>A</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
@@ -300,9 +318,9 @@ const MarkStudentAttendance = () => {
                         disabled={isSubmitting}
                     >
                         {isSubmitting ? (
-                            <ActivityIndicator color={WHITE} />
+                            <ActivityIndicator color="#fff" />
                         ) : (
-                            <Text style={styles.submitFooterText}>SUBMIT ATTENDANCE</Text>
+                            <Text style={styles.submitFooterText}>Submit Attendance</Text>
                         )}
                     </TouchableOpacity>
                 </View>
@@ -314,56 +332,94 @@ const MarkStudentAttendance = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: WHITE },
-    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: WHITE },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
     
-    // Header
-    header: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderColor: BORDER_COLOR },
-    headerTitle: { fontSize: 20, fontWeight: 'bold', color: TEXT_COLOR_DARK, marginLeft: 20 },
-    backButton: { padding: 5, position: 'absolute', left: 15, zIndex: 10 },
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textMain },
+    headerSubtitle: { fontSize: 13, color: COLORS.textSub },
 
-    // Selection View Styles
-    selectionContent: { padding: 20, marginTop: 20 },
-    label: { fontSize: 16, color: TEXT_COLOR_MEDIUM, marginBottom: 8, fontWeight: '600' },
-    pickerWrapper: { borderWidth: 1, borderColor: BORDER_COLOR, borderRadius: 8, marginBottom: 20, backgroundColor: '#F9F9F9' },
-    pickerItem: { fontSize: 16, color: TEXT_COLOR_DARK },
-    datePickerBtn: { flexDirection: 'row', alignItems: 'center', padding: 15, borderWidth: 1, borderColor: BORDER_COLOR, borderRadius: 8, marginBottom: 30, backgroundColor: '#F9F9F9' },
-    dateText: { fontSize: 16, color: TEXT_COLOR_DARK },
-    proceedBtn: { backgroundColor: PRIMARY_COLOR, padding: 15, borderRadius: 8, alignItems: 'center', elevation: 2 },
-    proceedBtnText: { color: WHITE, fontSize: 16, fontWeight: 'bold' },
+    // --- SELECTION VIEW ---
+    contentContainer: { padding: 20 },
+    label: { fontSize: 14, color: COLORS.textSub, marginBottom: 8, fontWeight: '600', marginTop: 10 },
+    pickerWrapper: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: '#fff', overflow: 'hidden' },
+    picker: { height: 50 },
+    
+    datePickerBtn: { 
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        padding: 15, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: '#fff', marginBottom: 30 
+    },
+    dateText: { fontSize: 16, color: COLORS.textMain, fontWeight: '500' },
+    
+    proceedBtn: { 
+        backgroundColor: COLORS.primary, padding: 16, borderRadius: 12, 
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', elevation: 3 
+    },
+    proceedBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginRight: 10 },
 
-    // Success View Styles
-    successCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: GREEN, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-    successTitle: { fontSize: 22, fontWeight: 'bold', color: TEXT_COLOR_DARK, marginBottom: 10 },
-    successSubtitle: { fontSize: 14, color: TEXT_COLOR_MEDIUM, textAlign: 'center', paddingHorizontal: 40, lineHeight: 20, marginBottom: 30 },
-    editButton: { backgroundColor: PRIMARY_COLOR, paddingVertical: 12, paddingHorizontal: 30, borderRadius: 8 },
-    editButtonText: { color: WHITE, fontSize: 16, fontWeight: 'bold' },
+    // --- SUCCESS VIEW ---
+    closeIcon: { position: 'absolute', top: 20, right: 20, padding: 10, zIndex: 10 },
+    successCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.success, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+    successTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 10 },
+    successSubtitle: { fontSize: 15, color: COLORS.textSub, textAlign: 'center', paddingHorizontal: 40, marginBottom: 30 },
+    editButton: { backgroundColor: COLORS.primary, paddingVertical: 12, paddingHorizontal: 40, borderRadius: 25 },
+    editButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 
-    // List View Styles
-    listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#F5F5F5', borderBottomWidth: 1, borderColor: BORDER_COLOR },
-    listHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: TEXT_COLOR_DARK },
+    // --- MARKING LIST ---
+    studentCard: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 10,
+        elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: {width: 0, height: 1}
+    },
+    rowName: { fontSize: 16, fontWeight: '600', color: COLORS.textMain },
+    rowSubText: { fontSize: 12, color: COLORS.textSub, marginTop: 4 },
     
-    attendanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-    rowName: { fontSize: 16, fontWeight: 'bold', color: TEXT_COLOR_DARK, textTransform: 'uppercase' },
-    rowSubText: { fontSize: 12, color: '#78909C', marginTop: 4 },
-    
-    actionButtonsContainer: { flexDirection: 'row', alignItems: 'center' },
-    statusCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginLeft: 15 },
-    
-    // P (Present) Styling
-    circleGreenFilled: { backgroundColor: GREEN, borderWidth: 0 },
-    circleGreenOutline: { backgroundColor: WHITE, borderWidth: 1.5, borderColor: GREEN },
-    
-    // A (Absent) Styling
-    circleRedFilled: { backgroundColor: RED, borderWidth: 0 },
-    circleRedOutline: { backgroundColor: WHITE, borderWidth: 1.5, borderColor: RED },
-    
+    actionButtonsContainer: { flexDirection: 'row', gap: 10 },
+    statusBtn: { width: 40, height: 40, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
+    btnPresent: { backgroundColor: COLORS.success, borderColor: COLORS.success },
+    btnAbsent: { backgroundColor: COLORS.error, borderColor: COLORS.error },
+    btnInactive: { backgroundColor: '#fff', borderColor: '#E0E0E0' },
     statusText: { fontSize: 16, fontWeight: 'bold' },
 
     // Footer
-    footerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: PRIMARY_COLOR },
-    submitFooterButton: { paddingVertical: 18, alignItems: 'center', justifyContent: 'center' },
-    submitFooterText: { color: WHITE, fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
+    footerContainer: { 
+        position: 'absolute', bottom: 20, left: 20, right: 20, 
+    },
+    submitFooterButton: { 
+        backgroundColor: COLORS.primary, paddingVertical: 15, borderRadius: 30,
+        alignItems: 'center', justifyContent: 'center', elevation: 5,
+        shadowColor: '#000', shadowOpacity: 0.2, shadowOffset: {width: 0, height: 3}
+    },
+    submitFooterText: { color: '#fff', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
 });
 
 export default MarkStudentAttendance;

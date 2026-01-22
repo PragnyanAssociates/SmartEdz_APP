@@ -9908,7 +9908,6 @@ app.get('/api/feedback/classes', async (req, res) => {
 });
 
 // 2. Get Subjects for a specific Class (For Filter Step 2)
-// If a teacher is logged in, it only shows subjects THEY teach.
 app.get('/api/feedback/subjects', async (req, res) => {
     const { class_group, teacher_id } = req.query; 
     try {
@@ -9947,7 +9946,7 @@ app.get('/api/feedback/teachers', async (req, res) => {
     }
 });
 
-// 4. Get classes assigned to a specific teacher (For Teacher Login - Auto Setup)
+// 4. Get classes assigned to a specific teacher
 app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     const { teacherId } = req.params;
     try {
@@ -9962,7 +9961,7 @@ app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     }
 });
 
-// 5. Get Students + Existing Feedback
+// 5. Get Students + Existing Feedback (UPDATED FOR NEW COLUMNS)
 app.get('/api/feedback/students', async (req, res) => {
     const { class_group, teacher_id } = req.query;
     try {
@@ -9971,8 +9970,8 @@ app.get('/api/feedback/students', async (req, res) => {
                 u.id as student_id, 
                 u.full_name, 
                 p.roll_no,
-                f.behavior_status,
-                f.remarks
+                f.status_marks,
+                f.remarks_category
             FROM users u
             LEFT JOIN user_profiles p ON u.id = p.user_id
             LEFT JOIN student_feedback f 
@@ -9989,24 +9988,30 @@ app.get('/api/feedback/students', async (req, res) => {
     }
 });
 
-// 6. Save Feedback (Bulk Save - One Time Marking)
+// 6. Save Feedback (UPDATED FOR NEW COLUMNS)
 app.post('/api/feedback', async (req, res) => {
     const { teacher_id, class_group, feedback_data } = req.body;
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
         for (const item of feedback_data) {
-            // Only save if status or remarks exist
-            if (item.behavior_status || item.remarks) {
+            // Only save if marks or remarks exist
+            if (item.status_marks || item.remarks_category) {
                 const sql = `
                     INSERT INTO student_feedback 
-                    (student_id, teacher_id, class_group, behavior_status, remarks)
+                    (student_id, teacher_id, class_group, status_marks, remarks_category)
                     VALUES (?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE
-                    behavior_status = VALUES(behavior_status),
-                    remarks = VALUES(remarks)
+                    status_marks = VALUES(status_marks),
+                    remarks_category = VALUES(remarks_category)
                 `;
-                await connection.query(sql, [item.student_id, teacher_id, class_group, item.behavior_status, item.remarks]);
+                await connection.query(sql, [
+                    item.student_id, 
+                    teacher_id, 
+                    class_group, 
+                    item.status_marks, 
+                    item.remarks_category
+                ]);
             }
         }
         await connection.commit();

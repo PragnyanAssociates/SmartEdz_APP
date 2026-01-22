@@ -5,6 +5,7 @@ import apiClient from '../../api/client';
 import { SERVER_URL } from '../../../apiConfig';
 import { io, Socket } from 'socket.io-client';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; // For Header Icon
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import { getProfileImageSource } from '../../utils/imageHelpers';
@@ -16,7 +17,7 @@ import { pick, types, isCancel } from '@react-native-documents/picker';
 import FileViewer from 'react-native-file-viewer';
 import ImageViewing from 'react-native-image-viewing';
 
-const THEME = { primary: '#007bff', text: '#212529', muted: '#86909c', border: '#dee2e6', myMessageBg: '#dcf8c6', otherMessageBg: '#ffffff', white: '#ffffff', destructive: '#dc3545' };
+const THEME = { primary: '#008080', text: '#212529', muted: '#86909c', border: '#dee2e6', myMessageBg: '#dcf8c6', otherMessageBg: '#ffffff', white: '#ffffff', destructive: '#dc3545', background: '#F2F5F8', cardBg: '#FFFFFF' };
 
 const formatDateSeparator = (dateString: string) => {
     const messageDate = new Date(dateString);
@@ -254,7 +255,7 @@ const GroupChatScreen = () => {
                 const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
                 if (granted !== PermissionsAndroid.RESULTS.GRANTED) return Alert.alert("Permission Denied", "Storage permission is required.");
             }
-            closeOptionsModal(); // Close the modal before starting download
+            closeOptionsModal();
             const fileExists = await RNFS.exists(localPath);
             if (fileExists) {
                 if (action === 'open') FileViewer.open(localPath);
@@ -272,10 +273,9 @@ const GroupChatScreen = () => {
     const cancelReply = () => setReplyingTo(null);
     const cancelEdit = () => { setEditingMessage(null); setNewMessage(''); Keyboard.dismiss(); };
     
-    // --- MODIFIED: New function to close modal and clear selection ---
     const closeOptionsModal = () => {
         setOptionsModalVisible(false);
-        setSelectedMessage(null); // This is key to remove the highlight
+        setSelectedMessage(null);
     };
 
     const renderMessageItem = ({ item }: { item: any }) => {
@@ -283,7 +283,6 @@ const GroupChatScreen = () => {
         
         const isMyMessage = item.user_id === user?.id;
         const messageTime = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        // --- MODIFIED: Check if the current item is the one that was long-pressed ---
         const isSelected = selectedMessage && selectedMessage.id === item.id;
 
         const renderContent = () => {
@@ -395,7 +394,7 @@ const GroupChatScreen = () => {
     );
 
     return (
-        <SafeAreaView style={{flex: 1, backgroundColor: THEME.white}}>
+        <SafeAreaView style={{flex: 1, backgroundColor: THEME.background}}>
             {renderOptionsModal()}
             {renderVideoPlayer()}
             <ImageViewing
@@ -404,14 +403,23 @@ const GroupChatScreen = () => {
                 visible={isImageViewerVisible}
                 onRequestClose={() => setImageViewerVisible(false)}
             />
-            <View style={styles.header}>
-                <Icon name="arrow-left" size={24} color={THEME.primary} onPress={() => navigation.goBack()} style={{padding: 5}}/>
-                <TouchableOpacity style={styles.headerContent} onPress={() => navigation.navigate('GroupSettings', { group })}>
-                    <Image source={getProfileImageSource(group.group_dp_url)} style={styles.headerDp} />
-                    <Text style={styles.headerTitle}>{group.name}</Text>
-                </TouchableOpacity>
-                <View style={{width: 34}} />
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{marginRight: 10, padding: 4}}>
+                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => navigation.navigate('GroupSettings', { group })} style={{flexDirection:'row', alignItems:'center'}}>
+                        <Image source={getProfileImageSource(group.group_dp_url)} style={styles.headerDp} />
+                        <View>
+                            <Text style={styles.headerTitle}>{group.name}</Text>
+                            <Text style={styles.headerSubtitle}>Tap for info</Text>
+                        </View>
+                    </TouchableOpacity>
+                </View>
             </View>
+
             <KeyboardAvoidingView style={{flex: 1, backgroundColor: group.background_color || '#e5ddd5'}} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
                 {loading ? <ActivityIndicator style={{flex: 1}} size="large" /> :
                 <FlatList
@@ -446,10 +454,32 @@ const GroupChatScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    header: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: THEME.border, backgroundColor: THEME.white, justifyContent: 'space-between' },
-    headerContent: { flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'center', paddingVertical: 5 },
-    headerDp: { width: 40, height: 40, borderRadius: 20, marginHorizontal: 10, backgroundColor: '#eee' },
-    headerTitle: { fontSize: 18, fontWeight: 'bold' },
+    // Header Card
+    headerCard: {
+        backgroundColor: THEME.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 10,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 10,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+        zIndex: 10, 
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerDp: { width: 40, height: 40, borderRadius: 20, marginRight: 10, backgroundColor: '#eee' },
+    headerTitle: { fontSize: 18, fontWeight: 'bold', color: THEME.text },
+    headerSubtitle: { fontSize: 12, color: THEME.muted },
+
+    // Messages
     dateSeparator: { alignSelf: 'center', backgroundColor: '#e1f3fb', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, marginVertical: 10, elevation: 1 },
     dateSeparatorText: { color: '#5a7a8a', fontSize: 12, fontWeight: '600' },
     messageRow: { flexDirection: 'row', marginVertical: 5, paddingHorizontal: 10, alignItems: 'flex-end' },
@@ -466,15 +496,21 @@ const styles = StyleSheet.create({
     messageText: { fontSize: 16, color: THEME.text },
     messageTime: { fontSize: 11, color: THEME.muted, alignSelf: 'flex-end', marginTop: 5, marginLeft: 10 },
     mediaTime: { position: 'absolute', bottom: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)', color: THEME.white, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 5, fontSize: 10 },
+    
+    // Inputs
+    inputContainer: { flexDirection: 'row', padding: 8, backgroundColor: THEME.white, alignItems: 'center' },
+    input: { flex: 1, backgroundColor: '#f0f0f0', borderRadius: 20, paddingHorizontal: 15, paddingVertical: Platform.OS === 'ios' ? 10 : 8, fontSize: 16, maxHeight: 100 },
+    sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: THEME.primary, justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
+    iconButton: { padding: 8 },
+    
+    // Banners
     editingBanner: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#eef', borderTopWidth: 1, borderColor: THEME.border },
     editingText: { flex: 1, marginLeft: 10, color: THEME.primary },
     replyingBanner: { flexDirection: 'row', alignItems: 'center', padding: 10, paddingLeft: 15, backgroundColor: '#f0f0f0', borderTopWidth: 1, borderColor: THEME.border },
     replyingTextContainer: { flex: 1, marginLeft: 10, borderLeftWidth: 3, borderLeftColor: THEME.primary, paddingLeft: 10 },
     replyingToName: { fontWeight: 'bold', color: THEME.primary },
-    inputContainer: { flexDirection: 'row', padding: 8, backgroundColor: THEME.white, alignItems: 'center' },
-    input: { flex: 1, backgroundColor: '#f0f0f0', borderRadius: 20, paddingHorizontal: 15, paddingVertical: Platform.OS === 'ios' ? 10 : 8, fontSize: 16, maxHeight: 100 },
-    sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: THEME.primary, justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
-    iconButton: { padding: 8 },
+    
+    // Media
     mediaMessage: { width: 220, height: 220, borderRadius: 10 },
     replyContainer: { marginBottom: 5, padding: 8, borderRadius: 6, opacity: 0.8 },
     myReplyContainer: { backgroundColor: '#c5eec2' },
@@ -486,8 +522,8 @@ const styles = StyleSheet.create({
     fileContainer: { flexDirection: 'row', alignItems: 'center', padding: 10, width: 220, overflow: 'hidden' },
     fileInfo: { flex: 1, marginLeft: 10, justifyContent: 'center' },
     fileName: { fontSize: 15, fontWeight: '500', color: THEME.text },
-    fileSize: { fontSize: 12, color: THEME.muted, marginTop: 2 },
-    // MODIFIED: modalOverlay is now transparent to let the highlight show through
+    
+    // Modal
     modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
     modalContent: { width: '80%', backgroundColor: 'white', borderRadius: 10, paddingVertical: 10, elevation: 5 },
     modalTitle: { fontSize: 18, fontWeight: 'bold', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 15, color: THEME.text },
@@ -498,11 +534,7 @@ const styles = StyleSheet.create({
     videoModalContainer: { flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' },
     fullScreenVideo: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
     videoCloseButton: { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 20, left: 20, zIndex: 1, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 5 },
-    // --- NEW: Style for the message highlight ---
-    highlightedMessage: {
-        backgroundColor: 'rgba(0, 80, 255, 0.15)', // A subtle blueish highlight
-        borderRadius: 15, // Should roughly match the message bubble's curvature
-    },
+    highlightedMessage: { backgroundColor: 'rgba(0, 80, 255, 0.15)', borderRadius: 15 },
 });
 
 export default GroupChatScreen;

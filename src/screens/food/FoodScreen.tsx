@@ -1,4 +1,4 @@
-// 📂 File: src/screens/food/FoodScreen.tsx (DEFINITIVE AND FINAL - NO CHANGES NEEDED)
+// 📂 File: src/screens/food/FoodScreen.tsx
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
@@ -8,11 +8,20 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../api/client';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const THEME = {
-    primary: '#007bff', danger: '#dc3545', light: '#f8f9fa',
-    background: '#f4f7fc', text: '#212529', muted: '#86909c',
-    border: '#e9ecef', dark: '#343a40',
+// --- COLORS ---
+const COLORS = {
+    primary: '#008080',    // Teal
+    background: '#F2F5F8', 
+    cardBg: '#FFFFFF',
+    textMain: '#263238',
+    textSub: '#546E7A',
+    border: '#CFD8DC',
+    success: '#43A047',
+    danger: '#E53935',
+    light: '#f8f9fa'
 };
 
 const ORDERED_DAYS = [
@@ -108,8 +117,21 @@ const FoodScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.header}><Text style={styles.headerTitle}>Weekly Lunch Menu</Text></View>
-            {loading ? <ActivityIndicator size="large" color={THEME.primary} style={{ marginTop: 50 }} /> :
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="restaurant-menu" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Weekly Menu</Text>
+                        <Text style={styles.headerSubtitle}>Lunch Schedule</Text>
+                    </View>
+                </View>
+            </View>
+
+            {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 50 }} /> :
                 <ScrollView contentContainerStyle={styles.scrollContainer}>
                     <FoodMenuTable 
                         menuData={menuData} 
@@ -120,6 +142,8 @@ const FoodScreen = () => {
                     />
                 </ScrollView>
             }
+            
+            {/* Modals */}
             {itemModalInfo.visible && <EditMenuModal modalInfo={itemModalInfo} onClose={closeItemModal} onSave={handleSaveItem} />}
             {isTimeModalVisible && <EditTimeModal visible={isTimeModalVisible} onClose={() => setIsTimeModalVisible(false)} onSave={handleSaveTime} initialTime={displayTime} />}
         </SafeAreaView>
@@ -140,7 +164,10 @@ const FoodMenuTable = ({ menuData, isAdmin, onCellPress, onHeaderPress, displayT
                     onPress={onHeaderPress}
                     disabled={!isAdmin}
                 >
-                    <Text style={styles.headerMealTypeText}>Lunch</Text>
+                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                        <Text style={styles.headerMealTypeText}>LUNCH</Text>
+                        {isAdmin && <Icon name="pencil" size={14} color="rgba(255,255,255,0.7)" style={{marginLeft: 5}} />}
+                    </View>
                     <Text style={styles.headerMealTimeText}>{displayTime}</Text>
                 </TouchableOpacity>
             </View>
@@ -148,14 +175,16 @@ const FoodMenuTable = ({ menuData, isAdmin, onCellPress, onHeaderPress, displayT
                 const meal = getMealForCell(full, 'Lunch');
                 return (
                     <View key={full} style={styles.tableRow}>
-                        <View style={[styles.tableCell, styles.dayCell]}><Text style={styles.dayCellText}>{short}</Text></View>
+                        <View style={[styles.tableCell, styles.dayCell]}>
+                            <Text style={styles.dayCellText}>{short}</Text>
+                        </View>
                         <TouchableOpacity 
                             style={[ styles.tableCell, styles.mealCell, styles.lastCell ]} 
                             onPress={() => onCellPress(meal, full)} 
                             disabled={!isAdmin}
                         >
                             <Text style={meal?.food_item ? styles.mealItemText : styles.notSetText} numberOfLines={3}>
-                                {meal?.food_item || 'Not set'}
+                                {meal?.food_item || 'Tap to add menu'}
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -227,36 +256,78 @@ const EditTimeModal = ({ visible, onClose, onSave, initialTime }) => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: THEME.background },
-    scrollContainer: { padding: 10 },
-    header: { paddingVertical: 15, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: THEME.border, alignItems: 'center', backgroundColor: '#fff' },
-    headerTitle: { fontSize: 20, fontWeight: 'bold', color: THEME.dark },
-    table: { backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: THEME.border, overflow: 'hidden' },
-    tableRow: { flexDirection: 'row', width: '100%', borderTopWidth: 1, borderColor: THEME.border },
-    tableHeaderRow: { flexDirection: 'row', backgroundColor: THEME.primary, borderTopWidth: 0 },
-    tableCell: { justifyContent: 'center', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4 },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    scrollContainer: { paddingHorizontal: 15, paddingBottom: 20 },
+    
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: COLORS.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 15,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textMain },
+    headerSubtitle: { fontSize: 13, color: COLORS.textSub },
+
+    // --- TABLE STYLES ---
+    table: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', elevation: 2 },
+    tableRow: { flexDirection: 'row', width: '100%', borderTopWidth: 1, borderColor: COLORS.border },
+    tableHeaderRow: { flexDirection: 'row', backgroundColor: COLORS.primary, borderTopWidth: 0 },
+    tableCell: { justifyContent: 'center', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 8 },
     tableHeaderCell: { paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderColor: 'rgba(255, 255, 255, 0.25)' },
-    dayHeaderCell: { flex: 0.7, alignItems: 'flex-start', paddingLeft: 10 },
+    
+    dayHeaderCell: { flex: 0.7, alignItems: 'flex-start', paddingLeft: 15 },
     mealHeaderCell: { flex: 1.3 },
     lastCell: { borderRightWidth: 0 },
-    headerDayText: { color: '#FFFFFF', fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase' },
+    
+    headerDayText: { color: '#FFFFFF', fontSize: 13, fontWeight: 'bold', textTransform: 'uppercase' },
     headerMealTypeText: { color: '#FFFFFF', fontSize: 14, fontWeight: 'bold', textTransform: 'uppercase' },
-    headerMealTimeText: { color: 'rgba(255, 255, 255, 0.9)', fontSize: 11, fontWeight: '600', marginTop: 3 },
-    dayCell: { flex: 0.7, alignItems: 'flex-start', paddingLeft: 10, borderRightWidth: 1, borderColor: THEME.border },
-    dayCellText: { fontWeight: 'bold', fontSize: 14, color: THEME.primary },
-    mealCell: { flex: 1.3, borderRightWidth: 1, borderColor: THEME.border, minHeight: 65, paddingVertical: 8, paddingHorizontal: 8 },
-    mealItemText: { fontSize: 14, color: THEME.text, fontWeight: '600', textAlign: 'center' },
-    notSetText: { fontSize: 12, color: THEME.muted, fontStyle: 'italic', textAlign: 'center' },
+    headerMealTimeText: { color: 'rgba(255, 255, 255, 0.9)', fontSize: 11, fontWeight: '600', marginTop: 2 },
+    
+    dayCell: { flex: 0.7, alignItems: 'flex-start', paddingLeft: 15, borderRightWidth: 1, borderColor: COLORS.border, backgroundColor: '#FAFAFA' },
+    dayCellText: { fontWeight: 'bold', fontSize: 14, color: COLORS.primary },
+    
+    mealCell: { flex: 1.3, borderRightWidth: 1, borderColor: COLORS.border, minHeight: 65, paddingVertical: 12 },
+    mealItemText: { fontSize: 14, color: COLORS.textMain, fontWeight: '500', textAlign: 'center' },
+    notSetText: { fontSize: 13, color: COLORS.textSub, fontStyle: 'italic', textAlign: 'center' },
+    
+    // --- MODAL STYLES ---
     modalContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContent: { width: '90%', backgroundColor: 'white', borderRadius: 12, padding: 25, elevation: 10 },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
-    inputLabel: { fontSize: 16, color: THEME.muted, marginBottom: 5, marginLeft: 4 },
-    input: { borderWidth: 1, borderColor: THEME.border, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 15 },
-    saveButton: { backgroundColor: THEME.primary, padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+    modalTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: COLORS.textMain },
+    inputLabel: { fontSize: 16, color: COLORS.textSub, marginBottom: 5, marginLeft: 4, fontWeight: '500' },
+    input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 15, color: COLORS.textMain },
+    
+    saveButton: { backgroundColor: COLORS.primary, padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 10 },
     saveButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
-    clearButton: { backgroundColor: THEME.light, padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: THEME.border },
-    clearButtonText: { color: THEME.danger, fontSize: 16, fontWeight: 'bold' },
-    cancelText: { textAlign: 'center', color: THEME.muted, padding: 15, fontSize: 16 },
+    
+    clearButton: { backgroundColor: COLORS.light, padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: COLORS.border },
+    clearButtonText: { color: COLORS.danger, fontSize: 16, fontWeight: 'bold' },
+    
+    cancelText: { textAlign: 'center', color: COLORS.textSub, padding: 15, fontSize: 16 },
 });
 
 export default FoodScreen;
