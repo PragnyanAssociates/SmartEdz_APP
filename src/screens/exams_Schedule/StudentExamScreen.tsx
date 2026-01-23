@@ -16,23 +16,31 @@ const ScheduleCard = ({ item }: { item: any }) => {
                     <Text style={styles.badgeText}>{isExternal ? 'Govt Schedule' : 'School Exam'}</Text>
                 </View>
             )}
-            <Text style={styles.scheduleSubtitle}>{item.subtitle}</Text>
+            
+            {/* ★ CHANGED: Only render subtitle if text exists. This removes the huge gap when empty. */}
+            {item.subtitle ? (
+                <Text style={styles.scheduleSubtitle}>{item.subtitle}</Text>
+            ) : (
+                // Optional: A tiny spacer (5px) if subtitle is missing, to keep it breathing but tight
+                <View style={{ marginBottom: 5 }} />
+            )}
+
             <View style={styles.table}>
                 <View style={styles.tableRow}>
                     {isExternal ? (
                         /* --- EXTERNAL (GOVT) HEADER --- */
                         <>
-                            <View style={[styles.tableCell, styles.headerCell, { flex: 3 }]}>
+                            <View style={[styles.tableCell, styles.headerCell, { flex: 2.2 }]}>
                                 <Text style={styles.headerCellText}>Exam Name</Text>
                             </View>
-                            <View style={[styles.tableCell, styles.headerCell, { flex: 1.5 }]}>
+                            <View style={[styles.tableCell, styles.headerCell, { flex: 1.2 }]}>
                                 <Text style={styles.headerCellText}>Class</Text>
                             </View>
-                            <View style={[styles.tableCell, styles.headerCell, { flex: 2.5 }]}>
-                                <Text style={styles.headerCellText}>From Date</Text>
+                            <View style={[styles.tableCell, styles.headerCell, { flex: 3.3 }]}>
+                                <Text style={[styles.headerCellText, { textAlign: 'center' }]}>From Date</Text>
                             </View>
-                            <View style={[styles.tableCell, styles.headerCell, { flex: 2.5, borderRightWidth: 0 }]}>
-                                <Text style={styles.headerCellText}>To Date</Text>
+                            <View style={[styles.tableCell, styles.headerCell, { flex: 3.3, borderRightWidth: 0 }]}>
+                                <Text style={[styles.headerCellText, { textAlign: 'center' }]}>To Date</Text>
                             </View>
                         </>
                     ) : (
@@ -68,17 +76,17 @@ const ScheduleCard = ({ item }: { item: any }) => {
                     if (isExternal) {
                          return (
                             <View key={index} style={[styles.tableRow, isLastRow && { borderBottomWidth: 0 }]}>
-                                <View style={[styles.tableCell, { flex: 3 }]}>
+                                <View style={[styles.tableCell, { flex: 2.2 }]}>
                                     <Text style={[styles.dataCellText, {fontWeight: 'bold'}]}>{row.examName || '-'}</Text>
                                 </View>
-                                <View style={[styles.tableCell, { flex: 1.5 }]}>
+                                <View style={[styles.tableCell, { flex: 1.2 }]}>
                                     <Text style={styles.dataCellText}>{item.class_group}</Text>
                                 </View>
-                                <View style={[styles.tableCell, { flex: 2.5 }]}>
-                                    <Text style={styles.dataCellText}>{row.fromDate || '—'}</Text>
+                                <View style={[styles.tableCell, { flex: 3.3 }]}>
+                                    <Text style={[styles.dataCellText, { textAlign: 'center' }]} numberOfLines={1} adjustsFontSizeToFit>{row.fromDate || '—'}</Text>
                                 </View>
-                                <View style={[styles.tableCell, { flex: 2.5, borderRightWidth: 0 }]}>
-                                    <Text style={styles.dataCellText}>{row.toDate || '—'}</Text>
+                                <View style={[styles.tableCell, { flex: 3.3, borderRightWidth: 0 }]}>
+                                    <Text style={[styles.dataCellText, { textAlign: 'center' }]} numberOfLines={1} adjustsFontSizeToFit>{row.toDate || '—'}</Text>
                                 </View>
                             </View>
                         );
@@ -131,14 +139,12 @@ const StudentExamScreen = () => {
         fetchSchedule();
     }, [fetchSchedule]);
 
-    // Filter schedules based on the active tab
     const filteredSchedules = schedules.filter(
         schedule => schedule.exam_type === activeTab
     );
 
     return (
         <View style={styles.container}>
-            {/* --- Header Card --- */}
             <View style={styles.headerCard}>
                 <View style={styles.headerContentWrapper}>
                     <View style={styles.headerIconContainer}>
@@ -151,7 +157,6 @@ const StudentExamScreen = () => {
                 </View>
             </View>
 
-            {/* --- UPDATED TABS --- */}
             <View style={styles.tabContainer}>
                 <TouchableOpacity
                     style={[styles.tabButton, activeTab === 'Internal' && styles.tabButtonActive]}
@@ -168,7 +173,7 @@ const StudentExamScreen = () => {
             </View>
 
             {isLoading ? (
-                <ActivityIndicator size="large" color="#FF6347" style={{ marginTop: 50 }} />
+                <ActivityIndicator size="large" color="#008080" style={{ marginTop: 50 }} />
             ) : (
                 <FlatList
                     data={filteredSchedules}
@@ -182,7 +187,7 @@ const StudentExamScreen = () => {
                             </Text>
                         </View>
                     }
-                    refreshControl={<RefreshControl refreshing={isLoading} onRefresh={fetchSchedule} colors={['#FF6347']} />}
+                    refreshControl={<RefreshControl refreshing={isLoading} onRefresh={fetchSchedule} colors={['#008080']} />}
                     contentContainerStyle={styles.listContentContainer}
                 />
             )}
@@ -192,13 +197,13 @@ const StudentExamScreen = () => {
 
 // Styles for Student Screen
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F2F5F8' }, // Matching background
+    container: { flex: 1, backgroundColor: '#F2F5F8' },
     
     // --- HEADER CARD STYLES ---
     headerCard: {
         backgroundColor: '#FFFFFF',
         paddingHorizontal: 15,
-        paddingVertical: 10,
+        paddingVertical: 12,
         width: '96%', 
         alignSelf: 'center',
         marginTop: 15,
@@ -218,7 +223,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     headerIconContainer: {
-        backgroundColor: '#E0F2F1', // Teal bg
+        backgroundColor: '#E0F2F1',
         borderRadius: 30,
         width: 45,
         height: 45,
@@ -230,22 +235,22 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     headerTitle: {
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: 'bold',
         color: '#333333',
     },
     headerSubtitle: {
-        fontSize: 14,
+        fontSize: 13,
         color: '#666666',
         marginTop: 1,
     },
     // ----------------------------
 
-    tabContainer: { flexDirection: 'row', paddingHorizontal: 15, paddingTop: 15, backgroundColor: '#F2F5F8' },
+    tabContainer: { flexDirection: 'row', paddingHorizontal: 15, paddingTop: 5, marginBottom: 10, backgroundColor: '#F2F5F8' },
     tabButton: { flex: 1, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent', alignItems: 'center' },
-    tabButtonActive: { borderBottomColor: '#47ffe0ff' },
+    tabButtonActive: { borderBottomColor: '#008080' },
     tabText: { fontSize: 16, color: '#546e7a', fontWeight: '500' },
-    tabTextActive: { color: '#4e2eceff', fontWeight: 'bold' },
+    tabTextActive: { color: '#008080', fontWeight: 'bold' },
     
     listContentContainer: { paddingBottom: 20 },
     errorContainer: { marginTop: 50, alignItems: 'center', padding: 20, marginHorizontal: 15 },
@@ -254,10 +259,18 @@ const styles = StyleSheet.create({
     scheduleTitle: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', color: '#111', marginBottom: 8 },
     badgeContainer: { alignSelf: 'center', backgroundColor: '#FEF1F2', borderRadius: 16, paddingVertical: 6, paddingHorizontal: 16, marginBottom: 8 },
     badgeText: { color: '#E53E3E', fontSize: 12, fontWeight: 'bold' },
-    scheduleSubtitle: { fontSize: 15, color: '#6c757d', textAlign: 'center', marginBottom: 20 },
+    
+    // ★ ADJUSTED MARGIN HERE
+    scheduleSubtitle: { 
+        fontSize: 15, 
+        color: '#6c757d', 
+        textAlign: 'center', 
+        marginBottom: 12 // Reduced from 20 to 12
+    },
+
     table: { backgroundColor: '#f8f9fa', borderRadius: 16, borderWidth: 1, borderColor: '#e9ecef', overflow: 'hidden' },
     tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e9ecef' },
-    tableCell: { paddingVertical: 14, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: '#e9ecef', justifyContent: 'center' },
+    tableCell: { paddingVertical: 14, paddingHorizontal: 4, borderRightWidth: 1, borderRightColor: '#e9ecef', justifyContent: 'center' },
     headerCell: { backgroundColor: '#f8f9fa' },
     headerCellText: { color: '#6c757d', fontSize: 13, fontWeight: '500', textAlign: 'left' },
     dataCellText: { color: '#212121', fontSize: 13, textAlign: 'left' },

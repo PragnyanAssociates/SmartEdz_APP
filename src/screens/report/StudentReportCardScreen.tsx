@@ -1,16 +1,17 @@
 /**
  * File: src/screens/report/StudentReportCardScreen.js
- * Purpose: A visually appealing, downloadable A4-style report card for students,
- * while maintaining a scrollable view on the mobile screen.
+ * Purpose: A visually appealing, downloadable A4-style report card for students.
+ * Updated: Added Header Card.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import {
     View, Text, ScrollView, StyleSheet, ActivityIndicator, Image,
-    TouchableOpacity, Alert, PermissionsAndroid, Platform
+    TouchableOpacity, Alert, PermissionsAndroid, Platform, Dimensions
 } from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import Feather from 'react-native-vector-icons/Feather';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons'; // Added for Header
 import apiClient from '../../api/client';
 
 // --- Constants ---
@@ -32,23 +33,20 @@ const EXAM_MAPPING = {
 const DISPLAY_EXAM_ORDER = ['AT1', 'UT1', 'AT2', 'UT2', 'AT3', 'UT3', 'AT4', 'UT4', 'SA1', 'SA2', 'Total'];
 const MONTHS = ['June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March', 'April', 'May'];
 
-// ★★★ NEW: Define which classes are out of 20 marks for AT/UT (Seniors) ★★★
 const SENIOR_CLASSES = ['Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 
-/**
- * @name ReportCardContent
- * @description A new component to render the report card layout.
- * It accepts a prop `isForCapture` to switch between on-screen and A4-style layouts.
- */
+// --- Colors for Header ---
+const COLORS = {
+    primary: '#008080',
+    cardBg: '#FFFFFF',
+    textMain: '#263238',
+    textSub: '#546E7A',
+};
+
 const ReportCardContent = ({ studentInfo, academicYear, marksData, attendanceData, isForCapture = false }) => {
     const subjects = CLASS_SUBJECTS[studentInfo.class_group] || [];
     const formatMonthForDisplay = (month) => { if (month === 'September') return 'Sept'; return month.substring(0, 3); };
-
-    // ★★★ NEW: Determine max marks based on class group ★★★
-    // If student is in Class 6-10, this will be true.
     const isSeniorClass = SENIOR_CLASSES.includes(studentInfo.class_group);
-
-    // Use different styles based on whether we are capturing for download
     const s = isForCapture ? printStyles : styles;
 
     return (
@@ -71,16 +69,11 @@ const ReportCardContent = ({ studentInfo, academicYear, marksData, attendanceDat
             <Text style={s.sectionTitle}>PROGRESS CARD</Text>
             <ScrollView horizontal={!isForCapture} showsHorizontalScrollIndicator={false}>
                 <View style={s.table}>
-                    {/* UPDATED HEADER ROW WITH DYNAMIC MARKS DISPLAY */}
                     <View style={s.tableRow}>
                         <Text style={[s.tableHeader, s.subjectCol]}>Subjects</Text>
                         {DISPLAY_EXAM_ORDER.map(exam => {
                             let label = exam;
-                            // Append max marks based on exam type AND class group
                             if (exam.startsWith('AT') || exam.startsWith('UT')) {
-                                // ★★★ LOGIC APPLIED HERE ★★★
-                                // If Senior (6-10) -> 20 Marks
-                                // If Junior (1-5) -> 25 Marks
                                 const maxMarks = isSeniorClass ? '20' : '25';
                                 label = `${exam}\n(${maxMarks})`;
                             } else if (exam.startsWith('SA')) {
@@ -132,7 +125,6 @@ const ReportCardContent = ({ studentInfo, academicYear, marksData, attendanceDat
 
 
 const StudentReportCardScreen = () => {
-    // A new ref specifically for the hidden, A4-sized capture view
     const captureRef = useRef();
 
     const [loading, setLoading] = useState(true);
@@ -183,7 +175,6 @@ const StudentReportCardScreen = () => {
             return;
         }
         try {
-            // Target the hidden captureRef for the download
             if (!captureRef.current) {
                 Alert.alert('Error', 'Cannot capture the report card right now. Please try again.');
                 return;
@@ -203,7 +194,21 @@ const StudentReportCardScreen = () => {
     const reportCardProps = { studentInfo, academicYear, marksData, attendanceData };
 
     return (
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: '#f4f6f8' }}>
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialIcons name="assessment" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Report Card</Text>
+                        <Text style={styles.headerSubtitle}>Academic Performance</Text>
+                    </View>
+                </View>
+            </View>
+
             {/* 1. HIDDEN VIEW FOR A4 CAPTURE */}
             <View style={styles.hiddenContainer}>
                 <ViewShot ref={captureRef} options={{ format: 'png', quality: 1.0 }}>
@@ -225,14 +230,46 @@ const StudentReportCardScreen = () => {
     );
 };
 
-// --- STYLES FOR THE ON-SCREEN (MOBILE) VIEW ---
+// --- STYLES ---
 const styles = StyleSheet.create({
-    hiddenContainer: {
-        position: 'absolute',
-        top: -10000, // Position it off-screen
-        left: 0,
-        zIndex: -1, // Ensure it's behind everything
+    hiddenContainer: { position: 'absolute', top: -10000, left: 0, zIndex: -1 },
+    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f6f8' },
+    errorText: { fontSize: 16, color: '#d32f2f', textAlign: 'center' },
+    
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: COLORS.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 0,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
     },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textMain },
+    headerSubtitle: { fontSize: 13, color: COLORS.textSub },
+
+    // Content Container
     container: {
         backgroundColor: '#f4f6f8',
         padding: 15,
@@ -248,8 +285,8 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 5,
     },
-    loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f4f6f8' },
-    errorText: { fontSize: 16, color: '#d32f2f', textAlign: 'center' },
+    
+    // Report Card Internals
     schoolHeader: { alignItems: 'center', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 20 },
     logo: { width: 400, height: 130, resizeMode: 'contain', marginBottom: -10 },
     schoolName: { fontSize: 22, fontWeight: 'bold', color: '#1a252f', textAlign: 'center' },
@@ -274,14 +311,9 @@ const styles = StyleSheet.create({
     downloadButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginLeft: 10, },
 });
 
-
-// --- STYLES FOR THE HIDDEN (A4-CAPTURE) VIEW ---
+// --- PRINT STYLES (Unchanged for capture) ---
 const printStyles = StyleSheet.create({
-    card: {
-        backgroundColor: '#ffffff',
-        padding: 30,
-        width: 840, // A4-like width to fit all content
-    },
+    card: { backgroundColor: '#ffffff', padding: 30, width: 840 },
     schoolHeader: { ...styles.schoolHeader },
     logo: { width: 300, height: 100, resizeMode: 'contain', marginBottom: -5 },
     schoolName: { ...styles.schoolName, fontSize: 24 },

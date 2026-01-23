@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { PieChart } from 'react-native-svg-charts';
 import { Text as SvgText } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
@@ -12,6 +13,20 @@ import RNHTMLtoPDF from 'react-native-html-to-pdf';
 import RNFS from 'react-native-fs';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import apiClient from '../../api/client';
+
+// --- COLORS ---
+const COLORS = {
+    primary: '#008080',    // Teal
+    background: '#F2F5F8', 
+    cardBg: '#FFFFFF',
+    textMain: '#263238',
+    textSub: '#546E7A',
+    border: '#CFD8DC',
+    success: '#43A047',
+    danger: '#E53935',
+    blue: '#1E88E5',
+    warning: '#F59E0B'
+};
 
 // --- Helper: Format Currency ---
 const formatCurrency = (amount) => {
@@ -36,8 +51,8 @@ const ReportsScreen = () => {
     const [datePickerMode, setDatePickerMode] = useState('start');
 
     const reportColors = {
-        debit: '#e7400d',
-        credit: '#00ff00',
+        debit: COLORS.danger,
+        credit: COLORS.success,
     };
 
     const fetchReportData = useCallback(async () => {
@@ -178,7 +193,7 @@ const ReportsScreen = () => {
             const options = { 
                 html: htmlContent, 
                 fileName: `Financial_Report_${displayDate.replace(/ /g, '_').replace(/\//g, '-')}`, 
-                directory: 'Documents'
+                directory: 'Download'
             };
             const file = await RNHTMLtoPDF.convert(options);
             const destinationPath = `${RNFS.DownloadDirectoryPath}/${file.fileName}.pdf`;
@@ -220,9 +235,23 @@ const ReportsScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}><MaterialIcons name="arrow-back" size={24} color="#333" /></TouchableOpacity>
-                <Text style={styles.headerTitle}>Reports</Text>
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    {/* Back Button */}
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{marginRight: 10, padding: 4}}>
+                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+
+                    <View style={styles.headerIconContainer}>
+                        <MaterialCommunityIcons name="chart-pie" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Financial Reports</Text>
+                        <Text style={styles.headerSubtitle}>Summary & Analytics</Text>
+                    </View>
+                </View>
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -236,21 +265,21 @@ const ReportsScreen = () => {
                     </View>
                     <View style={styles.dateRangeContainer}>
                         <TouchableOpacity style={styles.dateButton} onPress={() => showDatePicker('start')}>
-                            <MaterialIcons name="calendar-today" size={16} color="#546E7A" />
+                            <MaterialIcons name="calendar-today" size={16} color={COLORS.textSub} />
                             <Text style={styles.dateText}>{dateRange.start ? dateRange.start.split('-').reverse().join('/') : 'From Date'}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.dateButton} onPress={() => showDatePicker('end')}>
-                            <MaterialIcons name="calendar-today" size={16} color="#546E7A" />
+                            <MaterialIcons name="calendar-today" size={16} color={COLORS.textSub} />
                             <Text style={styles.dateText}>{dateRange.end ? dateRange.end.split('-').reverse().join('/') : 'To Date'}</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
 
-                {isLoading ? <ActivityIndicator size="large" color="#007AFF" style={{ flex: 1, marginTop: 50 }} /> : (
+                {isLoading ? <ActivityIndicator size="large" color={COLORS.primary} style={{ flex: 1, marginTop: 50 }} /> : (
                     <>
                         <View style={styles.reportCard}>
                             <View style={styles.reportHeader}>
-                                <Text style={styles.schoolName}>Vivekanand Public School</Text>
+                                <Text style={styles.schoolName}>Vivekananda Public School</Text>
                                 <Text style={styles.managedBy}>Managed by Vivekananda Education Center</Text>
                             </View>
 
@@ -313,40 +342,75 @@ const ReportsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F0F4F8' },
-    header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', paddingVertical: 12, paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#CFD8DC' },
-    backButton: { padding: 5, marginRight: 15 },
-    headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#263238' },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: COLORS.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 4,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textMain },
+    headerSubtitle: { fontSize: 13, color: COLORS.textSub },
+
     scrollContent: { padding: 15 },
+    
+    // Filters
     filterContainer: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 15, elevation: 2, marginBottom: 20 },
-    segmentControl: { flexDirection: 'row', backgroundColor: '#ECEFF1', borderRadius: 8, marginBottom: 12 },
+    segmentControl: { flexDirection: 'row', backgroundColor: '#F5F5F5', borderRadius: 8, marginBottom: 12 },
     segmentButton: { flex: 1, paddingVertical: 10, borderRadius: 7 },
-    segmentActive: { backgroundColor: '#007AFF' },
-    segmentText: { textAlign: 'center', fontWeight: '600', color: '#37474F' },
+    segmentActive: { backgroundColor: COLORS.primary },
+    segmentText: { textAlign: 'center', fontWeight: '600', color: COLORS.textMain },
     segmentTextActive: { color: '#FFFFFF' },
     dateRangeContainer: { flexDirection: 'row', alignItems: 'center' },
-    dateButton: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', padding: 10, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: '#DEE2E6' },
-    dateText: { marginLeft: 8, color: '#37474F' },
+    dateButton: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8F9FA', padding: 10, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: COLORS.border },
+    dateText: { marginLeft: 8, color: COLORS.textMain },
+    
+    // Report Card
     reportCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
     reportHeader: { alignItems: 'center' },
-    schoolName: { fontSize: 22, fontWeight: 'bold', color: '#263238' },
-    managedBy: { fontSize: 13, color: '#6c757d', marginTop: 2 },
-    reportDateDisplay: { textAlign: 'center', fontSize: 14, fontWeight: '500', color: '#495057', marginTop: 10 },
+    schoolName: { fontSize: 22, fontWeight: 'bold', color: COLORS.textMain },
+    managedBy: { fontSize: 13, color: COLORS.textSub, marginTop: 2 },
+    reportDateDisplay: { textAlign: 'center', fontSize: 14, fontWeight: '500', color: COLORS.textSub, marginTop: 10 },
     chartContainer: { alignItems: 'center', justifyContent: 'center', minHeight: 250, marginVertical: 15, backgroundColor: 'white' },
-    noDataText: { fontSize: 16, color: '#78909C' },
+    noDataText: { fontSize: 16, color: COLORS.textSub },
     legendContainer: { marginTop: 20, paddingHorizontal: 10, borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
     legendItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
     legendLabelContainer: { flexDirection: 'row', alignItems: 'center' },
     legendColor: { width: 12, height: 12, borderRadius: 6, marginRight: 10 },
-    legendLabel: { fontSize: 16, color: '#495057' },
+    legendLabel: { fontSize: 16, color: COLORS.textSub },
     legendAmountContainer: { flexDirection: 'row', alignItems: 'center' },
-    legendAmount: { fontSize: 16, fontWeight: '600', color: '#263238' },
-    debitSymbol: { fontSize: 16, fontWeight: 'bold', color: '#d9534f' },
-    creditSymbol: { fontSize: 16, fontWeight: 'bold', color: '#5cb85c' },
+    legendAmount: { fontSize: 16, fontWeight: '600', color: COLORS.textMain },
+    debitSymbol: { fontSize: 16, fontWeight: 'bold', color: COLORS.danger },
+    creditSymbol: { fontSize: 16, fontWeight: 'bold', color: COLORS.success },
     totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15, paddingTop: 15, borderTopWidth: 2, borderTopColor: '#333', paddingHorizontal: 10 },
-    totalLabel: { fontSize: 18, fontWeight: 'bold', color: '#263238' },
-    totalAmount: { fontSize: 18, fontWeight: 'bold', color: '#263238' },
-    downloadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#007AFF', paddingVertical: 15, borderRadius: 8, marginTop: 25 },
+    totalLabel: { fontSize: 18, fontWeight: 'bold', color: COLORS.textMain },
+    totalAmount: { fontSize: 18, fontWeight: 'bold', color: COLORS.textMain },
+    downloadButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.blue, paddingVertical: 15, borderRadius: 8, marginTop: 25 },
     downloadButtonText: { color: '#FFF', fontWeight: 'bold', marginLeft: 8, fontSize: 16 },
 });
 

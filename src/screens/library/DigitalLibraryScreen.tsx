@@ -1,12 +1,27 @@
 import React, { useState, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, FlatList, TouchableOpacity, 
-    ActivityIndicator, Image, TextInput, RefreshControl 
+    ActivityIndicator, Image, TextInput, RefreshControl, SafeAreaView, Dimensions
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import apiClient from '../../api/client';
 import { SERVER_URL } from '../../../apiConfig';
 import { useAuth } from '../../context/AuthContext'; 
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import * as Animatable from 'react-native-animatable';
+
+// --- COLORS ---
+const COLORS = {
+    primary: '#008080',    // Teal
+    background: '#F2F5F8', 
+    cardBg: '#FFFFFF',
+    textMain: '#263238',
+    textSub: '#546E7A',
+    border: '#CFD8DC',
+    success: '#43A047',
+    blue: '#1E88E5'
+};
 
 const DigitalLibraryScreen = () => {
     const navigation = useNavigation();
@@ -41,97 +56,205 @@ const DigitalLibraryScreen = () => {
         fetchResources();
     };
 
-    const renderCard = ({ item }) => {
+    const renderCard = ({ item, index }) => {
         const coverUrl = item.cover_image_url 
             ? `${SERVER_URL}${item.cover_image_url}` 
             : 'https://via.placeholder.com/150/CCCCCC/FFFFFF?text=E-Book';
 
         return (
-            <TouchableOpacity 
-                style={styles.card} 
-                onPress={() => navigation.navigate('DigitalResourceDetailsScreen', { resource: item })} 
-                activeOpacity={0.9}
-            >
-                <View style={styles.imageContainer}>
-                    <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode="cover" />
-                    <View style={styles.typeBadge}>
-                        <Text style={styles.typeText}>E-BOOK</Text>
+            <Animatable.View animation="fadeInUp" duration={500} delay={index * 50} style={styles.cardWrapper}>
+                <TouchableOpacity 
+                    style={styles.card} 
+                    onPress={() => navigation.navigate('DigitalResourceDetailsScreen', { resource: item })} 
+                    activeOpacity={0.9}
+                >
+                    <View style={styles.imageContainer}>
+                        <Image source={{ uri: coverUrl }} style={styles.coverImage} resizeMode="cover" />
+                        <View style={styles.typeBadge}>
+                            <Text style={styles.typeText}>E-BOOK</Text>
+                        </View>
                     </View>
-                </View>
-                
-                <View style={styles.info}>
-                    <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
-                    <Text style={styles.author}>by {item.author}</Text>
-                    <View style={styles.metaRow}>
-                        {item.category ? <Text style={styles.category}>{item.category}</Text> : <View/>}
-                        <Text style={styles.bookNo}>{item.book_no || '0000'}</Text>
+                    
+                    <View style={styles.info}>
+                        <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+                        <Text style={styles.author}>by {item.author}</Text>
+                        
+                        <View style={styles.metaRow}>
+                            {item.category ? (
+                                <View style={styles.categoryBadge}>
+                                    <Text style={styles.categoryText}>{item.category}</Text>
+                                </View>
+                            ) : <View/>}
+                            <Text style={styles.bookNo}>ID: {item.book_no || 'N/A'}</Text>
+                        </View>
                     </View>
-                </View>
-            </TouchableOpacity>
+                </TouchableOpacity>
+            </Animatable.View>
         );
     };
 
     return (
-        <View style={styles.container}>
-            <View style={styles.header}>
-                <Text style={styles.heading}>Digital Resources</Text>
-                <View style={styles.searchBar}>
-                    <Text style={{marginRight: 8}}>🔍</Text>
-                    <TextInput 
-                        style={styles.searchInput} 
-                        placeholder="Search by Title, Author..." 
-                        value={search} 
-                        onChangeText={setSearch} 
-                    />
+        <SafeAreaView style={styles.container}>
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    {/* Back Button */}
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{marginRight: 10, padding: 4}}>
+                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+
+                    <View style={styles.headerIconContainer}>
+                        <MaterialCommunityIcons name="cloud-download-outline" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>Digital Library</Text>
+                        <Text style={styles.headerSubtitle}>E-Books & Resources</Text>
+                    </View>
                 </View>
+
+                {/* Add Button (Admin Only) */}
+                {isAdmin && (
+                    <TouchableOpacity 
+                        style={styles.headerBtn} 
+                        onPress={() => navigation.navigate('AddDigitalResourceScreen')}
+                    >
+                        <MaterialIcons name="add" size={18} color="#fff" />
+                        <Text style={styles.headerBtnText}>Add</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+
+            {/* --- SEARCH BAR --- */}
+            <View style={styles.searchContainer}>
+                <MaterialIcons name="search" size={22} color={COLORS.textSub} style={styles.searchIcon} />
+                <TextInput 
+                    style={styles.searchInput} 
+                    placeholder="Search by Title, Author..." 
+                    placeholderTextColor={COLORS.textSub}
+                    value={search} 
+                    onChangeText={setSearch} 
+                />
             </View>
 
             {loading && !refreshing ? (
-                <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 50 }} />
+                <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 50 }} />
             ) : (
                 <FlatList 
                     data={resources} 
                     renderItem={renderCard} 
                     keyExtractor={(item) => item.id.toString()} 
                     numColumns={2} 
-                    columnWrapperStyle={styles.rowWrapper}
                     contentContainerStyle={styles.listContent}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                    ListEmptyComponent={<Text style={styles.emptyText}>No digital resources found.</Text>}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
+                    ListEmptyComponent={
+                        <View style={styles.emptyState}>
+                            <MaterialCommunityIcons name="file-document-outline" size={60} color="#CFD8DC" />
+                            <Text style={styles.emptyText}>No digital resources found.</Text>
+                        </View>
+                    }
                 />
             )}
-
-            {isAdmin && (
-                <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddDigitalResourceScreen')}>
-                    <Text style={styles.fabIcon}>+</Text>
-                </TouchableOpacity>
-            )}
-        </View>
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC' },
-    header: { padding: 20, backgroundColor: '#FFF', elevation: 2, paddingBottom: 15 },
-    heading: { fontSize: 24, fontWeight: '800', color: '#1E293B', marginBottom: 15 },
-    searchBar: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 10, padding: 12, alignItems: 'center' },
-    searchInput: { flex: 1, fontSize: 16, color: '#334155', padding: 0 },
-    listContent: { padding: 15, paddingBottom: 80 },
-    rowWrapper: { justifyContent: 'space-between' },
-    card: { width: '48%', backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, elevation: 3, overflow: 'hidden' },
+    container: { flex: 1, backgroundColor: COLORS.background },
+    
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: COLORS.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textMain },
+    headerSubtitle: { fontSize: 13, color: COLORS.textSub },
+    headerBtn: {
+        backgroundColor: COLORS.primary,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginLeft: 10,
+    },
+    headerBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+
+    // --- SEARCH BAR ---
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        marginHorizontal: 15,
+        marginBottom: 10,
+        paddingHorizontal: 10,
+        height: 45,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    searchIcon: { marginRight: 8 },
+    searchInput: { flex: 1, fontSize: 16, color: COLORS.textMain },
+
+    // --- GRID LIST ---
+    listContent: { paddingHorizontal: 8, paddingBottom: 40 },
+    cardWrapper: {
+        width: '50%',
+        padding: 6,
+    },
+    card: { 
+        backgroundColor: '#FFF', 
+        borderRadius: 12, 
+        elevation: 3, 
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 5, 
+        overflow: 'hidden',
+        height: 250, 
+        flexDirection: 'column'
+    },
     imageContainer: { height: 140, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', position: 'relative' },
     coverImage: { width: '100%', height: '100%' },
     typeBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     typeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
-    info: { padding: 12 },
-    title: { fontSize: 14, fontWeight: 'bold', color: '#1E293B', marginBottom: 4, height: 40 },
-    author: { fontSize: 12, color: '#64748B', marginBottom: 6 },
-    metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-    category: { fontSize: 10, color: '#2563EB', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, fontWeight: '600' },
+    
+    info: { padding: 10, flex: 1, justifyContent: 'space-between' },
+    title: { fontSize: 14, fontWeight: 'bold', color: COLORS.textMain, marginBottom: 2 },
+    author: { fontSize: 12, color: COLORS.textSub },
+    
+    metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
+    categoryBadge: { backgroundColor: '#E0F2F1', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    categoryText: { fontSize: 10, color: COLORS.primary, fontWeight: '600' },
     bookNo: { fontSize: 10, color: '#94A3B8', fontWeight: 'bold' },
-    fab: { position: 'absolute', right: 20, bottom: 20, backgroundColor: '#2563EB', width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 5 },
-    fabIcon: { color: '#FFF', fontSize: 32, marginTop: -2 },
-    emptyText: { textAlign: 'center', marginTop: 50, color: '#94A3B8', fontSize: 16 }
+
+    emptyState: { alignItems: 'center', marginTop: 50 },
+    emptyText: { textAlign: 'center', color: COLORS.textSub, fontSize: 16, marginTop: 10 }
 });
 
 export default DigitalLibraryScreen;

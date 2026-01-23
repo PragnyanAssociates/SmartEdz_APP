@@ -1,13 +1,30 @@
 import React, { useState, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, FlatList, TouchableOpacity, 
-    TextInput, Platform, ActivityIndicator, RefreshControl 
+    TextInput, Platform, ActivityIndicator, RefreshControl, SafeAreaView
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native'; // Added navigation hook
 import apiClient from '../../api/client'; 
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import * as Animatable from 'react-native-animatable';
+
+// --- COLORS ---
+const COLORS = {
+    primary: '#008080',    // Teal
+    background: '#F2F5F8', 
+    cardBg: '#FFFFFF',
+    textMain: '#263238',
+    textSub: '#546E7A',
+    border: '#CFD8DC',
+    success: '#43A047',
+    danger: '#E53935',
+    tableHeader: '#34495e'
+};
 
 const LibraryHistoryScreen = () => {
+    const navigation = useNavigation(); // Hook for navigation
     const [data, setData] = useState([]);
     const [filteredData, setFilteredData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -34,7 +51,6 @@ const LibraryHistoryScreen = () => {
 
     const fetchHistory = async () => {
         try {
-            // FIXED URL: Removed '/api' prefix to match your client config
             const res = await apiClient.get('/library/admin/history');
             setData(res.data || []);
         } catch (error) {
@@ -69,7 +85,6 @@ const LibraryHistoryScreen = () => {
         }
 
         // 3. "Latest 10" Logic for Initial View
-        // If no filters are active, limit to 10. If searching/filtering, show all matches.
         if (!search && !startDate && !endDate) {
             result = result.slice(0, 10);
         }
@@ -80,7 +95,6 @@ const LibraryHistoryScreen = () => {
     const formatDate = (dateString) => {
         if (!dateString) return '-';
         const d = new Date(dateString);
-        // Format: DD/MM/YYYY
         return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
     };
 
@@ -124,34 +138,54 @@ const LibraryHistoryScreen = () => {
     );
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.screenTitle}>📜 Transaction History</Text>
+        <SafeAreaView style={styles.container}>
+            
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    {/* Back Button */}
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{marginRight: 10, padding: 4}}>
+                        <MaterialIcons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+
+                    <View style={styles.headerIconContainer}>
+                        <MaterialCommunityIcons name="history" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>History</Text>
+                        <Text style={styles.headerSubtitle}>Transaction Logs</Text>
+                    </View>
+                </View>
+            </View>
             
             {/* --- Filters Section --- */}
             <View style={styles.filterContainer}>
-                <TextInput 
-                    style={styles.searchInput}
-                    placeholder="Search Student or Book..."
-                    placeholderTextColor="#94A3B8"
-                    value={search}
-                    onChangeText={setSearch}
-                />
+                <View style={styles.searchBox}>
+                    <MaterialIcons name="search" size={20} color={COLORS.textSub} style={{marginRight: 8}} />
+                    <TextInput 
+                        style={styles.searchInput}
+                        placeholder="Search Student or Book..."
+                        placeholderTextColor={COLORS.textSub}
+                        value={search}
+                        onChangeText={setSearch}
+                    />
+                </View>
                 
                 <View style={styles.dateRow}>
                     <TouchableOpacity onPress={() => setShowStartPicker(true)} style={styles.dateBtn}>
                         <Text style={styles.dateBtnTxt}>
                             {startDate ? formatDate(startDate.toISOString()) : 'Start Date'}
                         </Text>
-                        <Text>📅</Text>
+                        <MaterialIcons name="calendar-today" size={16} color={COLORS.primary} />
                     </TouchableOpacity>
                     
-                    <Text style={{color: '#94A3B8'}}>-</Text>
+                    <MaterialIcons name="arrow-right-alt" size={24} color={COLORS.textSub} />
                     
                     <TouchableOpacity onPress={() => setShowEndPicker(true)} style={styles.dateBtn}>
                         <Text style={styles.dateBtnTxt}>
                             {endDate ? formatDate(endDate.toISOString()) : 'End Date'}
                         </Text>
-                        <Text>📅</Text>
+                        <MaterialIcons name="calendar-today" size={16} color={COLORS.primary} />
                     </TouchableOpacity>
                     
                     {(startDate || endDate) && (
@@ -159,7 +193,7 @@ const LibraryHistoryScreen = () => {
                             onPress={() => {setStartDate(null); setEndDate(null)}} 
                             style={styles.clearBtn}
                         >
-                            <Text style={{color:'#FFF', fontWeight:'bold'}}>✕</Text>
+                            <MaterialIcons name="close" size={18} color="#FFF" />
                         </TouchableOpacity>
                     )}
                 </View>
@@ -180,14 +214,14 @@ const LibraryHistoryScreen = () => {
             {/* --- Table --- */}
             <View style={styles.tableContainer}>
                 {renderHeader()}
-                {loading ? <ActivityIndicator style={{marginTop: 50}} color="#2563EB" /> : (
+                {loading ? <ActivityIndicator style={{marginTop: 50}} color={COLORS.primary} /> : (
                     <FlatList
                         data={filteredData}
                         renderItem={renderItem}
                         keyExtractor={item => item.id.toString()}
                         contentContainerStyle={{ paddingBottom: 20 }}
                         refreshControl={
-                            <RefreshControl refreshing={refreshing} onRefresh={()=>{setRefreshing(true); fetchHistory()}} />
+                            <RefreshControl refreshing={refreshing} onRefresh={()=>{setRefreshing(true); fetchHistory()}} colors={[COLORS.primary]} />
                         }
                         ListEmptyComponent={
                             <View style={styles.emptyContainer}>
@@ -197,25 +231,59 @@ const LibraryHistoryScreen = () => {
                     />
                 )}
             </View>
-        </View>
+        </SafeAreaView>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8FAFC', padding: 16 },
-    screenTitle: { fontSize: 22, fontWeight: '800', color: '#1E293B', marginBottom: 16 },
+    container: { flex: 1, backgroundColor: COLORS.background },
     
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: COLORS.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textMain },
+    headerSubtitle: { fontSize: 13, color: COLORS.textSub },
+
     // Filters
-    filterContainer: { backgroundColor: '#FFF', padding: 16, borderRadius: 12, marginBottom: 16, elevation: 2 },
-    searchInput: { backgroundColor: '#F1F5F9', padding: 12, borderRadius: 8, marginBottom: 12, color: '#1E293B' },
+    filterContainer: { paddingHorizontal: 15, marginBottom: 15 },
+    searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 10, paddingHorizontal: 10, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border, height: 45 },
+    searchInput: { flex: 1, fontSize: 15, color: COLORS.textMain, padding: 0 },
+    
     dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    dateBtn: { flexDirection: 'row', alignItems:'center', justifyContent:'space-between', backgroundColor: '#F1F5F9', padding: 10, borderRadius: 8, width: '40%' },
-    dateBtnTxt: { fontSize: 12, fontWeight: '600', color: '#334155' },
-    clearBtn: { backgroundColor: '#EF4444', padding: 10, borderRadius: 8 },
+    dateBtn: { flexDirection: 'row', alignItems:'center', justifyContent:'space-between', backgroundColor: '#FFF', padding: 10, borderRadius: 8, width: '40%', borderWidth: 1, borderColor: COLORS.border },
+    dateBtnTxt: { fontSize: 12, fontWeight: '600', color: COLORS.textMain },
+    clearBtn: { backgroundColor: COLORS.danger, padding: 8, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
 
     // Table
-    tableContainer: { flex: 1, backgroundColor: '#FFF', borderRadius: 12, elevation: 3, overflow: 'hidden' },
-    headerRow: { flexDirection: 'row', backgroundColor: '#334155', paddingVertical: 14, paddingHorizontal: 10 },
+    tableContainer: { flex: 1, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, elevation: 5, overflow: 'hidden' },
+    headerRow: { flexDirection: 'row', backgroundColor: COLORS.tableHeader, paddingVertical: 14, paddingHorizontal: 10 },
     row: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingVertical: 14, paddingHorizontal: 10, alignItems:'center' },
     
     // Grid System
@@ -226,13 +294,13 @@ const styles = StyleSheet.create({
     
     cell: { paddingRight: 5 },
     headText: { color: '#FFF', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-    cellText: { fontSize: 12, color: '#334155', fontWeight: '500' },
-    cellTextBold: { fontSize: 13, color: '#1E293B', fontWeight: '700' },
-    cellSubText: { fontSize: 10, color: '#94A3B8', marginTop: 2 },
-    greenText: { color: '#10B981', fontWeight: '700' },
+    cellText: { fontSize: 12, color: COLORS.textMain, fontWeight: '500' },
+    cellTextBold: { fontSize: 13, color: COLORS.textMain, fontWeight: '700' },
+    cellSubText: { fontSize: 10, color: COLORS.textSub, marginTop: 2 },
+    greenText: { color: COLORS.success, fontWeight: '700' },
     
     emptyContainer: { padding: 40, alignItems: 'center' },
-    emptyText: { textAlign: 'center', color: '#94A3B8', fontSize: 16 }
+    emptyText: { textAlign: 'center', color: COLORS.textSub, fontSize: 16 }
 });
 
 export default LibraryHistoryScreen;

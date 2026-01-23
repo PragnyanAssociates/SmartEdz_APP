@@ -1,20 +1,17 @@
 /**
  * File: src/screens/report/MyPerformance.tsx
  * Purpose: Student view to compare performance.
- * Features: 
- *  1. Single Subject View: Topper vs Me.
- *  2. Overview Mode: All subjects side-by-side.
- *  3. Displays Rank, Marks, and Percentage.
- *  4. Color coded performance (Green > 85, Orange 50-85, Red < 50).
- *  5. Custom Rounding (94.5 -> 94, 94.6 -> 95).
+ * Updated: Header Card Design Implementation.
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     View, Text, StyleSheet, ActivityIndicator, TouchableOpacity,
-    ScrollView, Animated, Easing, RefreshControl, Dimensions
+    ScrollView, Animated, Easing, RefreshControl, Dimensions, SafeAreaView
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import apiClient from '../../api/client';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // --- Constants ---
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -48,48 +45,38 @@ const EXAM_NAME_TO_CODE: any = {
 
 const EXAM_OPTIONS = ['Overall', 'AT1', 'UT1', 'AT2', 'UT2', 'SA1', 'AT3', 'UT3', 'AT4', 'UT4', 'SA2'];
 
+// --- COLORS ---
 const COLORS = {
-    primary: '#00897B',
-    background: '#F5F7FA',
+    primary: '#008080',    // Teal
+    background: '#F2F5F8', 
     cardBg: '#FFFFFF',
     textMain: '#263238',
     textSub: '#546E7A',
     
-    // --- UPDATED COLORS ---
     success: '#43A047',    // Green (85% - 100%)
     average: '#FB8C00',    // Orange (50% - 85%)
     poor: '#E53935',       // Red (0% - 50%)
     
-    // Note Section Colors
-    noteBg: '#FFF8E1',     // Light Buttery Background
-    noteBorder: '#FFE0B2', // Orange-ish border
+    noteBg: '#FFF8E1',     
+    noteBorder: '#FFE0B2', 
     
-    rankBg: '#ECEFF1',     // Background for rank badge
-    rankText: '#37474F',   // Color for rank text
+    rankBg: '#ECEFF1',     
+    rankText: '#37474F',   
     
-    selectedChip: '#1976D2', 
-    overviewChip: '#292828ff' 
+    selectedChip: '#008080', // Updated to match Theme
+    overviewChip: '#37474F' 
 };
 
 // --- HELPER: CUSTOM ROUNDING ---
-// Rule: 94.5% -> 94%, 94.6% -> 95%
 const getRoundedPercentage = (value: number | string): number => {
     const floatVal = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(floatVal)) return 0;
-    
     const decimalPart = floatVal - Math.floor(floatVal);
-    
-    if (decimalPart > 0.5) {
-        return Math.ceil(floatVal);
-    } else {
-        return Math.floor(floatVal);
-    }
+    return decimalPart > 0.5 ? Math.ceil(floatVal) : Math.floor(floatVal);
 };
 
 // --- Helper: Get Color Based on Percentage ---
-// Updated: 85-100 Green, 50-85 Orange, 0-50 Red
 const getColorForPercentage = (percentage: number) => {
-    // percentage is assumed to be already rounded integer
     if (percentage >= 85) return COLORS.success; 
     if (percentage >= 50) return COLORS.average; 
     return COLORS.poor;                          
@@ -139,14 +126,13 @@ const calculateStatsForSubject = (
         }
 
         const rawPercentage = totalPossible > 0 ? (totalObtained / totalPossible) * 100 : 0;
-        // Apply custom rounding immediately
         const percentage = getRoundedPercentage(rawPercentage);
 
         return {
             id: student.id,
             obtained: totalObtained,
             total: totalPossible,
-            percentage: percentage // Integer
+            percentage: percentage
         };
     });
 
@@ -193,7 +179,6 @@ const PerformanceBar = ({ data, label, showRank = true, slim = false }: any) => 
                     <Text style={[styles.totalMarksText, { fontSize: slim ? 10 : 13 }]}>/{Math.round(data.total)}</Text>
                 </View>
 
-                {/* Data.percentage is already integer */}
                 <Text style={[styles.percentageText, { color: dynamicColor, fontSize: slim ? 10 : 12 }]}>
                     {data.percentage}%
                 </Text>
@@ -311,7 +296,20 @@ const MyPerformance = () => {
     const subjectsToRender = ['All Subjects', ...rawSubjects.filter((s: string) => s !== 'All Subjects'), 'Overview'];
 
     return (
-        <View style={styles.container}>
+        <SafeAreaView style={styles.container}>
+            {/* --- HEADER CARD --- */}
+            <View style={styles.headerCard}>
+                <View style={styles.headerLeft}>
+                    <View style={styles.headerIconContainer}>
+                        <MaterialCommunityIcons name="poll" size={24} color="#008080" />
+                    </View>
+                    <View style={styles.headerTextContainer}>
+                        <Text style={styles.headerTitle}>My Performance</Text>
+                        <Text style={styles.headerSubtitle}>Analytics</Text>
+                    </View>
+                </View>
+            </View>
+
             {loading ? (
                 <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
             ) : (
@@ -320,7 +318,7 @@ const MyPerformance = () => {
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                 >
                     <View style={styles.controlsSection}>
-                        <Text style={styles.label}>Select Exam Type :-</Text>
+                        <Text style={styles.label}>Select Exam:</Text>
                         <View style={styles.pickerContainer}>
                             <Picker
                                 selectedValue={selectedExam}
@@ -332,7 +330,7 @@ const MyPerformance = () => {
                             </Picker>
                         </View>
 
-                        <Text style={[styles.label, { marginTop: 20 }]}>Select Subject :-</Text>
+                        <Text style={[styles.label, { marginTop: 20 }]}>Select Subject:</Text>
                         <View style={styles.subjectsGrid}>
                             {subjectsToRender.map((subject) => {
                                 const isSelected = selectedSubject === subject;
@@ -367,14 +365,13 @@ const MyPerformance = () => {
 
                     <View style={styles.graphCard}>
                         
-                        {/* --- DYNAMIC NOTE SECTION (UPDATED) --- */}
+                        {/* --- DYNAMIC NOTE SECTION --- */}
                         <View style={styles.noteCard}>
                             <View style={styles.noteHeader}>
                                 <Text style={styles.noteTitle}>Performance Guide :-</Text>
                             </View>
 
                             <View style={styles.noteGrid}>
-                                {/* Row 1 */}
                                 <View style={styles.legendItem}>
                                     <View style={[styles.colorBox, { backgroundColor: COLORS.success }]} />
                                     <Text style={styles.legendText}>&gt;85% (Excel)</Text>
@@ -383,8 +380,6 @@ const MyPerformance = () => {
                                     <View style={[styles.colorBox, { backgroundColor: COLORS.average }]} />
                                     <Text style={styles.legendText}>50-85% (Avg)</Text>
                                 </View>
-
-                                {/* Row 2 */}
                                 <View style={styles.legendItem}>
                                     <View style={[styles.colorBox, { backgroundColor: COLORS.poor }]} />
                                     <Text style={styles.legendText}>&lt;50% (Poor)</Text>
@@ -420,18 +415,8 @@ const MyPerformance = () => {
                                         <View key={index} style={styles.overviewGroup}>
                                             <Text style={styles.overviewSubjectTitle}>{item.subject.substring(0,3).toUpperCase()}</Text>
                                             <View style={styles.overviewBarPair}>
-                                                <PerformanceBar 
-                                                    data={item.topper} 
-                                                    label="Top" 
-                                                    height={160} 
-                                                    slim={true}
-                                                />
-                                                <PerformanceBar 
-                                                    data={item.me} 
-                                                    label="Me" 
-                                                    height={160} 
-                                                    slim={true}
-                                                />
+                                                <PerformanceBar data={item.topper} label="Top" height={160} slim={true} />
+                                                <PerformanceBar data={item.me} label="Me" height={160} slim={true} />
                                             </View>
                                         </View>
                                     ))}
@@ -442,7 +427,7 @@ const MyPerformance = () => {
 
                 </ScrollView>
             )}
-        </View>
+        </SafeAreaView>
     );
 };
 
@@ -451,60 +436,73 @@ const styles = StyleSheet.create({
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     scrollContent: { paddingBottom: 40 },
     
-    controlsSection: { padding: 20, paddingTop: 10 },
-    label: { fontSize: 16, fontWeight: '700', color: COLORS.textMain, marginBottom: 8, marginTop: 10 }, 
-    pickerContainer: { borderWidth: 1, borderColor: COLORS.textMain, borderRadius: 8, backgroundColor: COLORS.cardBg, height: 50, justifyContent: 'center', elevation: 2 },
-    picker: { width: '100%', height: 50, color: COLORS.textMain },
+    // --- HEADER CARD STYLES ---
+    headerCard: {
+        backgroundColor: COLORS.cardBg,
+        paddingHorizontal: 15,
+        paddingVertical: 12,
+        width: '96%', 
+        alignSelf: 'center',
+        marginTop: 15,
+        marginBottom: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        elevation: 3,
+        shadowColor: '#000', 
+        shadowOpacity: 0.1, 
+        shadowRadius: 4, 
+        shadowOffset: { width: 0, height: 2 },
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerIconContainer: {
+        backgroundColor: '#E0F2F1', // Teal bg
+        borderRadius: 30,
+        width: 45,
+        height: 45,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    headerTextContainer: { justifyContent: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textMain },
+    headerSubtitle: { fontSize: 13, color: COLORS.textSub },
+
+    controlsSection: { paddingHorizontal: 20, paddingTop: 10 },
+    label: { fontSize: 14, fontWeight: '700', color: COLORS.textSub, marginBottom: 5, marginTop: 10, textTransform: 'uppercase' }, 
+    
+    pickerContainer: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, backgroundColor: COLORS.cardBg, height: 45, justifyContent: 'center', elevation: 1 },
+    picker: { width: '100%', height: 48, color: COLORS.textMain },
     
     subjectsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 5 },
-    subjectChip: { borderWidth: 1.5, borderColor: COLORS.textMain, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20, backgroundColor: COLORS.cardBg, minWidth: 70, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
+    subjectChip: { borderWidth: 1, borderColor: '#ccc', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#fff', minWidth: 60, alignItems: 'center', justifyContent: 'center', marginBottom: 5 },
     
-    subjectChipActive: { backgroundColor: COLORS.selectedChip, borderColor: COLORS.selectedChip, elevation: 3 },
-    subjectText: { fontSize: 14, fontWeight: '700', color: COLORS.textMain },
+    subjectChipActive: { backgroundColor: COLORS.selectedChip, borderColor: COLORS.selectedChip, elevation: 2 },
+    subjectText: { fontSize: 12, fontWeight: '700', color: COLORS.textSub },
     subjectTextActive: { color: '#FFF' },
 
     subjectChipOverview: { borderColor: COLORS.overviewChip }, 
     subjectTextOverview: { color: COLORS.overviewChip },
 
-    graphCard: { backgroundColor: COLORS.cardBg, margin: 15, marginTop: 10, padding: 20, borderRadius: 20, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, borderWidth: 1, borderColor: '#EEEEEE', minHeight: 380 },
+    graphCard: { backgroundColor: COLORS.cardBg, margin: 15, marginTop: 10, padding: 20, borderRadius: 20, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6, minHeight: 380 },
     
-    // --- UPDATED NOTE / LEGEND STYLES ---
-    noteCard: {
-        backgroundColor: COLORS.noteBg,
-        borderRadius: 12,
-        padding: 12,
-        marginBottom: 20,
-        borderWidth: 1,
-        borderColor: COLORS.noteBorder,
-    },
+    // Note Styles
+    noteCard: { backgroundColor: COLORS.noteBg, borderRadius: 12, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: COLORS.noteBorder },
     noteHeader: { marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#FFE0B2', paddingBottom: 5 },
     noteTitle: { fontSize: 14, fontWeight: '800', color: '#E65100', textTransform: 'uppercase' },
     
     noteGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
     legendItem: { flexDirection: 'row', alignItems: 'center', width: '48%', marginBottom: 6 },
-    
     colorBox: { width: 14, height: 14, borderRadius: 3, marginRight: 8 },
     
-    // Mini Rank Badge for Legend
-    miniRankBadge: { 
-        backgroundColor: '#ECEFF1', 
-        paddingHorizontal: 4, 
-        paddingVertical: 1,
-        borderRadius: 6, 
-        borderWidth: 1, 
-        borderColor: '#B0BEC5', 
-        marginRight: 8,
-        minWidth: 20,
-        alignItems: 'center'
-    },
+    miniRankBadge: { backgroundColor: '#ECEFF1', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 6, borderWidth: 1, borderColor: '#B0BEC5', marginRight: 8, minWidth: 20, alignItems: 'center' },
     miniRankText: { fontSize: 9, fontWeight: 'bold', color: '#455A64' },
     
     legendText: { fontSize: 11, color: COLORS.textMain, fontWeight: '600' },
-
     noDataText: { textAlign: 'center', marginTop: 50, color: COLORS.textSub },
 
     singleGraphContainer: { flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'flex-end', height: 320, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-
     overviewContainer: { flexDirection: 'row', alignItems: 'flex-end', paddingBottom: 10 },
     overviewGroup: { marginRight: 20, alignItems: 'center', width: 110 }, 
     overviewSubjectTitle: { fontWeight: 'bold', fontSize: 14, marginBottom: 15, color: COLORS.textMain },
@@ -512,32 +510,17 @@ const styles = StyleSheet.create({
 
     barWrapper: { alignItems: 'center', width: '35%', height: '100%', justifyContent: 'flex-end' },
     barWrapperSlim: { alignItems: 'center', width: '45%', height: '100%', justifyContent: 'flex-end' },
-
     statsHeader: { alignItems: 'center', marginBottom: 8, width: '100%', justifyContent: 'flex-end' },
     
-    rankBadge: { 
-        backgroundColor: '#ECEFF1', 
-        paddingHorizontal: 6,  
-        paddingVertical: 2,    
-        borderRadius: 12, 
-        marginBottom: 6, 
-        borderWidth: 1, 
-        borderColor: '#B0BEC5',
-        minWidth: 30,          
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
+    rankBadge: { backgroundColor: '#ECEFF1', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12, marginBottom: 6, borderWidth: 1, borderColor: '#B0BEC5', minWidth: 30, alignItems: 'center', justifyContent: 'center' },
     rankText: { fontSize: 12, fontWeight: 'bold', color: '#455A64' },
     
     marksContainer: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 1 },
     marksText: { fontWeight: '800', color: COLORS.textMain },
     totalMarksText: { fontSize: 14, fontWeight: '600', color: COLORS.textSub },
-
     percentageText: { fontWeight: '700', marginBottom: 3 },
-
     barTrack: { backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end', elevation: 1 },
     barFill: { width: '100%', borderRadius: 2 },
-    
     barLabel: { marginTop: 12, textAlign: 'center', fontWeight: '600' },
 });
 
