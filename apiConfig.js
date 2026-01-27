@@ -1,5 +1,5 @@
 // ✅ CORRECT (AFTER)
-const PUBLIC_BACKEND_URL = 'https://vivekanandapublicschoolerp-production.up.railway.app';
+const PUBLIC_BACKEND_URL = 'https://smartedzapp-production.up.railway.app';
 
 // This URL is for static files like images
 export const SERVER_URL = PUBLIC_BACKEND_URL; 
