@@ -161,8 +161,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: { 
-    paddingTop: 40,
-    paddingBottom: 80, // Adjusted padding for better balance with the new title
+    paddingTop: 75,
+    paddingBottom: 40, // Adjusted padding for better balance with the new title
     alignItems: "center", 
     justifyContent: "center",
     borderBottomLeftRadius: 40,

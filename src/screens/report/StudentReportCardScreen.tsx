@@ -53,9 +53,9 @@ const ReportCardContent = ({ studentInfo, academicYear, marksData, attendanceDat
         <View style={s.card}>
             <View style={s.schoolHeader}>
                 <Image source={require('../../assets/logo.png')} style={s.logo} />
-                <Text style={s.schoolName}>VIVEKANANDA PUBLIC SCHOOL</Text>
+                <Text style={s.schoolName}>SMARTEDZ</Text>
                 <Text style={s.schoolSub}>ENGLISH MEDIUM</Text>
-                <Text style={s.schoolContact}>vivekanandaschoolhyd@gmail.com</Text>
+                <Text style={s.schoolContact}>smartedzhyd@gmail.com</Text>
                 <Text style={s.schoolAddress}>H.No:8-3-1100/A & A1.Plot No.112(Near Drishti Hospital), Srinagar Colony, Hyderabad: 500016</Text>
                 <Text style={s.schoolAddress}>Phone: +91-891-2553221/2501951 | Fax: +91-891-2504644</Text>
             </View>

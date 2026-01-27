@@ -100,7 +100,7 @@ export default function LoginScreen({ route }: LoginScreenProps) {
 
   return (
     <SafeAreaView style={{flex: 1}}>
-      <LinearGradient colors={['#E0F7FA', '#B2EBF2', '#dd9eb2ff']} style={styles.gradient}>
+      <LinearGradient colors={['#e0e5fa', '#B2EBF2', '#dd9eb2ff']} style={styles.gradient}>
         <StatusBar barStyle="dark-content" />
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -178,18 +178,20 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 50,
   },
   logo: {
-    width: 370,
-    height: 250,
+    width: 400,
+    height: 300,
     resizeMode: "contain",
+    marginBottom: 40,
+    marginTop: 5,
   },
   welcomeText: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#005662',
-    marginTop: -30,
+    color: '#2f3030',
+    marginTop: -70,
   },
   formContainer: {
     width: '90%',
@@ -201,7 +203,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 8,
-    marginTop: -10,
+    marginTop: -40,
   },
   title: {
     fontSize: 24,
