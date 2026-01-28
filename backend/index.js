@@ -10213,106 +10213,11 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 
 
 
-// ==========================================
-// --- FEE SCHEDULE API ROUTES ---
-// ==========================================
+// ==========================================================
+// --- FEE SCHEDULE API ROUTES (FINAL & CONSOLIDATED) ---
+// ==========================================================
 
-// 1. [ADMIN] Create a Fee Schedule for a Class
-app.post('/api/fees/create', async (req, res) => {
-    const { class_group, title, description, total_amount, due_date, allow_installments, max_installments } = req.body;
-    try {
-        const sql = `INSERT INTO fee_schedules (class_group, title, description, total_amount, due_date, allow_installments, max_installments) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-        await db.query(sql, [class_group, title, description, total_amount, due_date, allow_installments, max_installments || 1]);
-        res.json({ message: 'Fee Schedule created successfully' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Error creating fee schedule' });
-    }
-});
-
-// 2. [ADMIN/STUDENT] Get Fee Schedules by Class
-app.get('/api/fees/list/:class_group', async (req, res) => {
-    const { class_group } = req.params;
-    try {
-        const sql = `SELECT * FROM fee_schedules WHERE class_group = ? ORDER BY due_date DESC`;
-        const [rows] = await db.query(sql, [class_group]);
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ message: 'Error fetching fees' });
-    }
-});
-
-// 3. [STUDENT] Submit Payment Proof
-app.post('/api/fees/submit', async (req, res) => {
-    const { fee_schedule_id, student_id, payment_mode, screenshot_url } = req.body;
-    try {
-        // Check if already exists to update or insert
-        const checkSql = "SELECT id FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ?";
-        const [existing] = await db.query(checkSql, [fee_schedule_id, student_id]);
-
-        if (existing.length > 0) {
-            const updateSql = `UPDATE student_fee_submissions SET payment_mode=?, screenshot_url=?, status='pending', submitted_at=NOW() WHERE id=?`;
-            await db.query(updateSql, [payment_mode, screenshot_url, existing[0].id]);
-        } else {
-            const insertSql = `INSERT INTO student_fee_submissions (fee_schedule_id, student_id, payment_mode, screenshot_url, status) VALUES (?, ?, ?, ?, 'pending')`;
-            await db.query(insertSql, [fee_schedule_id, student_id, payment_mode, screenshot_url]);
-        }
-        res.json({ message: 'Proof submitted successfully' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Error submitting proof' });
-    }
-});
-
-// 4. [ADMIN] Get Student Status List for a specific Fee
-// Returns list of all students in that class joined with their payment status
-app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
-    const { fee_schedule_id } = req.params;
-    try {
-        // First get the class group of this fee
-        const [feeDetails] = await db.query("SELECT class_group FROM fee_schedules WHERE id = ?", [fee_schedule_id]);
-        if (feeDetails.length === 0) return res.status(404).json({ message: 'Fee not found' });
-        
-        const classGroup = feeDetails[0].class_group;
-
-        // Get all students of that class + their submission status
-        const sql = `
-            SELECT 
-                u.id as student_id,
-                u.full_name,
-                p.roll_no,
-                sfs.id as submission_id,
-                sfs.status,
-                sfs.payment_mode,
-                sfs.screenshot_url,
-                sfs.submitted_at
-            FROM users u
-            LEFT JOIN user_profiles p ON u.id = p.user_id
-            LEFT JOIN student_fee_submissions sfs 
-                ON u.id = sfs.student_id AND sfs.fee_schedule_id = ?
-            WHERE u.role = 'student' AND u.class_group = ?
-            ORDER BY sfs.status DESC, u.full_name ASC
-        `;
-        const [rows] = await db.query(sql, [fee_schedule_id, classGroup]);
-        res.json(rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Error fetching student status' });
-    }
-});
-
-// 5. [ADMIN] Verify Payment (Approve/Reject)
-app.put('/api/fees/verify', async (req, res) => {
-    const { submission_id, status, admin_remarks } = req.body; // status: 'paid' or 'rejected'
-    try {
-        await db.query("UPDATE student_fee_submissions SET status=?, admin_remarks=? WHERE id=?", [status, admin_remarks, submission_id]);
-        res.json({ message: 'Status updated' });
-    } catch (err) {
-        res.status(500).json({ message: 'Error updating status' });
-    }
-});
-
-// [ADMIN] Create a Fee Schedule (With Installment Logic)
+// 1. [ADMIN] Create a Fee Schedule (Supports Installments)
 app.post('/api/fees/create', async (req, res) => {
     const { class_group, title, description, total_amount, due_date, allow_installments, installment_details } = req.body;
     
@@ -10320,8 +10225,16 @@ app.post('/api/fees/create', async (req, res) => {
     try {
         await connection.beginTransaction();
 
-        // 1. Insert the Master Fee Record
-        const sqlMaster = `INSERT INTO fee_schedules (class_group, title, description, total_amount, due_date, allow_installments, max_installments) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+        // 1. Insert Master Fee Record
+        const sqlMaster = `
+            INSERT INTO fee_schedules 
+            (class_group, title, description, total_amount, due_date, allow_installments, max_installments) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+        
+        // Calculate max_installments based on the array length if installments are allowed
+        const maxInst = allow_installments && installment_details ? installment_details.length : 1;
+
         const [result] = await connection.query(sqlMaster, [
             class_group, 
             title, 
@@ -10329,16 +10242,15 @@ app.post('/api/fees/create', async (req, res) => {
             total_amount, 
             due_date, 
             allow_installments ? 1 : 0, 
-            allow_installments ? installment_details.length : 1
+            maxInst
         ]);
         
         const feeId = result.insertId;
 
-        // 2. If Installments are allowed, insert specific breakdown
+        // 2. Insert Installment Breakdown (if applicable)
         if (allow_installments && installment_details && installment_details.length > 0) {
             const sqlInstallment = `INSERT INTO fee_installments (fee_schedule_id, installment_number, amount, due_date) VALUES ?`;
             
-            // Prepare data for bulk insert
             const values = installment_details.map((inst, index) => [
                 feeId, 
                 index + 1, 
@@ -10357,6 +10269,145 @@ app.post('/api/fees/create', async (req, res) => {
         res.status(500).json({ message: 'Error creating fee schedule' });
     } finally {
         connection.release();
+    }
+});
+
+// 2. [ADMIN/STUDENT] Get List of Fees for a Class
+app.get('/api/fees/list/:class_group', async (req, res) => {
+    const { class_group } = req.params;
+    try {
+        const sql = `SELECT * FROM fee_schedules WHERE class_group = ? ORDER BY due_date DESC`;
+        const [rows] = await db.query(sql, [class_group]);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error fetching fees' });
+    }
+});
+
+// 3. [STUDENT] Get Fee Details + My Installment Status
+// This matches the list of installments with what the student has already paid
+app.get('/api/student/fee-details', async (req, res) => {
+    const { fee_schedule_id, student_id } = req.query;
+    try {
+        // A. Get Defined Installments
+        const [installments] = await db.query(
+            "SELECT * FROM fee_installments WHERE fee_schedule_id = ? ORDER BY installment_number ASC", 
+            [fee_schedule_id]
+        );
+
+        // B. Get Student's Submissions
+        const [submissions] = await db.query(
+            "SELECT installment_number, status FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ?", 
+            [fee_schedule_id, student_id]
+        );
+
+        // C. Map status to installments
+        const data = installments.map(inst => {
+            const sub = submissions.find(s => s.installment_number === inst.installment_number);
+            return {
+                ...inst,
+                status: sub ? sub.status : 'unpaid' // defaults to 'unpaid' if no submission found
+            };
+        });
+
+        // D. Check one-time payment status (installment_number 0)
+        const oneTimeSub = submissions.find(s => s.installment_number === 0);
+        const oneTimeStatus = oneTimeSub ? oneTimeSub.status : 'unpaid';
+
+        res.json({ installments: data, oneTimeStatus });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error fetching details' });
+    }
+});
+
+// 4. [STUDENT] Submit Payment Proof
+app.post('/api/fees/submit', async (req, res) => {
+    const { fee_schedule_id, student_id, payment_mode, screenshot_url, installment_number } = req.body;
+    
+    // Logic: If one_time, installment_number is 0. If installment, use the number provided (1, 2, etc.)
+    const finalInstNum = payment_mode === 'one_time' ? 0 : installment_number;
+
+    try {
+        // Check if a submission already exists for this specific installment
+        const checkSql = "SELECT id FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ? AND installment_number = ?";
+        const [existing] = await db.query(checkSql, [fee_schedule_id, student_id, finalInstNum]);
+
+        if (existing.length > 0) {
+            // Update existing submission (e.g., re-uploading after rejection)
+            const updateSql = `
+                UPDATE student_fee_submissions 
+                SET payment_mode=?, screenshot_url=?, status='pending', submitted_at=NOW() 
+                WHERE id=?
+            `;
+            await db.query(updateSql, [payment_mode, screenshot_url, existing[0].id]);
+        } else {
+            // Insert new submission
+            const insertSql = `
+                INSERT INTO student_fee_submissions 
+                (fee_schedule_id, student_id, payment_mode, screenshot_url, status, installment_number) 
+                VALUES (?, ?, ?, ?, 'pending', ?)
+            `;
+            await db.query(insertSql, [fee_schedule_id, student_id, payment_mode, screenshot_url, finalInstNum]);
+        }
+        res.json({ message: 'Proof submitted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error submitting proof' });
+    }
+});
+
+// 5. [ADMIN] Get Student Status List for a specific Fee
+app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
+    const { fee_schedule_id } = req.params;
+    try {
+        // Get class group
+        const [feeDetails] = await db.query("SELECT class_group FROM fee_schedules WHERE id = ?", [fee_schedule_id]);
+        if (feeDetails.length === 0) return res.status(404).json({ message: 'Fee not found' });
+        
+        const classGroup = feeDetails[0].class_group;
+
+        // Get all students + their submissions
+        // Note: A student might appear multiple times if they paid multiple installments.
+        const sql = `
+            SELECT 
+                u.id as student_id,
+                u.full_name,
+                p.roll_no,
+                sfs.id as submission_id,
+                sfs.status,
+                sfs.payment_mode,
+                sfs.installment_number,
+                sfs.screenshot_url,
+                sfs.submitted_at
+            FROM users u
+            LEFT JOIN user_profiles p ON u.id = p.user_id
+            LEFT JOIN student_fee_submissions sfs 
+                ON u.id = sfs.student_id AND sfs.fee_schedule_id = ?
+            WHERE u.role = 'student' AND u.class_group = ?
+            ORDER BY sfs.status DESC, u.full_name ASC
+        `;
+        const [rows] = await db.query(sql, [fee_schedule_id, classGroup]);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error fetching student status' });
+    }
+});
+
+// 6. [ADMIN] Verify Payment (Approve/Reject)
+app.put('/api/fees/verify', async (req, res) => {
+    const { submission_id, status, admin_remarks } = req.body; 
+    try {
+        await db.query(
+            "UPDATE student_fee_submissions SET status=?, admin_remarks=? WHERE id=?", 
+            [status, admin_remarks, submission_id]
+        );
+        res.json({ message: 'Status updated' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error updating status' });
     }
 });
 
