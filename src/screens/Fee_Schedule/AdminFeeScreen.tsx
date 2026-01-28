@@ -158,9 +158,6 @@ const AdminFeeScreen = () => {
         catch (error) { Alert.alert("Error", "Failed to fetch student data"); } finally { setLoading(false); }
     };
 
-    // =======================================================
-    // --- UPDATED VERIFY FUNCTION WITH BETTER ERROR HANDLING ---
-    // =======================================================
     const handleVerifyPayment = async (status: 'paid' | 'rejected') => {
         if (!selectedStudentForVerify?.submission_id) {
             Alert.alert("Error", "Invalid Submission ID. Please refresh.");
@@ -182,10 +179,7 @@ const AdminFeeScreen = () => {
 
         } catch (error: any) { 
             console.error("Verify Error Log:", error);
-            
-            // EXTRACT THE REAL MESSAGE FROM SERVER
             const serverMessage = error.response?.data?.message || error.message || "Unknown Error";
-            
             Alert.alert("Update Failed", `Reason: ${serverMessage}`); 
         }
     };
@@ -230,9 +224,16 @@ const AdminFeeScreen = () => {
 
             {!loading && viewMode === 'student_list' && (
                 <View style={{flex: 1}}>
+                     {/* 
+                        FIX: Updated Layout for Center Alignment 
+                        Uses a 3-column approach: Left(Icon), Center(Title), Right(Empty Spacer)
+                     */}
                      <View style={styles.subHeader}>
-                        <TouchableOpacity onPress={() => setViewMode('fee_list')}><Icon name="arrow-back" size={24} color="#333" /></TouchableOpacity>
-                        <Text style={styles.subHeaderTitle}>{selectedFee?.title}</Text>
+                        <TouchableOpacity onPress={() => setViewMode('fee_list')} style={{width: 40}}>
+                            <Icon name="arrow-back" size={24} color="#333" />
+                        </TouchableOpacity>
+                        <Text style={[styles.subHeaderTitle, {textAlign: 'center'}]}>{selectedFee?.title}</Text>
+                        <View style={{width: 40}} /> 
                     </View>
 
                     {/* --- TABS --- */}
@@ -257,8 +258,8 @@ const AdminFeeScreen = () => {
                                         {student.installment_number && student.installment_number > 0 ? ` (Inst ${student.installment_number})` : ''}
                                     </Text>
                                 </View>
-                                {/* Only show eye icon if Pending */}
-                                {student.status === 'pending' && (
+                                {/* Show Eye Button for Pending OR Paid */}
+                                {(student.status === 'pending' || student.status === 'paid') && (
                                     <TouchableOpacity style={styles.eyeBtn} onPress={() => { setSelectedStudentForVerify(student); setVerifyModalVisible(true); }}>
                                         <Icon name="visibility" size={20} color="#FFF" />
                                     </TouchableOpacity>
@@ -347,8 +348,11 @@ const styles = StyleSheet.create({
     classCard: { flex: 1, margin: 8, padding: 20, backgroundColor: '#FFF', borderRadius: 12, alignItems: 'center', elevation: 2, height: 120, justifyContent: 'center' },
     classIconBg: { backgroundColor: '#F0F4F8', padding: 12, borderRadius: 50, marginBottom: 10 },
     classTitle: { fontSize: 15, fontWeight: 'bold', color: '#2C3E50' },
-    subHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
-    subHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+    
+    // FIX: Simplified SubHeader styles for better alignment
+    subHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: '#FFF', elevation: 2, marginBottom: 10 },
+    subHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', flex: 1 },
+    
     addBtn: { backgroundColor: '#008080', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
     addBtnText: { color: '#FFF', fontWeight: 'bold' },
     feeCard: { backgroundColor: '#FFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderRadius: 10, marginBottom: 10, marginHorizontal: 10, elevation: 2 },

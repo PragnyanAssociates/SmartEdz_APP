@@ -10220,7 +10220,7 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 
 const proofStorage = multer.diskStorage({
     destination: (req, file, cb) => { 
-        // Ensure this folder exists on your server!
+        // Make sure this folder exists: /data/uploads
         cb(null, '/data/uploads'); 
     },
     filename: (req, file, cb) => {
@@ -10230,16 +10230,14 @@ const proofStorage = multer.diskStorage({
 const proofUpload = multer({ storage: proofStorage });
 
 
-// 9. [ADMIN] Verify Payment (MOVED UP - MUST BE BEFORE /:id)
+// 9. [ADMIN] Verify Payment (Moved to top to prevent ID conflict)
 app.put('/api/fees/verify', async (req, res) => {
-    // Debugging: Log the incoming body to see if data arrives
     console.log("Verify Request Body:", req.body);
 
     const { submission_id, status, admin_remarks } = req.body; 
     
-    // Ensure ID is present
     if (!submission_id) {
-        console.error("Error: Submission ID is missing in request body.");
+        console.error("Error: Submission ID is missing.");
         return res.status(400).json({ message: 'Submission ID is required' });
     }
 
@@ -10285,7 +10283,7 @@ app.post('/api/fees/create', async (req, res) => {
     }
 });
 
-// 2. [ADMIN] Edit Fee Schedule (MUST BE AFTER /verify)
+// 2. [ADMIN] Edit Fee Schedule
 app.put('/api/fees/:id', async (req, res) => {
     const { id } = req.params;
     const { title, total_amount, due_date } = req.body;
@@ -10393,7 +10391,7 @@ app.delete('/api/student/submission/:id', async (req, res) => {
     }
 });
 
-// 8. [ADMIN] Get Student Status List
+// 8. [ADMIN] Get Student Status List (FIXED: Sorted by Roll Number)
 app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     const { fee_schedule_id } = req.params;
     try {
@@ -10418,7 +10416,7 @@ app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
             LEFT JOIN student_fee_submissions sfs 
                 ON u.id = sfs.student_id AND sfs.fee_schedule_id = ?
             WHERE u.role = 'student' AND u.class_group = ?
-            ORDER BY u.full_name ASC, sfs.installment_number ASC
+            ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
         `;
         const [rows] = await db.query(sql, [fee_schedule_id, classGroup]);
         res.json(rows);
