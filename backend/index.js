@@ -10214,7 +10214,7 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 
 
 // ==========================================================
-// --- FEE SCHEDULE API ROUTES (FINAL & CONSOLIDATED) ---
+// --- FEE SCHEDULE API ROUTES (FULL & UPDATED) ---
 // ==========================================================
 
 // 1. [ADMIN] Create a Fee Schedule (Supports Installments)
@@ -10232,8 +10232,9 @@ app.post('/api/fees/create', async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
         
-        // Calculate max_installments based on the array length if installments are allowed
-        const maxInst = allow_installments && installment_details ? installment_details.length : 1;
+        // Calculate max_installments
+        const maxInst = (allow_installments && installment_details) ? installment_details.length : 1;
+        const isInstallmentAllowed = allow_installments ? 1 : 0;
 
         const [result] = await connection.query(sqlMaster, [
             class_group, 
@@ -10241,19 +10242,20 @@ app.post('/api/fees/create', async (req, res) => {
             description, 
             total_amount, 
             due_date, 
-            allow_installments ? 1 : 0, 
+            isInstallmentAllowed, 
             maxInst
         ]);
         
         const feeId = result.insertId;
 
         // 2. Insert Installment Breakdown (if applicable)
-        if (allow_installments && installment_details && installment_details.length > 0) {
+        if (isInstallmentAllowed === 1 && installment_details && installment_details.length > 0) {
             const sqlInstallment = `INSERT INTO fee_installments (fee_schedule_id, installment_number, amount, due_date) VALUES ?`;
             
+            // Map data for bulk insert
             const values = installment_details.map((inst, index) => [
                 feeId, 
-                index + 1, 
+                index + 1, // Installment Number (1, 2, 3...)
                 inst.amount, 
                 inst.due_date
             ]);
@@ -10265,14 +10267,43 @@ app.post('/api/fees/create', async (req, res) => {
         res.json({ message: 'Fee Schedule created successfully' });
     } catch (err) {
         await connection.rollback();
-        console.error(err);
+        console.error("Create Error:", err);
         res.status(500).json({ message: 'Error creating fee schedule' });
     } finally {
         connection.release();
     }
 });
 
-// 2. [ADMIN/STUDENT] Get List of Fees for a Class
+// 2. [ADMIN] Edit Fee Schedule (Update Main Details)
+app.put('/api/fees/:id', async (req, res) => {
+    const { id } = req.params;
+    const { title, total_amount, due_date } = req.body;
+    try {
+        await db.query(
+            "UPDATE fee_schedules SET title = ?, total_amount = ?, due_date = ? WHERE id = ?", 
+            [title, total_amount, due_date, id]
+        );
+        res.json({ message: 'Fee updated successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error updating fee' });
+    }
+});
+
+// 3. [ADMIN] Delete Fee Schedule
+app.delete('/api/fees/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Due to foreign key constraints (ON DELETE CASCADE), this deletes installments & submissions too.
+        await db.query("DELETE FROM fee_schedules WHERE id = ?", [id]);
+        res.json({ message: 'Fee deleted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error deleting fee' });
+    }
+});
+
+// 4. [ADMIN/STUDENT] Get List of Fees for a Class
 app.get('/api/fees/list/:class_group', async (req, res) => {
     const { class_group } = req.params;
     try {
@@ -10285,49 +10316,58 @@ app.get('/api/fees/list/:class_group', async (req, res) => {
     }
 });
 
-// 3. [STUDENT] Get Fee Details + My Installment Status
-// This matches the list of installments with what the student has already paid
+// 5. [STUDENT] Get Fee Details + My Installment Status (CRITICAL FOR YOUR ISSUE)
 app.get('/api/student/fee-details', async (req, res) => {
     const { fee_schedule_id, student_id } = req.query;
+    
+    if(!fee_schedule_id || !student_id) {
+        return res.status(400).json({ message: 'Missing parameters' });
+    }
+
     try {
-        // A. Get Defined Installments
+        // A. Get Defined Installments from Admin's setup
         const [installments] = await db.query(
             "SELECT * FROM fee_installments WHERE fee_schedule_id = ? ORDER BY installment_number ASC", 
             [fee_schedule_id]
         );
 
-        // B. Get Student's Submissions
+        // B. Get Student's Payment Submissions for this fee
         const [submissions] = await db.query(
             "SELECT installment_number, status FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ?", 
             [fee_schedule_id, student_id]
         );
 
-        // C. Map status to installments
+        // C. Combine Data: Attach status to each installment row
         const data = installments.map(inst => {
+            // Find if student has submitted something for this installment number
             const sub = submissions.find(s => s.installment_number === inst.installment_number);
             return {
-                ...inst,
-                status: sub ? sub.status : 'unpaid' // defaults to 'unpaid' if no submission found
+                id: inst.id,
+                installment_number: inst.installment_number,
+                amount: inst.amount,
+                due_date: inst.due_date,
+                status: sub ? sub.status : 'unpaid' // Default to unpaid if no record found
             };
         });
 
-        // D. Check one-time payment status (installment_number 0)
+        // D. Check status of "One Time" payment (stored as installment_number 0)
         const oneTimeSub = submissions.find(s => s.installment_number === 0);
         const oneTimeStatus = oneTimeSub ? oneTimeSub.status : 'unpaid';
 
         res.json({ installments: data, oneTimeStatus });
     } catch (err) {
-        console.error(err);
+        console.error("Fee Details Error:", err);
         res.status(500).json({ message: 'Error fetching details' });
     }
 });
 
-// 4. [STUDENT] Submit Payment Proof
+// 6. [STUDENT] Submit Payment Proof
 app.post('/api/fees/submit', async (req, res) => {
     const { fee_schedule_id, student_id, payment_mode, screenshot_url, installment_number } = req.body;
     
     // Logic: If one_time, installment_number is 0. If installment, use the number provided (1, 2, etc.)
-    const finalInstNum = payment_mode === 'one_time' ? 0 : installment_number;
+    // Ensure we parse installment_number to int, default to 0 if missing
+    const finalInstNum = payment_mode === 'one_time' ? 0 : (parseInt(installment_number) || 0);
 
     try {
         // Check if a submission already exists for this specific installment
@@ -10353,23 +10393,27 @@ app.post('/api/fees/submit', async (req, res) => {
         }
         res.json({ message: 'Proof submitted successfully' });
     } catch (err) {
-        console.error(err);
+        console.error("Submit Error:", err);
         res.status(500).json({ message: 'Error submitting proof' });
     }
 });
 
-// 5. [ADMIN] Get Student Status List for a specific Fee
+// 7. [ADMIN] Get Student Status List for a specific Fee
 app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     const { fee_schedule_id } = req.params;
     try {
-        // Get class group
+        // Get class group to filter users
         const [feeDetails] = await db.query("SELECT class_group FROM fee_schedules WHERE id = ?", [fee_schedule_id]);
         if (feeDetails.length === 0) return res.status(404).json({ message: 'Fee not found' });
         
         const classGroup = feeDetails[0].class_group;
 
-        // Get all students + their submissions
-        // Note: A student might appear multiple times if they paid multiple installments.
+        // Get all students in that class + their submission status
+        // We use GROUP BY user.id to show 1 row per student, picking the 'most relevant' status 
+        // OR we just list all submissions. Let's list all students, and left join submissions.
+        // NOTE: If a student made 2 installment payments, they might appear twice or we need to aggregate.
+        // For simplicity in the Admin List, we fetch all submissions.
+        
         const sql = `
             SELECT 
                 u.id as student_id,
@@ -10386,7 +10430,7 @@ app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
             LEFT JOIN student_fee_submissions sfs 
                 ON u.id = sfs.student_id AND sfs.fee_schedule_id = ?
             WHERE u.role = 'student' AND u.class_group = ?
-            ORDER BY sfs.status DESC, u.full_name ASC
+            ORDER BY u.full_name ASC, sfs.installment_number ASC
         `;
         const [rows] = await db.query(sql, [fee_schedule_id, classGroup]);
         res.json(rows);
@@ -10396,7 +10440,7 @@ app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     }
 });
 
-// 6. [ADMIN] Verify Payment (Approve/Reject)
+// 8. [ADMIN] Verify Payment (Approve/Reject)
 app.put('/api/fees/verify', async (req, res) => {
     const { submission_id, status, admin_remarks } = req.body; 
     try {
