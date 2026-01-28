@@ -119,16 +119,17 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
                                             <Text style={styles.historyLabel}>Inst. {inst.installment_number}</Text>
                                             <Text style={styles.historyDate}>{formatDate(inst.due_date)}</Text>
                                         </View>
+                                        {/* VIEW / EDIT / DELETE ICONS */}
                                         {inst.status === 'pending' && (
                                             <View style={styles.iconContainer}>
                                                 <TouchableOpacity onPress={() => onViewProof(inst.screenshot_url || '')} style={styles.iconBtn}>
-                                                    <Icon name="visibility" size={20} color="#008080" />
+                                                    <Icon name="visibility" size={22} color="#008080" />
                                                 </TouchableOpacity>
                                                 <TouchableOpacity onPress={() => onEdit(item, inst)} style={styles.iconBtn}>
-                                                    <Icon name="edit" size={20} color="#F39C12" />
+                                                    <Icon name="edit" size={22} color="#F39C12" />
                                                 </TouchableOpacity>
                                                 <TouchableOpacity onPress={() => inst.submission_id && onDelete(inst.submission_id, item.id)} style={styles.iconBtn}>
-                                                    <Icon name="delete" size={20} color="#E74C3C" />
+                                                    <Icon name="delete" size={22} color="#E74C3C" />
                                                 </TouchableOpacity>
                                             </View>
                                         )}
@@ -156,6 +157,7 @@ const StudentFeeScreen = () => {
     const [selectedFee, setSelectedFee] = useState<FeeSchedule | null>(null);
     const [isEditing, setIsEditing] = useState(false); 
     
+    // View Proof Logic
     const [isViewProofVisible, setViewProofVisible] = useState(false);
     const [viewProofUrl, setViewProofUrl] = useState('');
 
@@ -249,7 +251,6 @@ const StudentFeeScreen = () => {
         formData.append('payment_mode', paymentMode);
         formData.append('installment_number', paymentMode === 'installment' ? selectedInstNumber?.toString() : '0');
         
-        // Append Image for Multer
         formData.append('screenshot', {
             uri: imageUri,
             type: 'image/jpeg',
@@ -353,17 +354,23 @@ const StudentFeeScreen = () => {
                 </View>
             </Modal>
 
-            {/* VIEW PROOF MODAL - DARK BACKGROUND */}
+            {/* --- UPDATED VIEW PROOF MODAL (SIMPLE: PHOTO & CLOSE) --- */}
             <Modal visible={isViewProofVisible} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { backgroundColor: '#222' }]}>
-                        <Text style={[styles.modalTitle, {color: '#FFF'}]}>Payment Proof</Text>
-                        <View style={styles.proofContainer}>
-                             {viewProofUrl ? <Image source={{uri: viewProofUrl}} style={{width: '100%', height: '100%', resizeMode: 'contain'}} /> : <Text style={{color: '#AAA'}}>No image available</Text>}
-                        </View>
-                        <TouchableOpacity style={[styles.modalBtn, {backgroundColor: '#555', marginTop: 15, width: '100%'}]} onPress={() => setViewProofVisible(false)}>
-                            <Text style={{color: '#FFF', fontWeight: 'bold'}}>Close</Text>
+                    <View style={styles.viewProofContent}>
+                        {/* Close Icon */}
+                        <TouchableOpacity style={styles.closeIcon} onPress={() => setViewProofVisible(false)}>
+                            <Icon name="close" size={24} color="#333" />
                         </TouchableOpacity>
+                        
+                        {/* Image */}
+                        <View style={styles.simpleProofContainer}>
+                             {viewProofUrl ? (
+                                 <Image source={{uri: viewProofUrl}} style={styles.simpleProofImage} />
+                             ) : (
+                                 <Text style={{color: '#999'}}>No image available</Text>
+                             )}
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -398,7 +405,7 @@ const styles = StyleSheet.create({
     historyDate: { fontSize: 12, color: '#888', marginTop: 2 },
     historyAmount: { fontSize: 14, fontWeight: 'bold', color: '#333' },
     statusBadge: { fontSize: 11, fontWeight: 'bold', marginTop: 2 },
-    iconContainer: { flexDirection: 'row', gap: 10 },
+    iconContainer: { flexDirection: 'row', gap: 12 },
     iconBtn: { padding: 4 },
     emptyText: { textAlign: 'center', marginTop: 30, color: '#999' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
@@ -422,7 +429,41 @@ const styles = StyleSheet.create({
     cancelBtn: { backgroundColor: '#FFF', marginRight: 5, borderWidth: 1, borderColor: '#DDD' },
     submitText: { color: '#FFF', fontWeight: 'bold' },
     cancelText: { color: '#777', fontWeight: 'bold' },
-    proofContainer: { height: 300, backgroundColor: '#000', borderRadius: 8, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }
+
+    // --- NEW STYLES FOR SIMPLE VIEW PROOF MODAL ---
+    viewProofContent: {
+        backgroundColor: '#FFF',
+        width: '90%',
+        height: '60%', 
+        borderRadius: 12,
+        padding: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 5
+    },
+    simpleProofContainer: {
+        flex: 1,
+        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#FFF', // White background
+        borderRadius: 8,
+        overflow: 'hidden'
+    },
+    simpleProofImage: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'contain' // Ensures full image is seen cleanly
+    },
+    closeIcon: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        zIndex: 10,
+        backgroundColor: '#F0F0F0',
+        borderRadius: 20,
+        padding: 5
+    }
 });
 
 export default StudentFeeScreen;
