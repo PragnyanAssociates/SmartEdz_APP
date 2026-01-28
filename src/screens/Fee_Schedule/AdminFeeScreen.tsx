@@ -19,7 +19,7 @@ interface FeeSchedule {
     id: number;
     title: string;
     total_amount: number;
-    due_date: string; // YYYY-MM-DD from DB
+    due_date: string; 
     allow_installments: number; 
     max_installments: number;
 }
@@ -37,8 +37,8 @@ interface StudentFeeStatus {
 
 interface InstallmentItem {
     amount: string;
-    due_date: string; // Display format (DD/MM/YYYY)
-    dateObject: Date; // Actual Date object for logic
+    due_date: string; 
+    dateObject: Date; 
 }
 
 const AdminFeeScreen = () => {
@@ -58,7 +58,7 @@ const AdminFeeScreen = () => {
     const [newFee, setNewFee] = useState({ 
         title: '', 
         amount: '', 
-        dueDate: '', // Display format (DD/MM/YYYY)
+        dueDate: '', 
         dateObject: new Date(), 
         installments: false 
     });
@@ -145,7 +145,6 @@ const AdminFeeScreen = () => {
         setEditId(item.id);
         setIsEditing(true);
         
-        // 1. Pre-fill basic details
         setNewFee({
             title: item.title,
             amount: item.total_amount.toString(),
@@ -154,36 +153,27 @@ const AdminFeeScreen = () => {
             installments: item.allow_installments === 1 
         });
 
-        // 2. Pre-fill Installments
         if (item.allow_installments === 1) {
-            // Set the number in the box (e.g., "4")
             setNumberOfInstallments(item.max_installments.toString());
             
             try {
-                // Fetch the actual breakdown from the new backend route
                 const res = await apiClient.get(`/fees/installments/${item.id}`);
                 
                 if (res.data && res.data.length > 0) {
-                    // Map the DB data to the Input Field format
                     const mappedInstallments: InstallmentItem[] = res.data.map((inst: any) => ({
                         amount: inst.amount.toString(),
-                        // Convert DB Date (YYYY-MM-DD) to Display Date (DD/MM/YYYY)
                         due_date: formatDBStringForDisplay(inst.due_date), 
                         dateObject: new Date(inst.due_date)
                     }));
-                    
                     setInstallmentBreakdown(mappedInstallments);
                 } else {
-                    // If no data found, generate empty boxes based on count
                     handleInstallmentCountChange(item.max_installments.toString());
                 }
             } catch (error) {
                 console.log("Error fetching installments:", error);
-                // Fallback: Just show empty boxes
                 handleInstallmentCountChange(item.max_installments.toString());
             }
         } else {
-            // No installments
             setNumberOfInstallments('');
             setInstallmentBreakdown([]);
         }
@@ -204,24 +194,16 @@ const AdminFeeScreen = () => {
         
         const cleanTotalAmount = sanitizeAmount(newFee.amount);
 
-        // Validation for Installments
         if (newFee.installments) {
             if (installmentBreakdown.length === 0) return Alert.alert("Error", "Please specify number of installments");
-            let totalInstAmount = 0;
             for (let i = 0; i < installmentBreakdown.length; i++) {
                 if (!installmentBreakdown[i].amount || !installmentBreakdown[i].due_date) {
                     return Alert.alert("Error", `Fill details for Installment ${i + 1}`);
                 }
-                totalInstAmount += parseFloat(sanitizeAmount(installmentBreakdown[i].amount));
             }
-            // Optional: Check if total matches (Uncomment if you want strict validation)
-            // if (totalInstAmount !== parseFloat(cleanTotalAmount)) {
-            //     Alert.alert("Notice", `Installment Total (${totalInstAmount}) does not match Total Amount (${cleanTotalAmount})`);
-            // }
         }
 
         try {
-            // Common Payload Data
             const payload = {
                 class_group: selectedClass,
                 title: newFee.title,
@@ -236,12 +218,9 @@ const AdminFeeScreen = () => {
             };
 
             if (isEditing && editId) {
-                // UPDATE EXISTING
-                // NOTE: Ensure your Backend PUT /api/fees/:id handles 'installment_details' update!
                 await apiClient.put(`/fees/${editId}`, payload);
                 Alert.alert("Success", "Fee Schedule Updated");
             } else {
-                // CREATE NEW
                 await apiClient.post('/fees/create', payload);
                 Alert.alert("Success", "Fee Schedule Created");
             }
@@ -291,10 +270,8 @@ const AdminFeeScreen = () => {
         setNumberOfInstallments(text);
         const count = parseInt(text);
         if (!isNaN(count) && count > 0 && count <= 12) {
-            // Generate empty array or keep existing if reducing
             const arr: InstallmentItem[] = [];
             for (let i = 0; i < count; i++) {
-                // Keep existing data if resizing
                 if (installmentBreakdown[i]) {
                     arr.push(installmentBreakdown[i]);
                 } else {
@@ -478,7 +455,6 @@ const AdminFeeScreen = () => {
                                 />
                             </TouchableOpacity>
 
-                            {/* Dynamic Installments - VISIBLE IN EDIT MODE NOW */}
                             {newFee.installments && (
                                 <View style={styles.installmentContainer}>
                                     <Text style={styles.label}>Number of Installments:</Text>
@@ -540,15 +516,26 @@ const AdminFeeScreen = () => {
                 />
             )}
 
-            {/* Verify Payment Modal */}
+            {/* --- VERIFY PAYMENT MODAL (FIXED IMAGE ISSUE) --- */}
             <Modal visible={isVerifyModalVisible} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Verify Payment</Text>
                         <Text style={styles.label}>Student: {selectedStudentForVerify?.full_name}</Text>
                         
+                        {/* UPDATED PROOF CONTAINER */}
                         <View style={styles.proofContainer}>
-                            <Image source={{ uri: selectedStudentForVerify?.screenshot_url || '' }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
+                            {selectedStudentForVerify?.screenshot_url ? (
+                                <Image 
+                                    source={{ uri: selectedStudentForVerify.screenshot_url }} 
+                                    style={styles.proofImage} 
+                                />
+                            ) : (
+                                <View style={styles.noImageState}>
+                                    <Icon name="image-not-supported" size={40} color="#CCC" />
+                                    <Text style={{color: '#999', marginTop: 5}}>No Proof Uploaded</Text>
+                                </View>
+                            )}
                         </View>
 
                         <View style={{flexDirection: 'row', gap: 10, marginTop: 10}}>
@@ -588,7 +575,6 @@ const styles = StyleSheet.create({
     addBtn: { backgroundColor: '#008080', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
     addBtnText: { color: '#FFF', fontWeight: 'bold' },
     
-    // Updated Fee Card
     feeCard: { backgroundColor: '#FFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderRadius: 10, marginBottom: 10, marginHorizontal: 10, elevation: 2 },
     feeTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
     feeAmount: { fontSize: 18, color: '#2ECC71', fontWeight: 'bold', marginTop: 4 },
@@ -619,7 +605,26 @@ const styles = StyleSheet.create({
     instInput: { flex: 1, marginRight: 5, marginBottom: 0, paddingVertical: 5 },
     instDateInput: { flex: 1, marginBottom: 0, paddingVertical: 8 },
 
-    proofContainer: { height: 250, backgroundColor: '#000', borderRadius: 8, overflow: 'hidden', marginVertical: 10 },
+    // --- UPDATED IMAGE STYLES ---
+    proofContainer: { 
+        height: 250, 
+        backgroundColor: '#F0F0F0', // Changed from black to light gray
+        borderRadius: 8, 
+        overflow: 'hidden', 
+        marginVertical: 10,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    proofImage: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'contain'
+    },
+    noImageState: {
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+
     saveBtn: { backgroundColor: '#008080', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 10 },
     btnText: { color: '#FFF', fontWeight: 'bold' },
     cancelBtn: { padding: 10, alignItems: 'center', marginTop: 5 },

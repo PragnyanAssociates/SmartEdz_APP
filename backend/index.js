@@ -10325,32 +10325,35 @@ app.get('/api/student/fee-details', async (req, res) => {
     }
 
     try {
-        // A. Get Defined Installments from Admin's setup
+        // A. Get Defined Installments
         const [installments] = await db.query(
             "SELECT * FROM fee_installments WHERE fee_schedule_id = ? ORDER BY installment_number ASC", 
             [fee_schedule_id]
         );
 
-        // B. Get Student's Payment Submissions for this fee
+        // B. Get Student's Payment Submissions (UPDATED QUERY)
+        // We select 'id' as submission_id and 'screenshot_url'
         const [submissions] = await db.query(
-            "SELECT installment_number, status FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ?", 
+            "SELECT id, installment_number, status, screenshot_url FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ?", 
             [fee_schedule_id, student_id]
         );
 
-        // C. Combine Data: Attach status to each installment row
+        // C. Combine Data
         const data = installments.map(inst => {
-            // Find if student has submitted something for this installment number
             const sub = submissions.find(s => s.installment_number === inst.installment_number);
             return {
-                id: inst.id,
+                id: inst.id, // Installment Definition ID
                 installment_number: inst.installment_number,
                 amount: inst.amount,
                 due_date: inst.due_date,
-                status: sub ? sub.status : 'unpaid' // Default to unpaid if no record found
+                status: sub ? sub.status : 'unpaid',
+                // NEW FIELDS ADDED BELOW
+                submission_id: sub ? sub.id : null,
+                screenshot_url: sub ? sub.screenshot_url : null
             };
         });
 
-        // D. Check status of "One Time" payment (stored as installment_number 0)
+        // D. Check One Time payment
         const oneTimeSub = submissions.find(s => s.installment_number === 0);
         const oneTimeStatus = oneTimeSub ? oneTimeSub.status : 'unpaid';
 
@@ -10395,6 +10398,24 @@ app.post('/api/fees/submit', async (req, res) => {
     } catch (err) {
         console.error("Submit Error:", err);
         res.status(500).json({ message: 'Error submitting proof' });
+    }
+});
+
+// 9. [STUDENT] Delete a Pending Submission (NEW ROUTE)
+app.delete('/api/student/submission/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        // Security: Only allow deleting if status is 'pending'
+        const [check] = await db.query("SELECT status FROM student_fee_submissions WHERE id = ?", [id]);
+        
+        if (check.length === 0) return res.status(404).json({ message: 'Submission not found' });
+        if (check[0].status !== 'pending') return res.status(400).json({ message: 'Cannot delete processed payments' });
+
+        await db.query("DELETE FROM student_fee_submissions WHERE id = ?", [id]);
+        res.json({ message: 'Submission deleted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error deleting submission' });
     }
 });
 
