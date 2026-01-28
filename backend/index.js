@@ -10312,6 +10312,54 @@ app.put('/api/fees/verify', async (req, res) => {
     }
 });
 
+// [ADMIN] Create a Fee Schedule (With Installment Logic)
+app.post('/api/fees/create', async (req, res) => {
+    const { class_group, title, description, total_amount, due_date, allow_installments, installment_details } = req.body;
+    
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        // 1. Insert the Master Fee Record
+        const sqlMaster = `INSERT INTO fee_schedules (class_group, title, description, total_amount, due_date, allow_installments, max_installments) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+        const [result] = await connection.query(sqlMaster, [
+            class_group, 
+            title, 
+            description, 
+            total_amount, 
+            due_date, 
+            allow_installments ? 1 : 0, 
+            allow_installments ? installment_details.length : 1
+        ]);
+        
+        const feeId = result.insertId;
+
+        // 2. If Installments are allowed, insert specific breakdown
+        if (allow_installments && installment_details && installment_details.length > 0) {
+            const sqlInstallment = `INSERT INTO fee_installments (fee_schedule_id, installment_number, amount, due_date) VALUES ?`;
+            
+            // Prepare data for bulk insert
+            const values = installment_details.map((inst, index) => [
+                feeId, 
+                index + 1, 
+                inst.amount, 
+                inst.due_date
+            ]);
+
+            await connection.query(sqlInstallment, [values]);
+        }
+
+        await connection.commit();
+        res.json({ message: 'Fee Schedule created successfully' });
+    } catch (err) {
+        await connection.rollback();
+        console.error(err);
+        res.status(500).json({ message: 'Error creating fee schedule' });
+    } finally {
+        connection.release();
+    }
+});
+
 
 
 
