@@ -10455,6 +10455,24 @@ app.put('/api/fees/verify', async (req, res) => {
     }
 });
 
+// [ADMIN] Get Installment Details for a specific Fee Schedule
+app.get('/api/fees/installments/:fee_schedule_id', async (req, res) => {
+    const { fee_schedule_id } = req.params;
+    try {
+        const sql = `
+            SELECT amount, due_date 
+            FROM fee_installments 
+            WHERE fee_schedule_id = ? 
+            ORDER BY installment_number ASC
+        `;
+        const [rows] = await db.query(sql, [fee_schedule_id]);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error fetching installments' });
+    }
+});
+
 
 
 

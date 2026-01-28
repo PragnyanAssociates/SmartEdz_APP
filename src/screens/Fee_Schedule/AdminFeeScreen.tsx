@@ -50,8 +50,11 @@ const AdminFeeScreen = () => {
     const [studentStatuses, setStudentStatuses] = useState<StudentFeeStatus[]>([]);
     const [loading, setLoading] = useState(false);
 
-    // --- CREATE MODAL STATE ---
+    // --- CREATE / EDIT MODAL STATE ---
     const [isCreateModalVisible, setCreateModalVisible] = useState(false);
+    const [isEditing, setIsEditing] = useState(false); 
+    const [editId, setEditId] = useState<number | null>(null); 
+
     const [newFee, setNewFee] = useState({ 
         title: '', 
         amount: '', 
@@ -73,14 +76,12 @@ const AdminFeeScreen = () => {
     const [isVerifyModalVisible, setVerifyModalVisible] = useState(false);
     const [selectedStudentForVerify, setSelectedStudentForVerify] = useState<StudentFeeStatus | null>(null);
 
-    // --- DATE & AMOUNT HELPERS ---
+    // --- HELPERS ---
 
-    // 1. Clean Amount (Remove commas)
     const sanitizeAmount = (amountStr: string) => {
-        return amountStr.replace(/,/g, '').trim();
+        return amountStr ? amountStr.toString().replace(/,/g, '').trim() : '';
     };
 
-    // 2. Convert Date Object -> "DD/MM/YYYY" (For Display)
     const formatDateForDisplay = (date: Date) => {
         const day = String(date.getDate()).padStart(2, '0');
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -88,7 +89,6 @@ const AdminFeeScreen = () => {
         return `${day}/${month}/${year}`;
     };
 
-    // 3. Convert Date Object -> "YYYY-MM-DD" (For Database)
     const formatDateForDB = (date: Date) => {
         const day = String(date.getDate()).padStart(2, '0');
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -96,7 +96,6 @@ const AdminFeeScreen = () => {
         return `${year}-${month}-${day}`;
     };
 
-    // 4. Convert DB String "YYYY-MM-DD" -> "DD/MM/YYYY" (For List Rendering)
     const formatDBStringForDisplay = (dateString: string) => {
         if (!dateString) return '';
         const date = new Date(dateString);
@@ -116,54 +115,143 @@ const AdminFeeScreen = () => {
         finally { setLoading(false); }
     };
 
-    const handleCreateFee = async () => {
+    const handleDeleteFee = (id: number) => {
+        Alert.alert(
+            "Delete Fee Schedule",
+            "Are you sure? This will delete all student submissions associated with this fee.",
+            [
+                { text: "Cancel", style: "cancel" },
+                { 
+                    text: "Delete", 
+                    style: 'destructive', 
+                    onPress: async () => {
+                        try {
+                            setLoading(true);
+                            await apiClient.delete(`/fees/${id}`);
+                            Alert.alert("Success", "Fee deleted successfully");
+                            fetchFeesForClass(selectedClass); 
+                        } catch (error) {
+                            Alert.alert("Error", "Failed to delete fee");
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    // --- EDIT PREPARATION ---
+    const openEditModal = async (item: FeeSchedule) => {
+        setEditId(item.id);
+        setIsEditing(true);
+        
+        // 1. Pre-fill basic details
+        setNewFee({
+            title: item.title,
+            amount: item.total_amount.toString(),
+            dueDate: formatDBStringForDisplay(item.due_date),
+            dateObject: new Date(item.due_date),
+            installments: item.allow_installments === 1 
+        });
+
+        // 2. Pre-fill Installments
+        if (item.allow_installments === 1) {
+            // Set the number in the box (e.g., "4")
+            setNumberOfInstallments(item.max_installments.toString());
+            
+            try {
+                // Fetch the actual breakdown from the new backend route
+                const res = await apiClient.get(`/fees/installments/${item.id}`);
+                
+                if (res.data && res.data.length > 0) {
+                    // Map the DB data to the Input Field format
+                    const mappedInstallments: InstallmentItem[] = res.data.map((inst: any) => ({
+                        amount: inst.amount.toString(),
+                        // Convert DB Date (YYYY-MM-DD) to Display Date (DD/MM/YYYY)
+                        due_date: formatDBStringForDisplay(inst.due_date), 
+                        dateObject: new Date(inst.due_date)
+                    }));
+                    
+                    setInstallmentBreakdown(mappedInstallments);
+                } else {
+                    // If no data found, generate empty boxes based on count
+                    handleInstallmentCountChange(item.max_installments.toString());
+                }
+            } catch (error) {
+                console.log("Error fetching installments:", error);
+                // Fallback: Just show empty boxes
+                handleInstallmentCountChange(item.max_installments.toString());
+            }
+        } else {
+            // No installments
+            setNumberOfInstallments('');
+            setInstallmentBreakdown([]);
+        }
+
+        setCreateModalVisible(true);
+    };
+
+    const openCreateModal = () => {
+        resetForm();
+        setIsEditing(false);
+        setEditId(null);
+        setCreateModalVisible(true);
+    };
+
+    // --- SAVE (CREATE OR UPDATE) ---
+    const handleSaveFee = async () => {
         if (!newFee.title || !newFee.amount || !newFee.dueDate) return Alert.alert("Error", "Fill all main fields");
         
-        // Clean the main amount (remove commas)
         const cleanTotalAmount = sanitizeAmount(newFee.amount);
 
-        // Validation: If installments selected, check breakdown
+        // Validation for Installments
         if (newFee.installments) {
             if (installmentBreakdown.length === 0) return Alert.alert("Error", "Please specify number of installments");
-            
             let totalInstAmount = 0;
             for (let i = 0; i < installmentBreakdown.length; i++) {
                 if (!installmentBreakdown[i].amount || !installmentBreakdown[i].due_date) {
                     return Alert.alert("Error", `Fill details for Installment ${i + 1}`);
                 }
-                // Add cleaned amount to total
                 totalInstAmount += parseFloat(sanitizeAmount(installmentBreakdown[i].amount));
             }
-
-            // Optional: Check if total matches
-            if (totalInstAmount !== parseFloat(cleanTotalAmount)) {
-                Alert.alert("Notice", `Installment Total (${totalInstAmount}) does not match Total Amount (${cleanTotalAmount}). Make sure this is intended.`);
-            }
+            // Optional: Check if total matches (Uncomment if you want strict validation)
+            // if (totalInstAmount !== parseFloat(cleanTotalAmount)) {
+            //     Alert.alert("Notice", `Installment Total (${totalInstAmount}) does not match Total Amount (${cleanTotalAmount})`);
+            // }
         }
 
         try {
-            // Prepare Payload
+            // Common Payload Data
             const payload = {
                 class_group: selectedClass,
                 title: newFee.title,
                 description: 'School Fee',
-                total_amount: cleanTotalAmount, // Send cleaned number
+                total_amount: cleanTotalAmount,
                 due_date: formatDateForDB(newFee.dateObject),
                 allow_installments: newFee.installments,
                 installment_details: newFee.installments ? installmentBreakdown.map(inst => ({
-                    amount: sanitizeAmount(inst.amount), // Send cleaned number
+                    amount: sanitizeAmount(inst.amount),
                     due_date: formatDateForDB(inst.dateObject)
                 })) : []
             };
 
-            await apiClient.post('/fees/create', payload);
+            if (isEditing && editId) {
+                // UPDATE EXISTING
+                // NOTE: Ensure your Backend PUT /api/fees/:id handles 'installment_details' update!
+                await apiClient.put(`/fees/${editId}`, payload);
+                Alert.alert("Success", "Fee Schedule Updated");
+            } else {
+                // CREATE NEW
+                await apiClient.post('/fees/create', payload);
+                Alert.alert("Success", "Fee Schedule Created");
+            }
+
             setCreateModalVisible(false);
             resetForm();
             fetchFeesForClass(selectedClass); 
-            Alert.alert("Success", "Fee Schedule Created");
         } catch (error: any) { 
             console.error(error);
-            Alert.alert("Error", "Failed to create fee. Please check amounts and try again."); 
+            Alert.alert("Error", "Operation failed. Please try again."); 
         }
     };
 
@@ -171,6 +259,8 @@ const AdminFeeScreen = () => {
         setNewFee({ title: '', amount: '', dueDate: '', dateObject: new Date(), installments: false });
         setNumberOfInstallments('');
         setInstallmentBreakdown([]);
+        setIsEditing(false);
+        setEditId(null);
     };
 
     // --- HANDLERS ---
@@ -201,9 +291,15 @@ const AdminFeeScreen = () => {
         setNumberOfInstallments(text);
         const count = parseInt(text);
         if (!isNaN(count) && count > 0 && count <= 12) {
+            // Generate empty array or keep existing if reducing
             const arr: InstallmentItem[] = [];
             for (let i = 0; i < count; i++) {
-                arr.push({ amount: '', due_date: '', dateObject: new Date() });
+                // Keep existing data if resizing
+                if (installmentBreakdown[i]) {
+                    arr.push(installmentBreakdown[i]);
+                } else {
+                    arr.push({ amount: '', due_date: '', dateObject: new Date() });
+                }
             }
             setInstallmentBreakdown(arr);
         } else {
@@ -276,21 +372,35 @@ const AdminFeeScreen = () => {
                     <View style={styles.subHeader}>
                         <TouchableOpacity onPress={() => setViewMode('dashboard')}><Icon name="arrow-back" size={24} color="#333" /></TouchableOpacity>
                         <Text style={styles.subHeaderTitle}>{selectedClass} - Fees</Text>
-                        <TouchableOpacity onPress={() => setCreateModalVisible(true)} style={styles.addBtn}><Text style={styles.addBtnText}>+ Add</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={openCreateModal} style={styles.addBtn}><Text style={styles.addBtnText}>+ Add</Text></TouchableOpacity>
                     </View>
                     <FlatList
                         data={feeList}
                         keyExtractor={item => item.id.toString()}
                         contentContainerStyle={{padding: 10}}
                         renderItem={({ item }) => (
-                            <TouchableOpacity style={styles.feeCard} onPress={() => fetchStudentStatusForFee(item)}>
-                                <View>
+                            <View style={styles.feeCard}>
+                                <TouchableOpacity style={{flex: 1}} onPress={() => fetchStudentStatusForFee(item)}>
                                     <Text style={styles.feeTitle}>{item.title}</Text>
                                     <Text style={styles.feeAmount}>₹{item.total_amount}</Text>
                                     <Text style={styles.feeDate}>Due: {formatDBStringForDisplay(item.due_date)}</Text>
+                                </TouchableOpacity>
+                                
+                                <View style={styles.actionButtonsContainer}>
+                                    <TouchableOpacity 
+                                        style={[styles.actionBtn, {backgroundColor: '#E0F7FA'}]} 
+                                        onPress={() => openEditModal(item)}
+                                    >
+                                        <Icon name="edit" size={20} color="#008080" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.actionBtn, {backgroundColor: '#FFEBEE'}]} 
+                                        onPress={() => handleDeleteFee(item.id)}
+                                    >
+                                        <Icon name="delete" size={20} color="#E74C3C" />
+                                    </TouchableOpacity>
                                 </View>
-                                <Icon name="chevron-right" size={24} color="#008080" />
-                            </TouchableOpacity>
+                            </View>
                         )}
                         ListEmptyComponent={<Text style={styles.emptyText}>No fees scheduled yet.</Text>}
                     />
@@ -304,7 +414,6 @@ const AdminFeeScreen = () => {
                         <Text style={styles.subHeaderTitle}>Status: {selectedFee?.title}</Text>
                     </View>
                     <ScrollView contentContainerStyle={{padding: 10}}>
-                         {/* Simple list view for students */}
                          {studentStatuses.map(student => (
                              <View key={student.student_id} style={[
                                  styles.studentCard, 
@@ -327,13 +436,16 @@ const AdminFeeScreen = () => {
                 </View>
             )}
 
-            {/* --- CREATE FEE MODAL --- */}
+            {/* --- CREATE / EDIT FEE MODAL --- */}
             <Modal visible={isCreateModalVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Assign Fee to {selectedClass}</Text>
+                        <Text style={styles.modalTitle}>
+                            {isEditing ? `Edit Fee` : `Assign Fee to ${selectedClass}`}
+                        </Text>
                         
                         <ScrollView contentContainerStyle={{paddingBottom: 20}}>
+                            <Text style={styles.label}>Title</Text>
                             <TextInput 
                                 placeholder="Fee Title (e.g. Annual Fee)" 
                                 style={styles.input} 
@@ -341,15 +453,16 @@ const AdminFeeScreen = () => {
                                 onChangeText={t => setNewFee({...newFee, title: t})} 
                             />
                             
+                            <Text style={styles.label}>Total Amount</Text>
                             <TextInput 
-                                placeholder="Total Amount (e.g. 1,80,000)" 
+                                placeholder="Total Amount (e.g. 180000)" 
                                 style={styles.input} 
                                 keyboardType="numeric" 
                                 value={newFee.amount} 
                                 onChangeText={t => setNewFee({...newFee, amount: t})} 
                             />
                             
-                            {/* Main Due Date Picker */}
+                            <Text style={styles.label}>Due Date</Text>
                             <TouchableOpacity onPress={() => openDatePicker('main')} style={styles.dateInput}>
                                 <Text style={{color: newFee.dueDate ? '#333' : '#999'}}>
                                     {newFee.dueDate || "Select Due Date (DD/MM/YYYY)"}
@@ -365,9 +478,10 @@ const AdminFeeScreen = () => {
                                 />
                             </TouchableOpacity>
 
-                            {/* Dynamic Installments */}
+                            {/* Dynamic Installments - VISIBLE IN EDIT MODE NOW */}
                             {newFee.installments && (
                                 <View style={styles.installmentContainer}>
+                                    <Text style={styles.label}>Number of Installments:</Text>
                                     <TextInput 
                                         placeholder="No. of Installments (e.g. 3)" 
                                         style={styles.input} 
@@ -402,8 +516,8 @@ const AdminFeeScreen = () => {
                             )}
                         </ScrollView>
 
-                        <TouchableOpacity style={styles.saveBtn} onPress={handleCreateFee}>
-                            <Text style={styles.btnText}>Assign Fee</Text>
+                        <TouchableOpacity style={styles.saveBtn} onPress={handleSaveFee}>
+                            <Text style={styles.btnText}>{isEditing ? 'Update Fee' : 'Assign Fee'}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.cancelBtn} onPress={() => setCreateModalVisible(false)}>
                             <Text style={styles.cancelText}>Cancel</Text>
@@ -473,10 +587,16 @@ const styles = StyleSheet.create({
     subHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
     addBtn: { backgroundColor: '#008080', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
     addBtnText: { color: '#FFF', fontWeight: 'bold' },
-    feeCard: { backgroundColor: '#FFF', flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderRadius: 10, marginBottom: 10, marginHorizontal: 10, elevation: 2 },
+    
+    // Updated Fee Card
+    feeCard: { backgroundColor: '#FFF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderRadius: 10, marginBottom: 10, marginHorizontal: 10, elevation: 2 },
     feeTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
     feeAmount: { fontSize: 18, color: '#2ECC71', fontWeight: 'bold', marginTop: 4 },
     feeDate: { color: '#777', fontSize: 12, marginTop: 2 },
+    
+    actionButtonsContainer: { flexDirection: 'row' },
+    actionBtn: { width: 35, height: 35, borderRadius: 17.5, justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
+
     studentCard: { backgroundColor: '#FFF', padding: 15, borderRadius: 8, marginBottom: 8, borderLeftWidth: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 1 },
     studentName: { fontSize: 15, fontWeight: '600', color: '#333' },
     statusText: { fontSize: 12, fontWeight: 'bold', marginTop: 2 },
@@ -491,7 +611,7 @@ const styles = StyleSheet.create({
     dateInput: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: '#FAFAFA', flexDirection:'row', justifyContent:'space-between', alignItems:'center' },
     
     checkboxRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 5 },
-    label: { fontSize: 15, fontWeight: 'bold', color: '#333' },
+    label: { fontSize: 14, fontWeight: 'bold', color: '#555', marginBottom: 5 },
     
     installmentContainer: { backgroundColor: '#F0F4F8', padding: 10, borderRadius: 8, marginBottom: 10 },
     instRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 },
