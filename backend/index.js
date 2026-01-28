@@ -10215,12 +10215,12 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 
 
 // ==========================================================
-// --- FEE SCHEDULE API ROUTES ---
+// --- FEE SCHEDULE API ROUTES (CORRECTED ORDER) ---
 // ==========================================================
 
 const proofStorage = multer.diskStorage({
     destination: (req, file, cb) => { 
-        // Make sure this folder exists: /data/uploads
+        // Ensure this folder exists on your server!
         cb(null, '/data/uploads'); 
     },
     filename: (req, file, cb) => {
@@ -10229,6 +10229,33 @@ const proofStorage = multer.diskStorage({
 });
 const proofUpload = multer({ storage: proofStorage });
 
+
+// 9. [ADMIN] Verify Payment (MOVED UP - MUST BE BEFORE /:id)
+app.put('/api/fees/verify', async (req, res) => {
+    // Debugging: Log the incoming body to see if data arrives
+    console.log("Verify Request Body:", req.body);
+
+    const { submission_id, status, admin_remarks } = req.body; 
+    
+    // Ensure ID is present
+    if (!submission_id) {
+        console.error("Error: Submission ID is missing in request body.");
+        return res.status(400).json({ message: 'Submission ID is required' });
+    }
+
+    try {
+        const sql = "UPDATE student_fee_submissions SET status=?, admin_remarks=? WHERE id=?";
+        const [result] = await db.query(sql, [status, admin_remarks, submission_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Submission record not found' });
+        }
+        res.json({ message: 'Status updated successfully' });
+    } catch (err) {
+        console.error("Verify Error:", err);
+        res.status(500).json({ message: 'Error updating status' });
+    }
+});
 
 // 1. [ADMIN] Create a Fee Schedule
 app.post('/api/fees/create', async (req, res) => {
@@ -10258,7 +10285,7 @@ app.post('/api/fees/create', async (req, res) => {
     }
 });
 
-// 2. [ADMIN] Edit Fee Schedule
+// 2. [ADMIN] Edit Fee Schedule (MUST BE AFTER /verify)
 app.put('/api/fees/:id', async (req, res) => {
     const { id } = req.params;
     const { title, total_amount, due_date } = req.body;
@@ -10398,33 +10425,6 @@ app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error fetching student status' });
-    }
-});
-
-// 9. [ADMIN] Verify Payment (FIXED)
-app.put('/api/fees/verify', async (req, res) => {
-    // Debugging: Log the incoming body to see if data arrives
-    console.log("Verify Request Body:", req.body);
-
-    const { submission_id, status, admin_remarks } = req.body; 
-    
-    // Ensure ID is present
-    if (!submission_id) {
-        console.error("Error: Submission ID is missing in request body.");
-        return res.status(400).json({ message: 'Submission ID is required' });
-    }
-
-    try {
-        const sql = "UPDATE student_fee_submissions SET status=?, admin_remarks=? WHERE id=?";
-        const [result] = await db.query(sql, [status, admin_remarks, submission_id]);
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Submission record not found' });
-        }
-        res.json({ message: 'Status updated successfully' });
-    } catch (err) {
-        console.error("Verify Error:", err);
-        res.status(500).json({ message: 'Error updating status' });
     }
 });
 
