@@ -10213,6 +10213,108 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 
 
 
+// ==========================================
+// --- FEE SCHEDULE API ROUTES ---
+// ==========================================
+
+// 1. [ADMIN] Create a Fee Schedule for a Class
+app.post('/api/fees/create', async (req, res) => {
+    const { class_group, title, description, total_amount, due_date, allow_installments, max_installments } = req.body;
+    try {
+        const sql = `INSERT INTO fee_schedules (class_group, title, description, total_amount, due_date, allow_installments, max_installments) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+        await db.query(sql, [class_group, title, description, total_amount, due_date, allow_installments, max_installments || 1]);
+        res.json({ message: 'Fee Schedule created successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error creating fee schedule' });
+    }
+});
+
+// 2. [ADMIN/STUDENT] Get Fee Schedules by Class
+app.get('/api/fees/list/:class_group', async (req, res) => {
+    const { class_group } = req.params;
+    try {
+        const sql = `SELECT * FROM fee_schedules WHERE class_group = ? ORDER BY due_date DESC`;
+        const [rows] = await db.query(sql, [class_group]);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching fees' });
+    }
+});
+
+// 3. [STUDENT] Submit Payment Proof
+app.post('/api/fees/submit', async (req, res) => {
+    const { fee_schedule_id, student_id, payment_mode, screenshot_url } = req.body;
+    try {
+        // Check if already exists to update or insert
+        const checkSql = "SELECT id FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ?";
+        const [existing] = await db.query(checkSql, [fee_schedule_id, student_id]);
+
+        if (existing.length > 0) {
+            const updateSql = `UPDATE student_fee_submissions SET payment_mode=?, screenshot_url=?, status='pending', submitted_at=NOW() WHERE id=?`;
+            await db.query(updateSql, [payment_mode, screenshot_url, existing[0].id]);
+        } else {
+            const insertSql = `INSERT INTO student_fee_submissions (fee_schedule_id, student_id, payment_mode, screenshot_url, status) VALUES (?, ?, ?, ?, 'pending')`;
+            await db.query(insertSql, [fee_schedule_id, student_id, payment_mode, screenshot_url]);
+        }
+        res.json({ message: 'Proof submitted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error submitting proof' });
+    }
+});
+
+// 4. [ADMIN] Get Student Status List for a specific Fee
+// Returns list of all students in that class joined with their payment status
+app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
+    const { fee_schedule_id } = req.params;
+    try {
+        // First get the class group of this fee
+        const [feeDetails] = await db.query("SELECT class_group FROM fee_schedules WHERE id = ?", [fee_schedule_id]);
+        if (feeDetails.length === 0) return res.status(404).json({ message: 'Fee not found' });
+        
+        const classGroup = feeDetails[0].class_group;
+
+        // Get all students of that class + their submission status
+        const sql = `
+            SELECT 
+                u.id as student_id,
+                u.full_name,
+                p.roll_no,
+                sfs.id as submission_id,
+                sfs.status,
+                sfs.payment_mode,
+                sfs.screenshot_url,
+                sfs.submitted_at
+            FROM users u
+            LEFT JOIN user_profiles p ON u.id = p.user_id
+            LEFT JOIN student_fee_submissions sfs 
+                ON u.id = sfs.student_id AND sfs.fee_schedule_id = ?
+            WHERE u.role = 'student' AND u.class_group = ?
+            ORDER BY sfs.status DESC, u.full_name ASC
+        `;
+        const [rows] = await db.query(sql, [fee_schedule_id, classGroup]);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error fetching student status' });
+    }
+});
+
+// 5. [ADMIN] Verify Payment (Approve/Reject)
+app.put('/api/fees/verify', async (req, res) => {
+    const { submission_id, status, admin_remarks } = req.body; // status: 'paid' or 'rejected'
+    try {
+        await db.query("UPDATE student_fee_submissions SET status=?, admin_remarks=? WHERE id=?", [status, admin_remarks, submission_id]);
+        res.json({ message: 'Status updated' });
+    } catch (err) {
+        res.status(500).json({ message: 'Error updating status' });
+    }
+});
+
+
+
+
 // By using "server.listen", you enable both your API routes and the real-time chat.
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Server is running on port ${PORT} and is now accessible on your network.`);

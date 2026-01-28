@@ -48,6 +48,8 @@ import PerformanceFilter from '../screens/report/PerformanceFilter';
 import TeacherFilter from '../screens/report/TeacherFilter';
 import StudentFeedback from '../screens/Feedbacks/StudentFeedback';
 import TeacherFeedback from '../screens/Feedbacks/TeacherFeedback';
+import TeacherAdminPTMScreen from '../screens/ptm/TeacherAdminPTMScreen';
+import AdminFeeScreen from '../screens/Fee_Schedule/AdminFeeScreen';
 
 const { width: windowWidth } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -100,26 +102,28 @@ const AdminDashboard = ({ navigation }) => {
     : require('../assets/default_avatar.png');
 
   const allQuickAccessItems = [
-    { id: 'qa0', title: 'Manage Login', imageSource: 'https://cdn-icons-png.flaticon.com/128/15096/15096966.png', navigateToTab: 'AdminLM' },
-    { id: 'qa3', title: 'Students Status Report', imageSource: 'https://cdn-icons-png.flaticon.com/128/9733/9733233.png', navigateToTab: 'PerformanceFilter' },
-    { id: 'qa4', title: 'Teacher Status Report', imageSource: 'https://cdn-icons-png.flaticon.com/128/3094/3094910.png', navigateToTab: 'TeacherFilter' },
-    { id: 'qa5', title: 'Staff', imageSource: 'https://cdn-icons-png.flaticon.com/128/12105/12105197.png', navigateToTab: 'StaffNavigator' },
-    { id: 'qa6', title: 'Students', imageSource: 'https://cdn-icons-png.flaticon.com/128/16405/16405976.png', navigateToTab: 'StudentStackNavigator' },
-    { id: 'qa7', title: 'Teacher Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/3094/3094829.png', navigateToTab: 'TeacherPerformanceScreen' },
-    { id: 'qa8', title: 'Student Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/15175/15175651.png', navigateToTab: 'StudentPerformance' },
-    { id: 'qa9', title: 'Marks Entry', imageSource: 'https://cdn-icons-png.flaticon.com/128/18479/18479099.png', navigateTo: 'ReportScreen' },
-    { id: 'qa10', title: 'Time Table', imageSource: 'https://cdn-icons-png.flaticon.com/128/1254/1254275.png', navigateToTab: 'Timetable' },
-    { id: 'qa11', title: 'Mark Student Attendance', imageSource: 'https://cdn-icons-png.flaticon.com/128/3125/3125856.png', navigateToTab: 'MarkStudentAttendance' },
-    { id: 'qa12', title: 'Student Attendance', imageSource: 'https://cdn-icons-png.flaticon.com/128/10293/10293877.png', navigateToTab: 'Attendance' },
-    { id: 'qa13', title: 'Teacher Attendence', imageSource: 'https://cdn-icons-png.flaticon.com/128/12404/12404284.png', navigateToTab: 'TeacherAttendanceMarkingScreen' },
-    { id: 'qa14', title: 'Homework', imageSource: 'https://cdn-icons-png.flaticon.com/128/11647/11647336.png', navigateToTab: 'TeacherAdminHomeworkScreen' },
-    { id: 'qa21', title: 'Group chat', imageSource: 'https://cdn-icons-png.flaticon.com/128/6576/6576146.png', navigateTo: 'ChatFeature' },
-    { id: 'qa25', title: 'Exam Schedules', imageSource: 'https://cdn-icons-png.flaticon.com/128/15447/15447954.png', navigateToTab: 'TeacherAdminExamScreen' },
-    { id: 'qa28', title: 'Study Materials', imageSource: 'https://cdn-icons-png.flaticon.com/128/3273/3273259.png', navigateToTab: 'TeacherAdminMaterialsScreen' },
-    { id: 'qa29', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'AdminSyllabusScreen' },
-    { id: 'qa30', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'TeacherAdminResourcesScreen' },
-    { id: 'qa33', title: 'Student Feedback', imageSource: 'https://cdn-icons-png.flaticon.com/128/2839/2839244.png', navigateToTab: 'StudentFeedback' },
-    { id: 'qa60', title: 'Teacher Feedback', imageSource: 'https://cdn-icons-png.flaticon.com/128/8540/8540828.png', navigateToTab: 'TeacherFeedback' },
+    { id: 'qa1', title: 'Manage Login', imageSource: 'https://cdn-icons-png.flaticon.com/128/15096/15096966.png', navigateToTab: 'AdminLM' },
+    { id: 'qa2', title: 'Students Status Report', imageSource: 'https://cdn-icons-png.flaticon.com/128/9733/9733233.png', navigateToTab: 'PerformanceFilter' },
+    { id: 'qa3', title: 'Teacher Status Report', imageSource: 'https://cdn-icons-png.flaticon.com/128/3094/3094910.png', navigateToTab: 'TeacherFilter' },
+    { id: 'qa4', title: 'Staff', imageSource: 'https://cdn-icons-png.flaticon.com/128/12105/12105197.png', navigateToTab: 'StaffNavigator' },
+    { id: 'qa5', title: 'Students', imageSource: 'https://cdn-icons-png.flaticon.com/128/16405/16405976.png', navigateToTab: 'StudentStackNavigator' },
+    { id: 'qa6', title: 'Teacher Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/3094/3094829.png', navigateToTab: 'TeacherPerformanceScreen' },
+    { id: 'qa7', title: 'Student Performance', imageSource: 'https://cdn-icons-png.flaticon.com/128/15175/15175651.png', navigateToTab: 'StudentPerformance' },
+    { id: 'qa8', title: 'Marks Entry', imageSource: 'https://cdn-icons-png.flaticon.com/128/18479/18479099.png', navigateTo: 'ReportScreen' },
+    { id: 'qa9', title: 'Time Table', imageSource: 'https://cdn-icons-png.flaticon.com/128/1254/1254275.png', navigateToTab: 'Timetable' },
+    { id: 'qa10', title: 'Mark Student Attendance', imageSource: 'https://cdn-icons-png.flaticon.com/128/3125/3125856.png', navigateToTab: 'MarkStudentAttendance' },
+    { id: 'qa11', title: 'Student Attendance', imageSource: 'https://cdn-icons-png.flaticon.com/128/10293/10293877.png', navigateToTab: 'Attendance' },
+    { id: 'qa12', title: 'Teacher Attendence', imageSource: 'https://cdn-icons-png.flaticon.com/128/12404/12404284.png', navigateToTab: 'TeacherAttendanceMarkingScreen' },
+    { id: 'qa13', title: 'Homework', imageSource: 'https://cdn-icons-png.flaticon.com/128/11647/11647336.png', navigateToTab: 'TeacherAdminHomeworkScreen' },
+    { id: 'qa14', title: 'Group chat', imageSource: 'https://cdn-icons-png.flaticon.com/128/6576/6576146.png', navigateTo: 'ChatFeature' },
+    { id: 'qa15', title: 'Exam Schedules', imageSource: 'https://cdn-icons-png.flaticon.com/128/15447/15447954.png', navigateToTab: 'TeacherAdminExamScreen' },
+    { id: 'qa16', title: 'Study Materials', imageSource: 'https://cdn-icons-png.flaticon.com/128/3273/3273259.png', navigateToTab: 'TeacherAdminMaterialsScreen' },
+    { id: 'qa17', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'AdminSyllabusScreen' },
+    { id: 'qa18', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'TeacherAdminResourcesScreen' },
+    { id: 'qa19', title: 'Student Feedback', imageSource: 'https://cdn-icons-png.flaticon.com/128/2839/2839244.png', navigateToTab: 'StudentFeedback' },
+    { id: 'qa20', title: 'Teacher Feedback', imageSource: 'https://cdn-icons-png.flaticon.com/128/8540/8540828.png', navigateToTab: 'TeacherFeedback' },
+    { id: 'qa21', title: 'PTM', imageSource: 'https://cdn-icons-png.flaticon.com/128/11277/11277118.png', navigateToTab: 'TeacherAdminPTMScreen' },
+    { id: 'qa22', title: 'Fee Schedule', imageSource: 'https://cdn-icons-png.flaticon.com/128/18277/18277055.png', navigateToTab: 'AdminFeeScreen' },
 
   ];
 
@@ -192,6 +196,8 @@ const AdminDashboard = ({ navigation }) => {
         case 'TeacherFilter': return ( <><ContentScreenHeader title="Teacher Status Report" onBack={handleBack} /><TeacherFilter /></> );
         case 'StudentFeedback': return ( <><ContentScreenHeader title="Student Feedback" onBack={handleBack} /><StudentFeedback /></> );
         case 'TeacherFeedback': return ( <><ContentScreenHeader title="Teacher Feedback" onBack={handleBack} /><TeacherFeedback /></> );
+        case 'TeacherAdminPTMScreen': return ( <><ContentScreenHeader title="Parents-Teacher Meetings" onBack={handleBack} /><TeacherAdminPTMScreen /></> );
+        case 'AdminFeeScreen': return ( <><ContentScreenHeader title="Fee Schedule" onBack={handleBack} /><AdminFeeScreen /></> );
 
         default: return ( <View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content for '{activeTab}' is not available.</Text><TouchableOpacity onPress={handleBack}><Text style={styles.fallbackLink}>Go to Home</Text></TouchableOpacity></View> );
       }

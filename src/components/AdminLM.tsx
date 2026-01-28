@@ -263,9 +263,10 @@ const AdminLM = () => {
             </View>
         </View>
        
+        {/* CHANGED: Add Button Style to match the second image (PTM Screen) */}
         <TouchableOpacity style={styles.headerAddBtn} onPress={openAddModal}>
-            <Icon name="add" size={22} color="#fff" />
-            <Text style={styles.headerAddBtnText}>Add User</Text>
+            <Icon name="add" size={18} color="#fff" />
+            <Text style={styles.headerAddBtnText}>Add</Text>
         </TouchableOpacity>
       </View>
 
@@ -485,21 +486,23 @@ const styles = StyleSheet.create({
     color: '#666666',
     marginTop: 2,
   },
+  
+  // CHANGED: Matching the PTM Screen Add Button
   headerAddBtn: {
-    backgroundColor: '#2ECC71',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 25,
+    backgroundColor: '#008080', // Teal instead of Green
+    paddingHorizontal: 12,      // Reduced padding
+    paddingVertical: 6,         // Reduced padding
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 8,
+    marginLeft: 10,
+    gap: 4,
     elevation: 2,
   },
   headerAddBtnText: {
     color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginLeft: 4,
+    fontWeight: '600',          // Semi-bold instead of bold
+    fontSize: 12,               // Smaller font
   },
 
   // --- Search Bar Card Style ---

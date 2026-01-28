@@ -41,6 +41,7 @@ import TeacherPerformanceScreen from '../screens/Performance/TeacherPerformanceS
 import StudentPerformance from '../screens/Performance/StudentPerformance';
 import PerformanceFilter from '../screens/report/PerformanceFilter';
 import StudentFeedback from '../screens/Feedbacks/StudentFeedback';
+import TeacherAdminPTMScreen from '../screens/ptm/TeacherAdminPTMScreen';
 
 // --- Constants & Colors ---
 const { width: windowWidth } = Dimensions.get('window');
@@ -112,6 +113,7 @@ const TeacherDashboard = ({ navigation }) => {
     { id: 'qa12', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'TeacherSyllabusScreen' },
     { id: 'qa13', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'TeacherAdminResourcesScreen' },
     { id: 'qa14', title: 'Student Feedback', imageSource: 'https://cdn-icons-png.flaticon.com/128/2839/2839244.png', navigateToTab: 'StudentFeedback' },
+    { id: 'qa17', title: 'PTM', imageSource: 'https://cdn-icons-png.flaticon.com/128/11277/11277118.png', navigateToTab: 'TeacherAdminPTMScreen' },
     
     // { id: 'qa-ads-create', title: 'Create Ad', imageSource: 'https://cdn-icons-png.flaticon.com/128/4944/4944482.png', navigateTo: 'CreateAdScreen' },
   ];
@@ -192,6 +194,7 @@ const TeacherDashboard = ({ navigation }) => {
       case 'StudentPerformance': return ( <><ContentScreenHeader title="Student Performance" onBack={handleBack} /><StudentPerformance /></> );
       case 'PerformanceFilter': return ( <><ContentScreenHeader title="Students Status Report" onBack={handleBack} /><PerformanceFilter /></> );
       case 'StudentFeedback': return ( <><ContentScreenHeader title="Student Feedback" onBack={handleBack} /><StudentFeedback /></> );
+      case 'TeacherAdminPTMScreen': return ( <><ContentScreenHeader title="Parents-Teacher Meetings" onBack={handleBack} /><TeacherAdminPTMScreen /></> );
 
       default: return ( <><ContentScreenHeader title={capitalize(activeTab)} onBack={handleBack} /><View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content not available yet.</Text></View></> );
     }

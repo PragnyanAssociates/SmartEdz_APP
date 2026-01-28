@@ -35,6 +35,8 @@ import StudentSyllabusScreen from '../screens/syllabus/StudentSyllabusScreen';
 import StudentResourcesScreen from '../screens/syllabus_Textbook/StudentResourcesScreen';
 import MyPerformance from '../screens/report/MyPerformance';
 import TeacherFeedback from '../screens/Feedbacks/TeacherFeedback';
+import StudentPTMScreen from '../screens/ptm/StudentPTMScreen';
+import StudentFeeScreen from '../screens/Fee_Schedule/StudentFeeScreen';
 
 const { width: windowWidth } = Dimensions.get('window');
 const CARD_GAP = 12;
@@ -96,6 +98,8 @@ const StudentDashboard = ({ navigation }) => {
     { id: 'qa9', title: 'Syllabus Tracking', imageSource: 'https://cdn-icons-png.flaticon.com/128/1584/1584937.png', navigateToTab: 'StudentSyllabusNavigator' },
     { id: 'qa10', title: 'Textbooks', imageSource: 'https://cdn-icons-png.flaticon.com/128/4541/4541151.png', navigateToTab: 'StudentResourcesScreen' },
     { id: 'qa11', title: 'Teacher Feedback', imageSource: 'https://cdn-icons-png.flaticon.com/128/8540/8540828.png', navigateToTab: 'TeacherFeedback' },
+    { id: 'qa12', title: 'PTM', imageSource: 'https://cdn-icons-png.flaticon.com/128/3214/3214781.png', navigateToTab: 'StudentPTMScreen' },
+    { id: 'qa13', title: 'Fee Schedule', imageSource: 'https://cdn-icons-png.flaticon.com/128/18277/18277055.png', navigateToTab: 'StudentFeeScreen' },
     
   ];
 
@@ -164,6 +168,8 @@ const StudentDashboard = ({ navigation }) => {
       case 'StudentResourcesScreen': return ( <><ContentScreenHeader title="Textbooks" onBack={handleBack} /><StudentResourcesScreen /></> );
       case 'MyPerformance': return ( <><ContentScreenHeader title="My Performance" onBack={handleBack} /><MyPerformance /></> );
       case 'TeacherFeedback': return ( <><ContentScreenHeader title="Teacher Feedback" onBack={handleBack} /><TeacherFeedback /></> );
+      case 'StudentPTMScreen': return ( <><ContentScreenHeader title="Parents-Teacher Meetings" onBack={handleBack} /><StudentPTMScreen /></> );
+      case 'StudentFeeScreen': return ( <><ContentScreenHeader title="Fee Schedule" onBack={handleBack} /><StudentFeeScreen /></> );
       
 
       default: return ( <View style={styles.fallbackContent}><Text style={styles.fallbackText}>Content for '{activeTab}' is not available.</Text><TouchableOpacity onPress={handleBack}><Text style={styles.fallbackLink}>Go to Home</Text></TouchableOpacity></View> );
