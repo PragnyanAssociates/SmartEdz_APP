@@ -158,22 +158,35 @@ const AdminFeeScreen = () => {
         catch (error) { Alert.alert("Error", "Failed to fetch student data"); } finally { setLoading(false); }
     };
 
+    // =======================================================
+    // --- UPDATED VERIFY FUNCTION WITH BETTER ERROR HANDLING ---
+    // =======================================================
     const handleVerifyPayment = async (status: 'paid' | 'rejected') => {
         if (!selectedStudentForVerify?.submission_id) {
-            Alert.alert("Error", "Invalid Submission ID");
+            Alert.alert("Error", "Invalid Submission ID. Please refresh.");
             return;
         }
+
         try {
             await apiClient.put('/fees/verify', { 
                 submission_id: selectedStudentForVerify.submission_id, 
                 status: status, 
-                admin_remarks: status === 'paid' ? 'Verified' : 'Rejected' 
+                admin_remarks: status === 'paid' ? 'Verified by Admin' : 'Rejected - Please re-upload' 
             });
+            
+            Alert.alert("Success", status === 'paid' ? "Payment Approved" : "Payment Rejected");
             setVerifyModalVisible(false); 
+            
+            // Refresh list
             if (selectedFee) fetchStudentStatusForFee(selectedFee); 
-        } catch (error) { 
-            console.error(error);
-            Alert.alert("Error", "Update failed. Please try again."); 
+
+        } catch (error: any) { 
+            console.error("Verify Error Log:", error);
+            
+            // EXTRACT THE REAL MESSAGE FROM SERVER
+            const serverMessage = error.response?.data?.message || error.message || "Unknown Error";
+            
+            Alert.alert("Update Failed", `Reason: ${serverMessage}`); 
         }
     };
 

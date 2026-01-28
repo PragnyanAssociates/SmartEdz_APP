@@ -10220,7 +10220,7 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 
 const proofStorage = multer.diskStorage({
     destination: (req, file, cb) => { 
-        // Ensure this folder exists on your server!
+        // Make sure this folder exists: /data/uploads
         cb(null, '/data/uploads'); 
     },
     filename: (req, file, cb) => {
@@ -10366,7 +10366,7 @@ app.delete('/api/student/submission/:id', async (req, res) => {
     }
 });
 
-// 8. [ADMIN] Get Student Status List (Fixed Query to ensure all students appear)
+// 8. [ADMIN] Get Student Status List
 app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     const { fee_schedule_id } = req.params;
     try {
@@ -10375,7 +10375,6 @@ app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
         
         const classGroup = feeDetails[0].class_group;
 
-        // This query fetches ALL students in class, joining with submissions
         const sql = `
             SELECT 
                 u.id as student_id,
@@ -10402,12 +10401,18 @@ app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     }
 });
 
-// 9. [ADMIN] Verify Payment (Fixing Update Logic)
+// 9. [ADMIN] Verify Payment (FIXED)
 app.put('/api/fees/verify', async (req, res) => {
+    // Debugging: Log the incoming body to see if data arrives
+    console.log("Verify Request Body:", req.body);
+
     const { submission_id, status, admin_remarks } = req.body; 
     
     // Ensure ID is present
-    if (!submission_id) return res.status(400).json({ message: 'Submission ID is required' });
+    if (!submission_id) {
+        console.error("Error: Submission ID is missing in request body.");
+        return res.status(400).json({ message: 'Submission ID is required' });
+    }
 
     try {
         const sql = "UPDATE student_fee_submissions SET status=?, admin_remarks=? WHERE id=?";
