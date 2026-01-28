@@ -10213,9 +10213,22 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 
 
 
+
 // ==========================================================
-// --- FEE SCHEDULE API ROUTES (FULL & UPDATED) ---
+// --- FEE SCHEDULE API ROUTES ---
 // ==========================================================
+
+const proofStorage = multer.diskStorage({
+    destination: (req, file, cb) => { 
+        // Stores in your existing /data/uploads folder
+        cb(null, '/data/uploads'); 
+    },
+    filename: (req, file, cb) => {
+        // Unique filename: fee-proof-TIMESTAMP.jpg
+        cb(null, `fee-proof-${Date.now()}${path.extname(file.originalname)}`);
+    }
+});
+const proofUpload = multer({ storage: proofStorage });
 
 // 1. [ADMIN] Create a Fee Schedule (Supports Installments)
 app.post('/api/fees/create', async (req, res) => {
@@ -10294,7 +10307,6 @@ app.put('/api/fees/:id', async (req, res) => {
 app.delete('/api/fees/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        // Due to foreign key constraints (ON DELETE CASCADE), this deletes installments & submissions too.
         await db.query("DELETE FROM fee_schedules WHERE id = ?", [id]);
         res.json({ message: 'Fee deleted successfully' });
     } catch (err) {
@@ -10316,7 +10328,7 @@ app.get('/api/fees/list/:class_group', async (req, res) => {
     }
 });
 
-// 5. [STUDENT] Get Fee Details + My Installment Status (CRITICAL FOR YOUR ISSUE)
+// 5. [STUDENT] Get Fee Details + Installment Status + Submission Links
 app.get('/api/student/fee-details', async (req, res) => {
     const { fee_schedule_id, student_id } = req.query;
     
@@ -10331,8 +10343,7 @@ app.get('/api/student/fee-details', async (req, res) => {
             [fee_schedule_id]
         );
 
-        // B. Get Student's Payment Submissions (UPDATED QUERY)
-        // We select 'id' as submission_id and 'screenshot_url'
+        // B. Get Student's Payment Submissions (Include ID and URL)
         const [submissions] = await db.query(
             "SELECT id, installment_number, status, screenshot_url FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ?", 
             [fee_schedule_id, student_id]
@@ -10342,12 +10353,11 @@ app.get('/api/student/fee-details', async (req, res) => {
         const data = installments.map(inst => {
             const sub = submissions.find(s => s.installment_number === inst.installment_number);
             return {
-                id: inst.id, // Installment Definition ID
+                id: inst.id, 
                 installment_number: inst.installment_number,
                 amount: inst.amount,
                 due_date: inst.due_date,
                 status: sub ? sub.status : 'unpaid',
-                // NEW FIELDS ADDED BELOW
                 submission_id: sub ? sub.id : null,
                 screenshot_url: sub ? sub.screenshot_url : null
             };
@@ -10364,48 +10374,54 @@ app.get('/api/student/fee-details', async (req, res) => {
     }
 });
 
-// 6. [STUDENT] Submit Payment Proof
-app.post('/api/fees/submit', async (req, res) => {
-    const { fee_schedule_id, student_id, payment_mode, screenshot_url, installment_number } = req.body;
+// 6. [STUDENT] Submit Payment Proof (HANDLES FILE UPLOAD)
+app.post('/api/fees/submit', proofUpload.single('screenshot'), async (req, res) => {
     
-    // Logic: If one_time, installment_number is 0. If installment, use the number provided (1, 2, etc.)
-    // Ensure we parse installment_number to int, default to 0 if missing
+    // Check if file exists
+    if (!req.file) {
+        return res.status(400).json({ message: 'No image file uploaded' });
+    }
+
+    // Construct URL for your proxy: /api/image/filename
+    const finalScreenshotUrl = `${req.protocol}://${req.get('host')}/api/image/${req.file.filename}`;
+
+    const { fee_schedule_id, student_id, payment_mode, installment_number } = req.body;
+    
+    // Logic: If one_time, installment_number is 0.
     const finalInstNum = payment_mode === 'one_time' ? 0 : (parseInt(installment_number) || 0);
 
     try {
-        // Check if a submission already exists for this specific installment
         const checkSql = "SELECT id FROM student_fee_submissions WHERE fee_schedule_id = ? AND student_id = ? AND installment_number = ?";
         const [existing] = await db.query(checkSql, [fee_schedule_id, student_id, finalInstNum]);
 
         if (existing.length > 0) {
-            // Update existing submission (e.g., re-uploading after rejection)
+            // Update existing
             const updateSql = `
                 UPDATE student_fee_submissions 
                 SET payment_mode=?, screenshot_url=?, status='pending', submitted_at=NOW() 
                 WHERE id=?
             `;
-            await db.query(updateSql, [payment_mode, screenshot_url, existing[0].id]);
+            await db.query(updateSql, [payment_mode, finalScreenshotUrl, existing[0].id]);
         } else {
-            // Insert new submission
+            // Insert new
             const insertSql = `
                 INSERT INTO student_fee_submissions 
                 (fee_schedule_id, student_id, payment_mode, screenshot_url, status, installment_number) 
                 VALUES (?, ?, ?, ?, 'pending', ?)
             `;
-            await db.query(insertSql, [fee_schedule_id, student_id, payment_mode, screenshot_url, finalInstNum]);
+            await db.query(insertSql, [fee_schedule_id, student_id, payment_mode, finalScreenshotUrl, finalInstNum]);
         }
-        res.json({ message: 'Proof submitted successfully' });
+        res.json({ message: 'Proof submitted successfully', url: finalScreenshotUrl });
     } catch (err) {
         console.error("Submit Error:", err);
         res.status(500).json({ message: 'Error submitting proof' });
     }
 });
 
-// 9. [STUDENT] Delete a Pending Submission (NEW ROUTE)
+// 7. [STUDENT] Delete a Pending Submission
 app.delete('/api/student/submission/:id', async (req, res) => {
     const { id } = req.params;
     try {
-        // Security: Only allow deleting if status is 'pending'
         const [check] = await db.query("SELECT status FROM student_fee_submissions WHERE id = ?", [id]);
         
         if (check.length === 0) return res.status(404).json({ message: 'Submission not found' });
@@ -10419,22 +10435,15 @@ app.delete('/api/student/submission/:id', async (req, res) => {
     }
 });
 
-// 7. [ADMIN] Get Student Status List for a specific Fee
+// 8. [ADMIN] Get Student Status List
 app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     const { fee_schedule_id } = req.params;
     try {
-        // Get class group to filter users
         const [feeDetails] = await db.query("SELECT class_group FROM fee_schedules WHERE id = ?", [fee_schedule_id]);
         if (feeDetails.length === 0) return res.status(404).json({ message: 'Fee not found' });
         
         const classGroup = feeDetails[0].class_group;
 
-        // Get all students in that class + their submission status
-        // We use GROUP BY user.id to show 1 row per student, picking the 'most relevant' status 
-        // OR we just list all submissions. Let's list all students, and left join submissions.
-        // NOTE: If a student made 2 installment payments, they might appear twice or we need to aggregate.
-        // For simplicity in the Admin List, we fetch all submissions.
-        
         const sql = `
             SELECT 
                 u.id as student_id,
@@ -10461,7 +10470,7 @@ app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     }
 });
 
-// 8. [ADMIN] Verify Payment (Approve/Reject)
+// 9. [ADMIN] Verify Payment
 app.put('/api/fees/verify', async (req, res) => {
     const { submission_id, status, admin_remarks } = req.body; 
     try {
@@ -10476,7 +10485,7 @@ app.put('/api/fees/verify', async (req, res) => {
     }
 });
 
-// [ADMIN] Get Installment Details for a specific Fee Schedule
+// 10. [ADMIN] Get Installment Details (For Editing)
 app.get('/api/fees/installments/:fee_schedule_id', async (req, res) => {
     const { fee_schedule_id } = req.params;
     try {

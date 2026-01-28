@@ -9,7 +9,6 @@ import * as ImagePicker from 'react-native-image-picker';
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 
-// --- TYPES ---
 interface FeeSchedule {
     id: number;
     title: string;
@@ -24,12 +23,10 @@ interface InstallmentDetail {
     amount: number;
     due_date: string;
     status: 'unpaid' | 'pending' | 'paid' | 'rejected';
-    // New fields from backend
     submission_id?: number;
     screenshot_url?: string;
 }
 
-// --- SUB-COMPONENT: FEE CARD WITH TABS ---
 const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: { 
     item: FeeSchedule, 
     user: any, 
@@ -42,10 +39,7 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
     const [historyData, setHistoryData] = useState<InstallmentDetail[]>([]);
     const [oneTimeStatus, setOneTimeStatus] = useState<string>('unpaid');
     const [loadingHistory, setLoadingHistory] = useState(false);
-    const [dataLoaded, setDataLoaded] = useState(false);
 
-    // Function to refresh data (exposed to parent logic via effect dependency if needed, 
-    // but here we just call fetchHistory directly)
     const fetchHistory = async () => {
         setLoadingHistory(true);
         try {
@@ -54,7 +48,6 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
             });
             setHistoryData(res.data.installments);
             setOneTimeStatus(res.data.oneTimeStatus || 'unpaid');
-            setDataLoaded(true);
         } catch (error) {
             console.error("Error fetching history", error);
         } finally {
@@ -65,7 +58,7 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
     const handleTabChange = (tab: 'details' | 'history') => {
         setActiveTab(tab);
         if (tab === 'history') {
-            fetchHistory(); // Always fetch on tab switch to get latest updates
+            fetchHistory(); 
         }
     };
 
@@ -86,36 +79,24 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
 
     return (
         <View style={styles.feeCard}>
-            {/* --- TAB HEADER --- */}
             <View style={styles.tabContainer}>
-                <TouchableOpacity 
-                    style={[styles.tabBtn, activeTab === 'details' && styles.tabBtnActive]} 
-                    onPress={() => handleTabChange('details')}
-                >
+                <TouchableOpacity style={[styles.tabBtn, activeTab === 'details' && styles.tabBtnActive]} onPress={() => handleTabChange('details')}>
                     <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>Fee Details</Text>
                 </TouchableOpacity>
                 <View style={styles.tabDivider} />
-                <TouchableOpacity 
-                    style={[styles.tabBtn, activeTab === 'history' && styles.tabBtnActive]} 
-                    onPress={() => handleTabChange('history')}
-                >
+                <TouchableOpacity style={[styles.tabBtn, activeTab === 'history' && styles.tabBtnActive]} onPress={() => handleTabChange('history')}>
                     <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>History</Text>
                 </TouchableOpacity>
             </View>
 
-            {/* --- DETAILS TAB CONTENT --- */}
             {activeTab === 'details' && (
                 <View style={styles.cardContent}>
                     <View style={styles.feeHeader}>
                         <Text style={styles.feeTitle}>{item.title}</Text>
                         <Text style={styles.feeAmount}>₹{item.total_amount.toLocaleString()}</Text>
                     </View>
-                    
                     <Text style={styles.feeDate}>Due Date: {formatDate(item.due_date)}</Text>
-                    {item.allow_installments === 1 && (
-                        <Text style={styles.installmentText}>Installments Allowed</Text>
-                    )}
-
+                    {item.allow_installments === 1 && <Text style={styles.installmentText}>Installments Allowed</Text>}
                     <TouchableOpacity style={styles.payBtn} onPress={() => onPayPress(item)}>
                         <Icon name="cloud-upload" size={20} color="#FFF" style={{marginRight: 8}} />
                         <Text style={styles.payBtnText}>Submit Payment Proof</Text>
@@ -123,7 +104,6 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
                 </View>
             )}
 
-            {/* --- HISTORY TAB CONTENT --- */}
             {activeTab === 'history' && (
                 <View style={styles.cardContent}>
                     {loadingHistory ? (
@@ -135,41 +115,26 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
                             ) : (
                                 historyData.map((inst, index) => (
                                     <View key={index} style={styles.historyRow}>
-                                        {/* Left Side: Info */}
                                         <View style={{flex: 1}}>
                                             <Text style={styles.historyLabel}>Inst. {inst.installment_number}</Text>
                                             <Text style={styles.historyDate}>{formatDate(inst.due_date)}</Text>
                                         </View>
-
-                                        {/* Middle: Action Icons (Only for Pending) */}
                                         {inst.status === 'pending' && (
                                             <View style={styles.iconContainer}>
-                                                {/* View Proof */}
                                                 <TouchableOpacity onPress={() => onViewProof(inst.screenshot_url || '')} style={styles.iconBtn}>
                                                     <Icon name="visibility" size={20} color="#008080" />
                                                 </TouchableOpacity>
-                                                
-                                                {/* Edit (Re-upload) */}
                                                 <TouchableOpacity onPress={() => onEdit(item, inst)} style={styles.iconBtn}>
                                                     <Icon name="edit" size={20} color="#F39C12" />
                                                 </TouchableOpacity>
-
-                                                {/* Delete */}
-                                                <TouchableOpacity 
-                                                    onPress={() => inst.submission_id && onDelete(inst.submission_id, item.id)} 
-                                                    style={styles.iconBtn}
-                                                >
+                                                <TouchableOpacity onPress={() => inst.submission_id && onDelete(inst.submission_id, item.id)} style={styles.iconBtn}>
                                                     <Icon name="delete" size={20} color="#E74C3C" />
                                                 </TouchableOpacity>
                                             </View>
                                         )}
-
-                                        {/* Right Side: Amount & Status */}
                                         <View style={{alignItems: 'flex-end', minWidth: 80}}>
                                             <Text style={styles.historyAmount}>₹{inst.amount.toLocaleString()}</Text>
-                                            <Text style={[styles.statusBadge, { color: getStatusColor(inst.status) }]}>
-                                                {inst.status.toUpperCase()}
-                                            </Text>
+                                            <Text style={[styles.statusBadge, { color: getStatusColor(inst.status) }]}>{inst.status.toUpperCase()}</Text>
                                         </View>
                                     </View>
                                 ))
@@ -182,37 +147,29 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
     );
 };
 
-// --- MAIN SCREEN ---
 const StudentFeeScreen = () => {
     const { user } = useAuth();
     const [feeList, setFeeList] = useState<FeeSchedule[]>([]);
     const [loading, setLoading] = useState(false);
     
-    // Submission Modal State
     const [isSubmitModalVisible, setSubmitModalVisible] = useState(false);
     const [selectedFee, setSelectedFee] = useState<FeeSchedule | null>(null);
-    const [isEditing, setIsEditing] = useState(false); // Track if editing
+    const [isEditing, setIsEditing] = useState(false); 
     
-    // View Proof Modal State
     const [isViewProofVisible, setViewProofVisible] = useState(false);
     const [viewProofUrl, setViewProofUrl] = useState('');
 
-    // Logic State
     const [paymentMode, setPaymentMode] = useState<'one_time' | 'installment'>('one_time');
     const [imageUri, setImageUri] = useState('');
     
-    // Installment Logic
     const [installments, setInstallments] = useState<InstallmentDetail[]>([]);
     const [selectedInstNumber, setSelectedInstNumber] = useState<number | null>(null); 
     const [loadingDetails, setLoadingDetails] = useState(false);
 
     useEffect(() => {
-        if (user?.class_group) {
-            fetchMyFees(user.class_group);
-        }
+        if (user?.class_group) fetchMyFees(user.class_group);
     }, [user]);
 
-    // Fetch installment dropdown options when modal opens
     useEffect(() => {
         if (isSubmitModalVisible && selectedFee && paymentMode === 'installment') {
             fetchFeeDetailsForModal(selectedFee.id);
@@ -231,62 +188,44 @@ const StudentFeeScreen = () => {
     const fetchFeeDetailsForModal = async (feeId: number) => {
         setLoadingDetails(true);
         try {
-            const res = await apiClient.get('/student/fee-details', {
-                params: { fee_schedule_id: feeId, student_id: user?.id }
-            });
+            const res = await apiClient.get('/student/fee-details', { params: { fee_schedule_id: feeId, student_id: user?.id } });
             setInstallments(res.data.installments);
         } catch (e) { console.error(e); }
         finally { setLoadingDetails(false); }
     };
-
-    // --- HANDLERS ---
 
     const openPayModal = (fee: FeeSchedule) => {
         setSelectedFee(fee);
         setPaymentMode('one_time');
         setImageUri('');
         setSelectedInstNumber(null);
-        setIsEditing(false); // New Payment
+        setIsEditing(false);
         setInstallments([]); 
         setSubmitModalVisible(true);
     };
 
-    // New: Handle Edit Click
     const handleEdit = (fee: FeeSchedule, inst: InstallmentDetail) => {
         setSelectedFee(fee);
-        setPaymentMode('installment'); // Force installment mode for edit
+        setPaymentMode('installment');
         setSelectedInstNumber(inst.installment_number);
-        setImageUri(inst.screenshot_url || ''); // Pre-fill image if you can handle remote URLs in ImagePicker display
+        setImageUri(inst.screenshot_url || ''); 
         setIsEditing(true);
         setSubmitModalVisible(true);
     };
 
-    // New: Handle Delete Click
     const handleDelete = (submissionId: number, feeId: number) => {
-        Alert.alert(
-            "Delete Submission",
-            "Are you sure you want to delete this payment proof?",
-            [
-                { text: "Cancel", style: "cancel" },
-                { 
-                    text: "Delete", 
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await apiClient.delete(`/student/submission/${submissionId}`);
-                            Alert.alert("Success", "Submission deleted");
-                            // Refresh the fee list to trigger UI updates
-                            fetchMyFees(user?.class_group || '');
-                        } catch (error) {
-                            Alert.alert("Error", "Failed to delete submission");
-                        }
-                    }
-                }
-            ]
-        );
+        Alert.alert("Delete Submission", "Are you sure?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: 'destructive', onPress: async () => {
+                try {
+                    await apiClient.delete(`/student/submission/${submissionId}`);
+                    Alert.alert("Success", "Submission deleted");
+                    fetchMyFees(user?.class_group || '');
+                } catch (error) { Alert.alert("Error", "Failed to delete"); }
+            }}
+        ]);
     };
 
-    // New: Handle View Proof
     const handleViewProof = (url: string) => {
         setViewProofUrl(url);
         setViewProofVisible(true);
@@ -302,27 +241,32 @@ const StudentFeeScreen = () => {
 
     const handleSubmitProof = async () => {
         if (!imageUri || !selectedFee) return Alert.alert("Required", "Please select an image");
-        
-        if (paymentMode === 'installment' && selectedInstNumber === null) {
-            return Alert.alert("Required", "Please select which installment you are paying.");
-        }
+        if (paymentMode === 'installment' && selectedInstNumber === null) return Alert.alert("Required", "Select installment.");
 
-        // IMPORTANT: In production, use FormData for images. 
-        // Here we assume imageUri is passed or a mock URL
-        const mockUrl = imageUri.startsWith('http') ? imageUri : "https://via.placeholder.com/300?text=Updated+Proof";
+        const formData = new FormData();
+        formData.append('fee_schedule_id', selectedFee.id.toString());
+        formData.append('student_id', user?.id.toString());
+        formData.append('payment_mode', paymentMode);
+        formData.append('installment_number', paymentMode === 'installment' ? selectedInstNumber?.toString() : '0');
+        
+        // Append Image for Multer
+        formData.append('screenshot', {
+            uri: imageUri,
+            type: 'image/jpeg',
+            name: 'fee-proof.jpg',
+        } as any);
 
         try {
-            await apiClient.post('/fees/submit', {
-                fee_schedule_id: selectedFee.id,
-                student_id: user?.id,
-                payment_mode: paymentMode,
-                screenshot_url: mockUrl,
-                installment_number: paymentMode === 'installment' ? selectedInstNumber : 0
+            await apiClient.post('/fees/submit', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
             setSubmitModalVisible(false);
-            Alert.alert("Success", isEditing ? "Proof updated successfully." : "Proof submitted successfully.");
-            fetchMyFees(user?.class_group || ''); // Refresh list
-        } catch (error) { Alert.alert("Error", "Submission failed"); }
+            Alert.alert("Success", isEditing ? "Proof updated." : "Proof submitted.");
+            fetchMyFees(user?.class_group || ''); 
+        } catch (error) { 
+            console.error("Upload Error", error);
+            Alert.alert("Error", "Submission failed"); 
+        }
     };
 
     const getOrdinal = (n: number) => {
@@ -351,80 +295,45 @@ const StudentFeeScreen = () => {
                 <FlatList
                     data={feeList}
                     keyExtractor={(item) => item.id.toString()}
-                    renderItem={({ item }) => (
-                        <FeeCard 
-                            item={item} 
-                            user={user} 
-                            onPayPress={openPayModal}
-                            onViewProof={handleViewProof}
-                            onEdit={handleEdit}
-                            onDelete={handleDelete}
-                        />
-                    )}
+                    renderItem={({ item }) => <FeeCard item={item} user={user} onPayPress={openPayModal} onViewProof={handleViewProof} onEdit={handleEdit} onDelete={handleDelete} />}
                     contentContainerStyle={{padding: 10}}
                     ListEmptyComponent={<Text style={styles.emptyText}>No fees assigned to you yet.</Text>}
                 />
             )}
 
-            {/* --- SUBMISSION MODAL --- */}
+            {/* SUBMIT MODAL */}
             <Modal visible={isSubmitModalVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>{isEditing ? "Edit Payment Proof" : "Upload Payment Proof"}</Text>
-                        
                         <View style={styles.infoBox}>
                             <Text style={styles.infoText}>Fee: {selectedFee?.title}</Text>
                             <Text style={[styles.infoText, {fontWeight: 'bold'}]}>Total: ₹{selectedFee?.total_amount.toLocaleString()}</Text>
                         </View>
-
                         <Text style={styles.label}>Select Payment Type:</Text>
                         <View style={styles.pickerBox}>
-                            <Picker 
-                                selectedValue={paymentMode} 
-                                onValueChange={(v) => setPaymentMode(v)}
-                                enabled={selectedFee?.allow_installments === 1 && !isEditing} // Disable change if editing
-                            >
+                            <Picker selectedValue={paymentMode} onValueChange={(v) => setPaymentMode(v)} enabled={selectedFee?.allow_installments === 1 && !isEditing}>
                                 <Picker.Item label="One Time Payment" value="one_time" />
                                 {selectedFee?.allow_installments === 1 && <Picker.Item label="Installment" value="installment" />}
                             </Picker>
                         </View>
-
-                        {/* --- INSTALLMENT SELECTION --- */}
                         {paymentMode === 'installment' && (
                             <ScrollView style={styles.scrollArea}>
-                                {loadingDetails ? (
-                                    <ActivityIndicator color="#008080" style={{marginTop: 20}} />
-                                ) : (
+                                {loadingDetails ? <ActivityIndicator color="#008080" style={{marginTop: 20}} /> : (
                                     <>
                                         <Text style={styles.sectionHeader}>Select Installment:</Text>
                                         {installments.filter(i => i.status !== 'paid').map((inst, index) => {
                                             const isPending = inst.status === 'pending';
                                             const isSelected = selectedInstNumber === inst.installment_number;
-                                            // Allow selection if it's the one we are editing OR it's unpaid
                                             const disabled = isPending && !isEditing; 
-                                            
                                             return (
-                                                <TouchableOpacity 
-                                                    key={index} 
-                                                    style={[
-                                                        styles.instRow, 
-                                                        isSelected && styles.instRowSelected,
-                                                        disabled && styles.instRowDisabled
-                                                    ]}
-                                                    onPress={() => { if (!disabled) setSelectedInstNumber(inst.installment_number); }}
-                                                    disabled={disabled}
-                                                >
+                                                <TouchableOpacity key={index} style={[styles.instRow, isSelected && styles.instRowSelected, disabled && styles.instRowDisabled]} onPress={() => { if (!disabled) setSelectedInstNumber(inst.installment_number); }} disabled={disabled}>
                                                     <View style={{flex: 1}}>
                                                         <Text style={styles.instTitle}>{getOrdinal(inst.installment_number)} Installment</Text>
                                                         <Text style={styles.instAmount}>₹{inst.amount.toLocaleString()}</Text>
                                                         <Text style={styles.instDate}>Due: {formatDate(inst.due_date)}</Text>
                                                     </View>
-                                                    
-                                                    {isSelected ? (
-                                                        <Icon name="radio-button-checked" size={24} color="#008080" />
-                                                    ) : (
-                                                        <Icon name="radio-button-unchecked" size={24} color="#777" />
-                                                    )}
+                                                    {isSelected ? <Icon name="radio-button-checked" size={24} color="#008080" /> : <Icon name="radio-button-unchecked" size={24} color="#777" />}
                                                 </TouchableOpacity>
                                             )
                                         })}
@@ -432,51 +341,32 @@ const StudentFeeScreen = () => {
                                 )}
                             </ScrollView>
                         )}
-
                         <TouchableOpacity style={styles.uploadBox} onPress={handleSelectImage}>
-                            {imageUri ? (
-                                <Image source={{uri: imageUri}} style={{width: '100%', height: '100%', resizeMode: 'cover', borderRadius: 8}} />
-                            ) : (
-                                <>
-                                    <Icon name="add-photo-alternate" size={40} color="#ccc" />
-                                    <Text style={{color: '#999', marginTop: 5}}>Tap to upload new proof</Text>
-                                </>
-                            )}
+                            {imageUri ? <Image source={{uri: imageUri}} style={{width: '100%', height: '100%', resizeMode: 'cover', borderRadius: 8}} /> : 
+                            <><Icon name="add-photo-alternate" size={40} color="#ccc" /><Text style={{color: '#999', marginTop: 5}}>Tap to upload new proof</Text></>}
                         </TouchableOpacity>
-
                         <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 10}}>
-                            <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setSubmitModalVisible(false)}>
-                                <Text style={styles.cancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={[styles.modalBtn, styles.submitBtn]} onPress={handleSubmitProof}>
-                                <Text style={styles.submitText}>{isEditing ? "Update" : "Submit"}</Text>
-                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.modalBtn, styles.cancelBtn]} onPress={() => setSubmitModalVisible(false)}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
+                            <TouchableOpacity style={[styles.modalBtn, styles.submitBtn]} onPress={handleSubmitProof}><Text style={styles.submitText}>{isEditing ? "Update" : "Submit"}</Text></TouchableOpacity>
                         </View>
                     </View>
                 </View>
             </Modal>
 
-            {/* --- VIEW PROOF MODAL (FIXED WHITE IMAGE ISSUE) --- */}
+            {/* VIEW PROOF MODAL - DARK BACKGROUND */}
             <Modal visible={isViewProofVisible} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { backgroundColor: '#222' }]}>
                         <Text style={[styles.modalTitle, {color: '#FFF'}]}>Payment Proof</Text>
-                        
                         <View style={styles.proofContainer}>
-                             {viewProofUrl ? (
-                                 <Image source={{uri: viewProofUrl}} style={{width: '100%', height: '100%', resizeMode: 'contain'}} />
-                             ) : (
-                                 <Text style={{color: '#AAA'}}>No image available</Text>
-                             )}
+                             {viewProofUrl ? <Image source={{uri: viewProofUrl}} style={{width: '100%', height: '100%', resizeMode: 'contain'}} /> : <Text style={{color: '#AAA'}}>No image available</Text>}
                         </View>
-
                         <TouchableOpacity style={[styles.modalBtn, {backgroundColor: '#555', marginTop: 15, width: '100%'}]} onPress={() => setViewProofVisible(false)}>
                             <Text style={{color: '#FFF', fontWeight: 'bold'}}>Close</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
-
         </SafeAreaView>
     );
 };
@@ -488,8 +378,6 @@ const styles = StyleSheet.create({
     headerTextContainer: { justifyContent: 'center' },
     headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
     headerSubtitle: { fontSize: 13, color: '#666' },
-
-    // Fee Card
     feeCard: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 15, elevation: 2, marginHorizontal: 10, overflow: 'hidden' },
     tabContainer: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#EEE' },
     tabBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', backgroundColor: '#FAFAFA' },
@@ -505,19 +393,13 @@ const styles = StyleSheet.create({
     installmentText: { color: '#2980B9', fontSize: 12, fontWeight: '500', marginBottom: 10 },
     payBtn: { backgroundColor: '#008080', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 12, borderRadius: 8, marginTop: 10 },
     payBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
-    
-    // History
     historyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
     historyLabel: { fontSize: 14, fontWeight: 'bold', color: '#444' },
     historyDate: { fontSize: 12, color: '#888', marginTop: 2 },
     historyAmount: { fontSize: 14, fontWeight: 'bold', color: '#333' },
     statusBadge: { fontSize: 11, fontWeight: 'bold', marginTop: 2 },
-    
-    // New Icons Container in History Row
     iconContainer: { flexDirection: 'row', gap: 10 },
     iconBtn: { padding: 4 },
-
-    // Modal
     emptyText: { textAlign: 'center', marginTop: 30, color: '#999' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
     modalContent: { backgroundColor: '#FFF', width: '90%', borderRadius: 12, padding: 20, maxHeight: '85%' },
@@ -528,22 +410,18 @@ const styles = StyleSheet.create({
     pickerBox: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, marginBottom: 10 },
     scrollArea: { maxHeight: 200, marginBottom: 10 },
     sectionHeader: { fontSize: 13, fontWeight: 'bold', color: '#555', marginTop: 10, marginBottom: 5 },
-    
     instRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#EEE', marginBottom: 8, backgroundColor: '#FFF' },
     instRowSelected: { borderColor: '#008080', backgroundColor: '#E0F2F1' },
     instRowDisabled: { backgroundColor: '#F9F9F9', opacity: 0.6 },
     instTitle: { fontSize: 14, fontWeight: 'bold', color: '#333' },
     instAmount: { fontSize: 14, fontWeight: '600', color: '#27AE60' },
     instDate: { fontSize: 11, color: '#777' },
-
     uploadBox: { height: 120, borderWidth: 1, borderColor: '#DDD', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', borderRadius: 8, marginBottom: 15, marginTop: 5 },
     modalBtn: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center' },
     submitBtn: { backgroundColor: '#008080', marginLeft: 5 },
     cancelBtn: { backgroundColor: '#FFF', marginRight: 5, borderWidth: 1, borderColor: '#DDD' },
     submitText: { color: '#FFF', fontWeight: 'bold' },
     cancelText: { color: '#777', fontWeight: 'bold' },
-
-    // Proof Container (Dark for better image contrast)
     proofContainer: { height: 300, backgroundColor: '#000', borderRadius: 8, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }
 });
 
