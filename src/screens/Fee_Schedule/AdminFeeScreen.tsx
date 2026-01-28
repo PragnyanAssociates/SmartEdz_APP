@@ -19,7 +19,7 @@ interface FeeSchedule {
     id: number;
     title: string;
     total_amount: number;
-    due_date: string;
+    due_date: string; // YYYY-MM-DD from DB
     allow_installments: number; 
     max_installments: number;
 }
@@ -37,8 +37,8 @@ interface StudentFeeStatus {
 
 interface InstallmentItem {
     amount: string;
-    due_date: string;
-    dateObject: Date; // Helper for picker
+    due_date: string; // Display format (DD/MM/YYYY)
+    dateObject: Date; // Actual Date object for logic
 }
 
 const AdminFeeScreen = () => {
@@ -55,7 +55,7 @@ const AdminFeeScreen = () => {
     const [newFee, setNewFee] = useState({ 
         title: '', 
         amount: '', 
-        dueDate: '', 
+        dueDate: '', // Display format (DD/MM/YYYY)
         dateObject: new Date(), 
         installments: false 
     });
@@ -73,6 +73,36 @@ const AdminFeeScreen = () => {
     const [isVerifyModalVisible, setVerifyModalVisible] = useState(false);
     const [selectedStudentForVerify, setSelectedStudentForVerify] = useState<StudentFeeStatus | null>(null);
 
+    // --- DATE & AMOUNT HELPERS ---
+
+    // 1. Clean Amount (Remove commas)
+    const sanitizeAmount = (amountStr: string) => {
+        return amountStr.replace(/,/g, '').trim();
+    };
+
+    // 2. Convert Date Object -> "DD/MM/YYYY" (For Display)
+    const formatDateForDisplay = (date: Date) => {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}/${month}/${year}`;
+    };
+
+    // 3. Convert Date Object -> "YYYY-MM-DD" (For Database)
+    const formatDateForDB = (date: Date) => {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${year}-${month}-${day}`;
+    };
+
+    // 4. Convert DB String "YYYY-MM-DD" -> "DD/MM/YYYY" (For List Rendering)
+    const formatDBStringForDisplay = (dateString: string) => {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return formatDateForDisplay(date);
+    };
+
     // --- API CALLS ---
 
     const fetchFeesForClass = async (className: string) => {
@@ -89,6 +119,9 @@ const AdminFeeScreen = () => {
     const handleCreateFee = async () => {
         if (!newFee.title || !newFee.amount || !newFee.dueDate) return Alert.alert("Error", "Fill all main fields");
         
+        // Clean the main amount (remove commas)
+        const cleanTotalAmount = sanitizeAmount(newFee.amount);
+
         // Validation: If installments selected, check breakdown
         if (newFee.installments) {
             if (installmentBreakdown.length === 0) return Alert.alert("Error", "Please specify number of installments");
@@ -98,31 +131,40 @@ const AdminFeeScreen = () => {
                 if (!installmentBreakdown[i].amount || !installmentBreakdown[i].due_date) {
                     return Alert.alert("Error", `Fill details for Installment ${i + 1}`);
                 }
-                totalInstAmount += parseFloat(installmentBreakdown[i].amount);
+                // Add cleaned amount to total
+                totalInstAmount += parseFloat(sanitizeAmount(installmentBreakdown[i].amount));
             }
 
-            // Optional: Check if installment sum matches total
-            if (totalInstAmount !== parseFloat(newFee.amount)) {
-                Alert.alert("Warning", `Sum of installments (${totalInstAmount}) does not match Total Amount (${newFee.amount}). Proceeding anyway.`);
-                // Return here if you want to block it
+            // Optional: Check if total matches
+            if (totalInstAmount !== parseFloat(cleanTotalAmount)) {
+                Alert.alert("Notice", `Installment Total (${totalInstAmount}) does not match Total Amount (${cleanTotalAmount}). Make sure this is intended.`);
             }
         }
 
         try {
-            await apiClient.post('/fees/create', {
+            // Prepare Payload
+            const payload = {
                 class_group: selectedClass,
                 title: newFee.title,
                 description: 'School Fee',
-                total_amount: newFee.amount,
-                due_date: newFee.dueDate, 
+                total_amount: cleanTotalAmount, // Send cleaned number
+                due_date: formatDateForDB(newFee.dateObject),
                 allow_installments: newFee.installments,
-                installment_details: newFee.installments ? installmentBreakdown : []
-            });
+                installment_details: newFee.installments ? installmentBreakdown.map(inst => ({
+                    amount: sanitizeAmount(inst.amount), // Send cleaned number
+                    due_date: formatDateForDB(inst.dateObject)
+                })) : []
+            };
+
+            await apiClient.post('/fees/create', payload);
             setCreateModalVisible(false);
             resetForm();
             fetchFeesForClass(selectedClass); 
             Alert.alert("Success", "Fee Schedule Created");
-        } catch (error) { Alert.alert("Error", "Failed to create fee"); }
+        } catch (error: any) { 
+            console.error(error);
+            Alert.alert("Error", "Failed to create fee. Please check amounts and try again."); 
+        }
     };
 
     const resetForm = () => {
@@ -131,18 +173,18 @@ const AdminFeeScreen = () => {
         setInstallmentBreakdown([]);
     };
 
-    // --- HELPER FUNCTIONS ---
+    // --- HANDLERS ---
 
     const handleDateChange = (event: any, selectedDate?: Date) => {
         setShowDatePicker(false);
         if (selectedDate) {
-            const formattedDate = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD
+            const displayDate = formatDateForDisplay(selectedDate); // DD/MM/YYYY
 
             if (datePickerType === 'main') {
-                setNewFee({ ...newFee, dueDate: formattedDate, dateObject: selectedDate });
+                setNewFee({ ...newFee, dueDate: displayDate, dateObject: selectedDate });
             } else if (datePickerType === 'installment' && activeInstallmentIndex > -1) {
                 const updatedList = [...installmentBreakdown];
-                updatedList[activeInstallmentIndex].due_date = formattedDate;
+                updatedList[activeInstallmentIndex].due_date = displayDate;
                 updatedList[activeInstallmentIndex].dateObject = selectedDate;
                 setInstallmentBreakdown(updatedList);
             }
@@ -159,7 +201,6 @@ const AdminFeeScreen = () => {
         setNumberOfInstallments(text);
         const count = parseInt(text);
         if (!isNaN(count) && count > 0 && count <= 12) {
-            // Generate empty breakdown array
             const arr: InstallmentItem[] = [];
             for (let i = 0; i < count; i++) {
                 arr.push({ amount: '', due_date: '', dateObject: new Date() });
@@ -187,9 +228,20 @@ const AdminFeeScreen = () => {
         finally { setLoading(false); }
     };
 
-    // --- RENDER FUNCTIONS ---
-    // (renderClassGrid and renderFeeList are same as before, simplified for brevity)
+    const handleVerifyPayment = async (status: 'paid' | 'rejected') => {
+        if (!selectedStudentForVerify?.submission_id) return;
+        try {
+            await apiClient.put('/fees/verify', {
+                submission_id: selectedStudentForVerify.submission_id,
+                status: status,
+                admin_remarks: status === 'paid' ? 'Verified' : 'Rejected due to invalid proof'
+            });
+            setVerifyModalVisible(false);
+            if (selectedFee) fetchStudentStatusForFee(selectedFee); 
+        } catch (error) { Alert.alert("Error", "Update failed"); }
+    };
 
+    // --- RENDER ---
     return (
         <SafeAreaView style={styles.container}>
             {/* Header */}
@@ -235,7 +287,7 @@ const AdminFeeScreen = () => {
                                 <View>
                                     <Text style={styles.feeTitle}>{item.title}</Text>
                                     <Text style={styles.feeAmount}>₹{item.total_amount}</Text>
-                                    <Text style={styles.feeDate}>Due: {new Date(item.due_date).toDateString()}</Text>
+                                    <Text style={styles.feeDate}>Due: {formatDBStringForDisplay(item.due_date)}</Text>
                                 </View>
                                 <Icon name="chevron-right" size={24} color="#008080" />
                             </TouchableOpacity>
@@ -252,11 +304,23 @@ const AdminFeeScreen = () => {
                         <Text style={styles.subHeaderTitle}>Status: {selectedFee?.title}</Text>
                     </View>
                     <ScrollView contentContainerStyle={{padding: 10}}>
-                         {/* Simplified list for brevity */}
+                         {/* Simple list view for students */}
                          {studentStatuses.map(student => (
-                             <View key={student.student_id} style={styles.studentCard}>
-                                <Text style={styles.studentName}>{student.full_name}</Text>
-                                <Text style={styles.statusText}>{student.status || 'UNPAID'}</Text>
+                             <View key={student.student_id} style={[
+                                 styles.studentCard, 
+                                 { borderLeftColor: student.status === 'paid' ? '#2ECC71' : (student.status === 'pending' ? '#F39C12' : '#E74C3C') }
+                             ]}>
+                                <View>
+                                    <Text style={styles.studentName}>{student.full_name} ({student.roll_no})</Text>
+                                    <Text style={[styles.statusText, { color: student.status === 'paid' ? '#2ECC71' : (student.status === 'pending' ? '#F39C12' : '#E74C3C') }]}>
+                                        {student.status ? student.status.toUpperCase() : 'UNPAID'}
+                                    </Text>
+                                </View>
+                                {student.status === 'pending' && (
+                                    <TouchableOpacity onPress={() => { setSelectedStudentForVerify(student); setVerifyModalVisible(true); }}>
+                                        <Icon name="visibility" size={24} color="#008080" />
+                                    </TouchableOpacity>
+                                )}
                              </View>
                          ))}
                     </ScrollView>
@@ -270,7 +334,6 @@ const AdminFeeScreen = () => {
                         <Text style={styles.modalTitle}>Assign Fee to {selectedClass}</Text>
                         
                         <ScrollView contentContainerStyle={{paddingBottom: 20}}>
-                            {/* Title */}
                             <TextInput 
                                 placeholder="Fee Title (e.g. Annual Fee)" 
                                 style={styles.input} 
@@ -278,9 +341,8 @@ const AdminFeeScreen = () => {
                                 onChangeText={t => setNewFee({...newFee, title: t})} 
                             />
                             
-                            {/* Total Amount */}
                             <TextInput 
-                                placeholder="Total Amount (e.g. 15000)" 
+                                placeholder="Total Amount (e.g. 1,80,000)" 
                                 style={styles.input} 
                                 keyboardType="numeric" 
                                 value={newFee.amount} 
@@ -290,12 +352,11 @@ const AdminFeeScreen = () => {
                             {/* Main Due Date Picker */}
                             <TouchableOpacity onPress={() => openDatePicker('main')} style={styles.dateInput}>
                                 <Text style={{color: newFee.dueDate ? '#333' : '#999'}}>
-                                    {newFee.dueDate || "Select Due Date (YYYY-MM-DD)"}
+                                    {newFee.dueDate || "Select Due Date (DD/MM/YYYY)"}
                                 </Text>
                                 <Icon name="calendar-today" size={20} color="#666" />
                             </TouchableOpacity>
 
-                            {/* Checkbox */}
                             <TouchableOpacity style={styles.checkboxRow} onPress={() => setNewFee({...newFee, installments: !newFee.installments})}>
                                 <Text style={styles.label}>Allow Installments?</Text>
                                 <Icon 
@@ -304,7 +365,7 @@ const AdminFeeScreen = () => {
                                 />
                             </TouchableOpacity>
 
-                            {/* Dynamic Installment Inputs */}
+                            {/* Dynamic Installments */}
                             {newFee.installments && (
                                 <View style={styles.installmentContainer}>
                                     <TextInput 
@@ -319,7 +380,6 @@ const AdminFeeScreen = () => {
                                         <View key={index} style={styles.instRow}>
                                             <Text style={styles.instLabel}>Inst. {index + 1}:</Text>
                                             
-                                            {/* Amount Input */}
                                             <TextInput 
                                                 placeholder="Amount" 
                                                 style={[styles.input, styles.instInput]} 
@@ -328,13 +388,12 @@ const AdminFeeScreen = () => {
                                                 onChangeText={(val) => updateInstallmentAmount(index, val)}
                                             />
                                             
-                                            {/* Due Date Picker Trigger */}
                                             <TouchableOpacity 
                                                 onPress={() => openDatePicker('installment', index)} 
                                                 style={[styles.dateInput, styles.instDateInput]}
                                             >
                                                 <Text style={{fontSize: 12, color: item.due_date ? '#333' : '#999'}}>
-                                                    {item.due_date || "Date"}
+                                                    {item.due_date || "DD/MM/YYYY"}
                                                 </Text>
                                             </TouchableOpacity>
                                         </View>
@@ -367,6 +426,30 @@ const AdminFeeScreen = () => {
                 />
             )}
 
+            {/* Verify Payment Modal */}
+            <Modal visible={isVerifyModalVisible} animationType="fade" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Verify Payment</Text>
+                        <Text style={styles.label}>Student: {selectedStudentForVerify?.full_name}</Text>
+                        
+                        <View style={styles.proofContainer}>
+                            <Image source={{ uri: selectedStudentForVerify?.screenshot_url || '' }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
+                        </View>
+
+                        <View style={{flexDirection: 'row', gap: 10, marginTop: 10}}>
+                            <TouchableOpacity style={[styles.saveBtn, {backgroundColor: '#E74C3C', flex: 1}]} onPress={() => handleVerifyPayment('rejected')}>
+                                <Text style={styles.btnText}>Reject</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.saveBtn, {backgroundColor: '#2ECC71', flex: 1}]} onPress={() => handleVerifyPayment('paid')}>
+                                <Text style={styles.btnText}>Approve</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setVerifyModalVisible(false)}><Text style={styles.cancelText}>Close</Text></TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
         </SafeAreaView>
     );
 };
@@ -394,9 +477,9 @@ const styles = StyleSheet.create({
     feeTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
     feeAmount: { fontSize: 18, color: '#2ECC71', fontWeight: 'bold', marginTop: 4 },
     feeDate: { color: '#777', fontSize: 12, marginTop: 2 },
-    studentCard: { backgroundColor: '#FFF', padding: 15, borderRadius: 8, marginBottom: 8, elevation: 1 },
+    studentCard: { backgroundColor: '#FFF', padding: 15, borderRadius: 8, marginBottom: 8, borderLeftWidth: 5, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 1 },
     studentName: { fontSize: 15, fontWeight: '600', color: '#333' },
-    statusText: { fontSize: 12, fontWeight: 'bold', marginTop: 2, color: '#555' },
+    statusText: { fontSize: 12, fontWeight: 'bold', marginTop: 2 },
     emptyText: { textAlign: 'center', marginTop: 20, color: '#999' },
 
     // Modal Styles
@@ -416,6 +499,7 @@ const styles = StyleSheet.create({
     instInput: { flex: 1, marginRight: 5, marginBottom: 0, paddingVertical: 5 },
     instDateInput: { flex: 1, marginBottom: 0, paddingVertical: 8 },
 
+    proofContainer: { height: 250, backgroundColor: '#000', borderRadius: 8, overflow: 'hidden', marginVertical: 10 },
     saveBtn: { backgroundColor: '#008080', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 10 },
     btnText: { color: '#FFF', fontWeight: 'bold' },
     cancelBtn: { padding: 10, alignItems: 'center', marginTop: 5 },
