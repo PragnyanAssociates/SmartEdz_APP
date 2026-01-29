@@ -8,7 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import apiClient from '../../api/client';
 import * as Animatable from 'react-native-animatable';
 
-const SERVER_URL = 'https://vivekanandapublicschoolerp-production.up.railway.app'; 
+const SERVER_URL = 'https://smartedzapp-production.up.railway.app'; 
 
 // --- COLORS ---
 const COLORS = {
@@ -16,7 +16,7 @@ const COLORS = {
     background: '#F2F5F8', 
     cardBg: '#FFFFFF',
     textMain: '#263238',
-    textSub: '#546E7A',
+    textSub: '#546E7A', 
     border: '#CFD8DC',
     success: '#43A047',
     blue: '#1E88E5'
