@@ -10222,7 +10222,7 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 
 
 // ==========================================================
-// --- FEE SCHEDULE API ROUTES (CORRECTED ORDER) ---
+// --- FEE SCHEDULE API ROUTES ---
 // ==========================================================
 
 const proofStorage = multer.diskStorage({
@@ -10237,7 +10237,7 @@ const proofStorage = multer.diskStorage({
 const proofUpload = multer({ storage: proofStorage });
 
 
-// 9. [ADMIN] Verify Payment (Moved to top to prevent ID conflict)
+// 9. [ADMIN] Verify Payment
 app.put('/api/fees/verify', async (req, res) => {
     console.log("Verify Request Body:", req.body);
 
@@ -10398,7 +10398,7 @@ app.delete('/api/student/submission/:id', async (req, res) => {
     }
 });
 
-// 8. [ADMIN] Get Student Status List (FIXED: Sorted by Roll Number)
+// 8. [ADMIN] Get Student Status List
 app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     const { fee_schedule_id } = req.params;
     try {

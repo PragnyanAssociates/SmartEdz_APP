@@ -37,7 +37,6 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
 }) => {
     const [activeTab, setActiveTab] = useState<'details' | 'history'>('details');
     const [historyData, setHistoryData] = useState<InstallmentDetail[]>([]);
-    const [oneTimeStatus, setOneTimeStatus] = useState<string>('unpaid');
     const [loadingHistory, setLoadingHistory] = useState(false);
 
     const fetchHistory = async () => {
@@ -47,7 +46,6 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
                 params: { fee_schedule_id: item.id, student_id: user?.id }
             });
             setHistoryData(res.data.installments);
-            setOneTimeStatus(res.data.oneTimeStatus || 'unpaid');
         } catch (error) {
             console.error("Error fetching history", error);
         } finally {
@@ -119,7 +117,6 @@ const FeeCard = ({ item, user, onPayPress, onViewProof, onEdit, onDelete }: {
                                             <Text style={styles.historyLabel}>Inst. {inst.installment_number}</Text>
                                             <Text style={styles.historyDate}>{formatDate(inst.due_date)}</Text>
                                         </View>
-                                        {/* VIEW / EDIT / DELETE ICONS */}
                                         {inst.status === 'pending' && (
                                             <View style={styles.iconContainer}>
                                                 <TouchableOpacity onPress={() => onViewProof(inst.screenshot_url || '')} style={styles.iconBtn}>
@@ -157,7 +154,6 @@ const StudentFeeScreen = () => {
     const [selectedFee, setSelectedFee] = useState<FeeSchedule | null>(null);
     const [isEditing, setIsEditing] = useState(false); 
     
-    // View Proof Logic
     const [isViewProofVisible, setViewProofVisible] = useState(false);
     const [viewProofUrl, setViewProofUrl] = useState('');
 
@@ -354,16 +350,13 @@ const StudentFeeScreen = () => {
                 </View>
             </Modal>
 
-            {/* --- UPDATED VIEW PROOF MODAL (SIMPLE: PHOTO & CLOSE) --- */}
+            {/* --- VIEW PROOF MODAL --- */}
             <Modal visible={isViewProofVisible} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.viewProofContent}>
-                        {/* Close Icon */}
                         <TouchableOpacity style={styles.closeIcon} onPress={() => setViewProofVisible(false)}>
                             <Icon name="close" size={24} color="#333" />
                         </TouchableOpacity>
-                        
-                        {/* Image */}
                         <View style={styles.simpleProofContainer}>
                              {viewProofUrl ? (
                                  <Image source={{uri: viewProofUrl}} style={styles.simpleProofImage} />
@@ -430,7 +423,6 @@ const styles = StyleSheet.create({
     submitText: { color: '#FFF', fontWeight: 'bold' },
     cancelText: { color: '#777', fontWeight: 'bold' },
 
-    // --- NEW STYLES FOR SIMPLE VIEW PROOF MODAL ---
     viewProofContent: {
         backgroundColor: '#FFF',
         width: '90%',
@@ -446,14 +438,14 @@ const styles = StyleSheet.create({
         width: '100%',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#FFF', // White background
+        backgroundColor: '#FFF', 
         borderRadius: 8,
         overflow: 'hidden'
     },
     simpleProofImage: {
         width: '100%',
         height: '100%',
-        resizeMode: 'contain' // Ensures full image is seen cleanly
+        resizeMode: 'contain' 
     },
     closeIcon: {
         position: 'absolute',

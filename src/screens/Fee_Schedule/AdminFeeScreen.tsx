@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker'; // Make sure to install this
 import apiClient from '../../api/client'; 
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -12,6 +13,15 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 const CLASS_LIST = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
+
+// Predefined Fee Types
+const FEE_TYPES = [
+    "Tuition Fee", "Examination Fee", "Lab Fee", "Library Fee",
+    "LMS / Online Fee", "Digital Fee", "Maintenance Fee", "Medical Fee",
+    "Sports Fee", "Activity Fee", "Training Fee", "Transport Fee",
+    "Uniform Fee", "Tour Fee", "Hostel Fee", "Food / Mess Fee",
+    "ADD +" 
+];
 
 interface FeeSchedule {
     id: number;
@@ -48,13 +58,18 @@ const AdminFeeScreen = () => {
     const [studentStatuses, setStudentStatuses] = useState<StudentFeeStatus[]>([]);
     const [loading, setLoading] = useState(false);
 
-    // Filter Tabs State
-    const [activeTab, setActiveTab] = useState<'unpaid' | 'paid'>('unpaid');
+    // Filter Tabs State: 'all' shows everyone, 'paid' shows only paid history
+    const [activeTab, setActiveTab] = useState<'all' | 'paid'>('all');
 
     const [isCreateModalVisible, setCreateModalVisible] = useState(false);
     const [isEditing, setIsEditing] = useState(false); 
     const [editId, setEditId] = useState<number | null>(null); 
-    const [newFee, setNewFee] = useState({ title: '', amount: '', dueDate: '', dateObject: new Date(), installments: false });
+    
+    // Fee Creation States
+    const [selectedFeeType, setSelectedFeeType] = useState(FEE_TYPES[0]);
+    const [customTitle, setCustomTitle] = useState('');
+    
+    const [newFee, setNewFee] = useState({ amount: '', dueDate: '', dateObject: new Date(), installments: false });
     const [numberOfInstallments, setNumberOfInstallments] = useState('');
     const [installmentBreakdown, setInstallmentBreakdown] = useState<InstallmentItem[]>([]);
     const [showDatePicker, setShowDatePicker] = useState(false);
@@ -71,8 +86,8 @@ const AdminFeeScreen = () => {
             // Show only fully PAID items
             return studentStatuses.filter(s => s.status === 'paid');
         } else {
-            // Unpaid Tab: Show 'unpaid', 'pending', or 'rejected'
-            return studentStatuses.filter(s => s.status !== 'paid');
+            // 'all' tab: Show EVERYONE (Paid, Unpaid, Pending)
+            return studentStatuses;
         }
     }, [studentStatuses, activeTab]);
 
@@ -105,8 +120,25 @@ const AdminFeeScreen = () => {
     };
 
     const openEditModal = async (item: FeeSchedule) => {
-        setEditId(item.id); setIsEditing(true);
-        setNewFee({ title: item.title, amount: item.total_amount.toString(), dueDate: formatDBStringForDisplay(item.due_date), dateObject: new Date(item.due_date), installments: item.allow_installments === 1 });
+        setEditId(item.id); 
+        setIsEditing(true);
+
+        // Handle Title Logic (Dropdown vs Custom)
+        if (FEE_TYPES.includes(item.title) && item.title !== "ADD +") {
+            setSelectedFeeType(item.title);
+            setCustomTitle('');
+        } else {
+            setSelectedFeeType("ADD +");
+            setCustomTitle(item.title);
+        }
+
+        setNewFee({ 
+            amount: item.total_amount.toString(), 
+            dueDate: formatDBStringForDisplay(item.due_date), 
+            dateObject: new Date(item.due_date), 
+            installments: item.allow_installments === 1 
+        });
+
         if (item.allow_installments === 1) {
             setNumberOfInstallments(item.max_installments.toString());
             try {
@@ -120,24 +152,59 @@ const AdminFeeScreen = () => {
         setCreateModalVisible(true);
     };
 
-    const openCreateModal = () => { resetForm(); setIsEditing(false); setEditId(null); setCreateModalVisible(true); };
+    const openCreateModal = () => { 
+        resetForm(); 
+        setIsEditing(false); 
+        setEditId(null); 
+        setCreateModalVisible(true); 
+    };
 
     const handleSaveFee = async () => {
-        if (!newFee.title || !newFee.amount || !newFee.dueDate) return Alert.alert("Error", "Fill all main fields");
+        // Determine Final Title
+        const finalTitle = selectedFeeType === "ADD +" ? customTitle.trim() : selectedFeeType;
+
+        if (!finalTitle) return Alert.alert("Error", "Please select or enter a Fee Type");
+        if (!newFee.amount || !newFee.dueDate) return Alert.alert("Error", "Fill all main fields");
+        
         const cleanTotalAmount = sanitizeAmount(newFee.amount);
+        
         if (newFee.installments) {
             if (installmentBreakdown.length === 0) return Alert.alert("Error", "Please specify number of installments");
             for (let i = 0; i < installmentBreakdown.length; i++) if (!installmentBreakdown[i].amount || !installmentBreakdown[i].due_date) return Alert.alert("Error", `Fill details for Installment ${i + 1}`);
         }
+
         try {
-            const payload = { class_group: selectedClass, title: newFee.title, description: 'School Fee', total_amount: cleanTotalAmount, due_date: formatDateForDB(newFee.dateObject), allow_installments: newFee.installments, installment_details: newFee.installments ? installmentBreakdown.map(inst => ({ amount: sanitizeAmount(inst.amount), due_date: formatDateForDB(inst.dateObject) })) : [] };
-            if (isEditing && editId) { await apiClient.put(`/fees/${editId}`, payload); Alert.alert("Success", "Updated"); } 
-            else { await apiClient.post('/fees/create', payload); Alert.alert("Success", "Created"); }
+            const payload = { 
+                class_group: selectedClass, 
+                title: finalTitle, 
+                description: 'School Fee', 
+                total_amount: cleanTotalAmount, 
+                due_date: formatDateForDB(newFee.dateObject), 
+                allow_installments: newFee.installments, 
+                installment_details: newFee.installments ? installmentBreakdown.map(inst => ({ amount: sanitizeAmount(inst.amount), due_date: formatDateForDB(inst.dateObject) })) : [] 
+            };
+            
+            if (isEditing && editId) { 
+                await apiClient.put(`/fees/${editId}`, payload); 
+                Alert.alert("Success", "Updated"); 
+            } else { 
+                await apiClient.post('/fees/create', payload); 
+                Alert.alert("Success", "Created"); 
+            }
             setCreateModalVisible(false); resetForm(); fetchFeesForClass(selectedClass); 
         } catch (error: any) { Alert.alert("Error", "Operation failed"); }
     };
 
-    const resetForm = () => { setNewFee({ title: '', amount: '', dueDate: '', dateObject: new Date(), installments: false }); setNumberOfInstallments(''); setInstallmentBreakdown([]); setIsEditing(false); setEditId(null); };
+    const resetForm = () => { 
+        setSelectedFeeType(FEE_TYPES[0]);
+        setCustomTitle('');
+        setNewFee({ amount: '', dueDate: '', dateObject: new Date(), installments: false }); 
+        setNumberOfInstallments(''); 
+        setInstallmentBreakdown([]); 
+        setIsEditing(false); 
+        setEditId(null); 
+    };
+
     const handleDateChange = (event: any, selectedDate?: Date) => {
         setShowDatePicker(false);
         if (selectedDate) {
@@ -153,7 +220,7 @@ const AdminFeeScreen = () => {
     const updateInstallmentAmount = (index: number, val: string) => { const updatedList = [...installmentBreakdown]; updatedList[index].amount = val; setInstallmentBreakdown(updatedList); };
 
     const fetchStudentStatusForFee = async (fee: FeeSchedule) => {
-        setLoading(true); setSelectedFee(fee); setActiveTab('unpaid');
+        setLoading(true); setSelectedFee(fee); setActiveTab('all');
         try { const res = await apiClient.get(`/fees/status/${fee.id}`); setStudentStatuses(res.data); setViewMode('student_list'); } 
         catch (error) { Alert.alert("Error", "Failed to fetch student data"); } finally { setLoading(false); }
     };
@@ -224,10 +291,6 @@ const AdminFeeScreen = () => {
 
             {!loading && viewMode === 'student_list' && (
                 <View style={{flex: 1}}>
-                     {/* 
-                        FIX: Updated Layout for Center Alignment 
-                        Uses a 3-column approach: Left(Icon), Center(Title), Right(Empty Spacer)
-                     */}
                      <View style={styles.subHeader}>
                         <TouchableOpacity onPress={() => setViewMode('fee_list')} style={{width: 40}}>
                             <Icon name="arrow-back" size={24} color="#333" />
@@ -236,10 +299,10 @@ const AdminFeeScreen = () => {
                         <View style={{width: 40}} /> 
                     </View>
 
-                    {/* --- TABS --- */}
+                    {/* --- UPDATED TABS --- */}
                     <View style={styles.tabContainer}>
-                        <TouchableOpacity style={[styles.tabBtn, activeTab === 'unpaid' && styles.tabBtnActive]} onPress={() => setActiveTab('unpaid')}>
-                            <Text style={[styles.tabText, activeTab === 'unpaid' && {color:'#E74C3C'}]}>Unpaid / Pending</Text>
+                        <TouchableOpacity style={[styles.tabBtn, activeTab === 'all' && styles.tabBtnActive]} onPress={() => setActiveTab('all')}>
+                            <Text style={[styles.tabText, activeTab === 'all' && {color:'#E74C3C'}]}>All List</Text>
                         </TouchableOpacity>
                         <View style={styles.tabDivider} />
                         <TouchableOpacity style={[styles.tabBtn, activeTab === 'paid' && styles.tabBtnActive]} onPress={() => setActiveTab('paid')}>
@@ -270,19 +333,64 @@ const AdminFeeScreen = () => {
                 </View>
             )}
 
-            {/* Create/Edit Modal - Kept same */}
+            {/* Create/Edit Modal with DROPDOWN */}
             <Modal visible={isCreateModalVisible} animationType="slide" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>{isEditing ? `Edit Fee` : `Assign Fee`}</Text>
                         <ScrollView contentContainerStyle={{paddingBottom: 20}}>
-                            <Text style={styles.label}>Title</Text><TextInput placeholder="Fee Title" style={styles.input} value={newFee.title} onChangeText={t => setNewFee({...newFee, title: t})} />
-                            <Text style={styles.label}>Total Amount</Text><TextInput placeholder="Total Amount" style={styles.input} keyboardType="numeric" value={newFee.amount} onChangeText={t => setNewFee({...newFee, amount: t})} />
-                            <Text style={styles.label}>Due Date</Text><TouchableOpacity onPress={() => openDatePicker('main')} style={styles.dateInput}><Text style={{color: newFee.dueDate ? '#333' : '#999'}}>{newFee.dueDate || "Select Due Date"}</Text><Icon name="calendar-today" size={20} color="#666" /></TouchableOpacity>
-                            <TouchableOpacity style={styles.checkboxRow} onPress={() => setNewFee({...newFee, installments: !newFee.installments})}><Text style={styles.label}>Allow Installments?</Text><Icon name={newFee.installments ? "check-box" : "check-box-outline-blank"} size={24} color="#008080" /></TouchableOpacity>
+                            
+                            {/* FEE TYPE DROPDOWN */}
+                            <Text style={styles.label}>Fee Type</Text>
+                            <View style={styles.pickerContainer}>
+                                <Picker
+                                    selectedValue={selectedFeeType}
+                                    onValueChange={(itemValue) => setSelectedFeeType(itemValue)}
+                                    style={styles.picker}
+                                >
+                                    {FEE_TYPES.map((type) => (
+                                        <Picker.Item key={type} label={type} value={type} />
+                                    ))}
+                                </Picker>
+                            </View>
+
+                            {/* CUSTOM TITLE INPUT (Visible only if ADD + is selected) */}
+                            {selectedFeeType === "ADD +" && (
+                                <View style={{marginTop: 5, marginBottom: 10}}>
+                                    <Text style={[styles.label, {fontSize: 12}]}>Enter Custom Fee Name:</Text>
+                                    <TextInput 
+                                        placeholder="e.g. Picnic Fee" 
+                                        style={styles.input} 
+                                        value={customTitle} 
+                                        onChangeText={setCustomTitle} 
+                                    />
+                                </View>
+                            )}
+
+                            <Text style={styles.label}>Total Amount</Text>
+                            <TextInput 
+                                placeholder="Total Amount" 
+                                style={styles.input} 
+                                keyboardType="numeric" 
+                                value={newFee.amount} 
+                                onChangeText={t => setNewFee({...newFee, amount: t})} 
+                            />
+                            
+                            <Text style={styles.label}>Due Date</Text>
+                            <TouchableOpacity onPress={() => openDatePicker('main')} style={styles.dateInput}>
+                                <Text style={{color: newFee.dueDate ? '#333' : '#999'}}>{newFee.dueDate || "Select Due Date"}</Text>
+                                <Icon name="calendar-today" size={20} color="#666" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={styles.checkboxRow} onPress={() => setNewFee({...newFee, installments: !newFee.installments})}>
+                                <Text style={styles.label}>Allow Installments?</Text>
+                                <Icon name={newFee.installments ? "check-box" : "check-box-outline-blank"} size={24} color="#008080" />
+                            </TouchableOpacity>
+
                             {newFee.installments && (
                                 <View style={styles.installmentContainer}>
-                                    <Text style={styles.label}>Number of Installments:</Text><TextInput placeholder="e.g. 3" style={styles.input} keyboardType="numeric" value={numberOfInstallments} onChangeText={handleInstallmentCountChange} />
+                                    <Text style={styles.label}>Number of Installments:</Text>
+                                    <TextInput placeholder="e.g. 3" style={styles.input} keyboardType="numeric" value={numberOfInstallments} onChangeText={handleInstallmentCountChange} />
                                     {installmentBreakdown.map((item, index) => (
                                         <View key={index} style={styles.instRow}>
                                             <Text style={styles.instLabel}>Inst. {index + 1}:</Text>
@@ -301,7 +409,7 @@ const AdminFeeScreen = () => {
 
             {showDatePicker && <DateTimePicker value={datePickerType === 'main' ? newFee.dateObject : (activeInstallmentIndex > -1 ? installmentBreakdown[activeInstallmentIndex].dateObject : new Date())} mode="date" display="default" onChange={handleDateChange} />}
 
-            {/* --- VERIFY PAYMENT MODAL (SIMPLE) --- */}
+            {/* --- VERIFY PAYMENT MODAL --- */}
             <Modal visible={isVerifyModalVisible} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.simpleModalContent}>
@@ -349,7 +457,6 @@ const styles = StyleSheet.create({
     classIconBg: { backgroundColor: '#F0F4F8', padding: 12, borderRadius: 50, marginBottom: 10 },
     classTitle: { fontSize: 15, fontWeight: 'bold', color: '#2C3E50' },
     
-    // FIX: Simplified SubHeader styles for better alignment
     subHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: '#FFF', elevation: 2, marginBottom: 10 },
     subHeaderTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', flex: 1 },
     
@@ -378,7 +485,13 @@ const styles = StyleSheet.create({
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
     modalContent: { backgroundColor: '#FFF', width: '90%', maxHeight:'85%', borderRadius: 12, padding: 20 },
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#008080', marginBottom: 15, textAlign: 'center' },
+    
     input: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: '#FAFAFA' },
+    
+    // Picker Styles
+    pickerContainer: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, backgroundColor: '#FAFAFA', marginBottom: 10, overflow: 'hidden' },
+    picker: { height: 50, width: '100%' },
+
     dateInput: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: '#FAFAFA', flexDirection:'row', justifyContent:'space-between', alignItems:'center' },
     checkboxRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 5 },
     label: { fontSize: 14, fontWeight: 'bold', color: '#555', marginBottom: 5 },
@@ -388,7 +501,6 @@ const styles = StyleSheet.create({
     instInput: { flex: 1, marginRight: 5, marginBottom: 0, paddingVertical: 5 },
     instDateInput: { flex: 1, marginBottom: 0, paddingVertical: 8 },
     
-    // Simple Modal Styles
     simpleModalContent: { backgroundColor: '#FFF', width: '85%', borderRadius: 12, padding: 15 },
     modalTitleSmall: { fontSize: 16, fontWeight: 'bold', color: '#333' },
     simpleProofContainer: { height: 300, backgroundColor: '#F8F9FA', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginTop: 10, overflow:'hidden' },
