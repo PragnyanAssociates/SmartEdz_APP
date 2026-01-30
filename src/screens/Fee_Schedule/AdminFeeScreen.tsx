@@ -14,13 +14,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const CLASS_LIST = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
 
-// Predefined Fee Types
+// CHANGED: "ADD +" moved to the TOP of the list
 const FEE_TYPES = [
+    "ADD +", 
     "Tuition Fee", "Examination Fee", "Lab Fee", "Library Fee",
     "LMS / Online Fee", "Digital Fee", "Maintenance Fee", "Medical Fee",
     "Sports Fee", "Activity Fee", "Training Fee", "Transport Fee",
-    "Uniform Fee", "Tour Fee", "Hostel Fee", "Food / Mess Fee",
-    "ADD +" 
+    "Uniform Fee", "Tour Fee", "Hostel Fee", "Food / Mess Fee"
 ];
 
 interface FeeSchedule {
@@ -44,9 +44,8 @@ interface StudentFeeStatus {
     submitted_at: string | null;
 }
 
-// Updated Interface to include Title
 interface InstallmentItem {
-    title: string; // Added Title
+    title: string; 
     amount: string;
     due_date: string; 
     dateObject: Date; 
@@ -60,8 +59,8 @@ const AdminFeeScreen = () => {
     const [studentStatuses, setStudentStatuses] = useState<StudentFeeStatus[]>([]);
     const [loading, setLoading] = useState(false);
 
-    // Filter Tabs State: 'all' shows everyone, 'paid' shows only paid history
-    const [activeTab, setActiveTab] = useState<'all' | 'paid'>('all');
+    // CHANGED: Added 'unpaid' to state type
+    const [activeTab, setActiveTab] = useState<'all' | 'unpaid' | 'paid'>('all');
 
     const [isCreateModalVisible, setCreateModalVisible] = useState(false);
     const [isEditing, setIsEditing] = useState(false); 
@@ -82,13 +81,16 @@ const AdminFeeScreen = () => {
     const [isVerifyModalVisible, setVerifyModalVisible] = useState(false);
     const [selectedStudentForVerify, setSelectedStudentForVerify] = useState<StudentFeeStatus | null>(null);
 
-    // --- FILTERS ---
+    // --- FILTERS (UPDATED LOGIC) ---
     const filteredStudents = useMemo(() => {
         if (activeTab === 'paid') {
             // Show only fully PAID items
             return studentStatuses.filter(s => s.status === 'paid');
+        } else if (activeTab === 'unpaid') {
+            // Show Unpaid, Pending, Rejected
+            return studentStatuses.filter(s => s.status !== 'paid');
         } else {
-            // 'all' tab: Show EVERYONE (Paid, Unpaid, Pending)
+            // 'all' tab: Show EVERYONE
             return studentStatuses;
         }
     }, [studentStatuses, activeTab]);
@@ -125,7 +127,6 @@ const AdminFeeScreen = () => {
         setEditId(item.id); 
         setIsEditing(true);
 
-        // Handle Title Logic (Dropdown vs Custom)
         if (FEE_TYPES.includes(item.title) && item.title !== "ADD +") {
             setSelectedFeeType(item.title);
             setCustomTitle('');
@@ -146,9 +147,8 @@ const AdminFeeScreen = () => {
             try {
                 const res = await apiClient.get(`/fees/installments/${item.id}`);
                 if (res.data && res.data.length > 0) {
-                    // Map response including the title
                     const mapped = res.data.map((inst: any) => ({ 
-                        title: inst.title || '', // Handle title
+                        title: inst.title || '', 
                         amount: inst.amount.toString(), 
                         due_date: formatDBStringForDisplay(inst.due_date), 
                         dateObject: new Date(inst.due_date) 
@@ -168,7 +168,6 @@ const AdminFeeScreen = () => {
     };
 
     const handleSaveFee = async () => {
-        // Determine Final Title
         const finalTitle = selectedFeeType === "ADD +" ? customTitle.trim() : selectedFeeType;
 
         if (!finalTitle) return Alert.alert("Error", "Please select or enter a Fee Type");
@@ -194,7 +193,7 @@ const AdminFeeScreen = () => {
                 due_date: formatDateForDB(newFee.dateObject), 
                 allow_installments: newFee.installments, 
                 installment_details: newFee.installments ? installmentBreakdown.map(inst => ({ 
-                    title: inst.title || '', // Include Title in payload
+                    title: inst.title || '', 
                     amount: sanitizeAmount(inst.amount), 
                     due_date: formatDateForDB(inst.dateObject) 
                 })) : [] 
@@ -234,7 +233,6 @@ const AdminFeeScreen = () => {
 
     const openDatePicker = (type: 'main' | 'installment', index: number = -1) => { setDatePickerType(type); setActiveInstallmentIndex(index); setShowDatePicker(true); };
 
-    // Initialize list with Title, Amount, Date
     const handleInstallmentCountChange = (text: string) => { 
         setNumberOfInstallments(text); 
         const count = parseInt(text); 
@@ -250,7 +248,6 @@ const AdminFeeScreen = () => {
         }
     };
 
-    // Generic function to update Installment fields (Title or Amount)
     const updateInstallmentField = (index: number, field: 'title' | 'amount', val: string) => { 
         const updatedList = [...installmentBreakdown]; 
         updatedList[index][field] = val; 
@@ -336,9 +333,14 @@ const AdminFeeScreen = () => {
                         <View style={{width: 40}} /> 
                     </View>
 
+                    {/* --- CHANGED: 3 TAB LAYOUT --- */}
                     <View style={styles.tabContainer}>
                         <TouchableOpacity style={[styles.tabBtn, activeTab === 'all' && styles.tabBtnActive]} onPress={() => setActiveTab('all')}>
-                            <Text style={[styles.tabText, activeTab === 'all' && {color:'#E74C3C'}]}>All List</Text>
+                            <Text style={[styles.tabText, activeTab === 'all' && {color:'#008080'}]}>All List</Text>
+                        </TouchableOpacity>
+                        <View style={styles.tabDivider} />
+                        <TouchableOpacity style={[styles.tabBtn, activeTab === 'unpaid' && styles.tabBtnActive]} onPress={() => setActiveTab('unpaid')}>
+                            <Text style={[styles.tabText, activeTab === 'unpaid' && {color:'#E74C3C'}]}>Unpaid</Text>
                         </TouchableOpacity>
                         <View style={styles.tabDivider} />
                         <TouchableOpacity style={[styles.tabBtn, activeTab === 'paid' && styles.tabBtnActive]} onPress={() => setActiveTab('paid')}>
@@ -375,7 +377,6 @@ const AdminFeeScreen = () => {
                         <Text style={styles.modalTitle}>{isEditing ? `Edit Fee` : `Assign Fee`}</Text>
                         <ScrollView contentContainerStyle={{paddingBottom: 20}}>
                             
-                            {/* FEE TYPE DROPDOWN */}
                             <Text style={styles.label}>Fee Type</Text>
                             <View style={styles.pickerContainer}>
                                 <Picker
@@ -383,6 +384,7 @@ const AdminFeeScreen = () => {
                                     onValueChange={(itemValue) => setSelectedFeeType(itemValue)}
                                     style={styles.picker}
                                 >
+                                    {/* ADD + is now at the top of FEE_TYPES array */}
                                     {FEE_TYPES.map((type) => (
                                         <Picker.Item key={type} label={type} value={type} />
                                     ))}
@@ -426,7 +428,6 @@ const AdminFeeScreen = () => {
                                     <Text style={styles.label}>Number of Installments:</Text>
                                     <TextInput placeholder="e.g. 3" style={styles.input} keyboardType="numeric" value={numberOfInstallments} onChangeText={handleInstallmentCountChange} />
                                     
-                                    {/* HEADERS for the list */}
                                     {installmentBreakdown.length > 0 && (
                                         <View style={{flexDirection: 'row', paddingLeft: 35, marginBottom: 5}}>
                                             <Text style={{flex: 1.5, fontSize: 10, fontWeight:'bold', color: '#666'}}>Title</Text>
@@ -439,7 +440,6 @@ const AdminFeeScreen = () => {
                                         <View key={index} style={styles.instRow}>
                                             <Text style={styles.instLabel}>{index + 1}.</Text>
                                             
-                                            {/* ADDED: Title Input */}
                                             <TextInput 
                                                 placeholder="Title" 
                                                 style={[styles.input, styles.instInput, {flex: 1.5, marginRight: 5}]} 
@@ -447,7 +447,6 @@ const AdminFeeScreen = () => {
                                                 onChangeText={(val) => updateInstallmentField(index, 'title', val)} 
                                             />
                                             
-                                            {/* Amount Input */}
                                             <TextInput 
                                                 placeholder="Amt" 
                                                 style={[styles.input, styles.instInput, {flex: 1, marginRight: 5}]} 
@@ -456,7 +455,6 @@ const AdminFeeScreen = () => {
                                                 onChangeText={(val) => updateInstallmentField(index, 'amount', val)} 
                                             />
                                             
-                                            {/* Date Input */}
                                             <TouchableOpacity 
                                                 onPress={() => openDatePicker('installment', index)} 
                                                 style={[styles.dateInput, styles.instDateInput, {flex: 1}]}
@@ -565,7 +563,6 @@ const styles = StyleSheet.create({
     label: { fontSize: 14, fontWeight: 'bold', color: '#555', marginBottom: 5 },
     installmentContainer: { backgroundColor: '#F0F4F8', padding: 10, borderRadius: 8, marginBottom: 10 },
     
-    // Updated Installment Rows for 3 Columns
     instRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 },
     instLabel: { width: 25, fontSize: 12, fontWeight: 'bold', color: '#555' },
     instInput: { marginBottom: 0, paddingVertical: 5, fontSize: 13, height: 40 },

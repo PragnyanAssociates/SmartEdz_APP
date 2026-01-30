@@ -17,11 +17,10 @@ interface FeeSchedule {
     allow_installments: number;
 }
 
-// 1. UPDATED INTERFACE to include 'title'
 interface InstallmentDetail {
     id: number;
     installment_number: number;
-    title?: string; // <--- Added this field
+    title?: string;
     amount: number;
     due_date: string;
     status: 'unpaid' | 'pending' | 'paid' | 'rejected';
@@ -330,13 +329,10 @@ const StudentFeeScreen = () => {
                                             return (
                                                 <TouchableOpacity key={index} style={[styles.instRow, isSelected && styles.instRowSelected, disabled && styles.instRowDisabled]} onPress={() => { if (!disabled) setSelectedInstNumber(inst.installment_number); }} disabled={disabled}>
                                                     <View style={{flex: 1}}>
-                                                        
-                                                        {/* 2. UPDATED DISPLAY LOGIC HERE */}
                                                         <Text style={styles.instTitle}>
                                                             {getOrdinal(inst.installment_number)} Installment 
                                                             {inst.title ? ` - ${inst.title}` : ''}
                                                         </Text>
-
                                                         <Text style={styles.instAmount}>₹{inst.amount.toLocaleString()}</Text>
                                                         <Text style={styles.instDate}>Due: {formatDate(inst.due_date)}</Text>
                                                     </View>

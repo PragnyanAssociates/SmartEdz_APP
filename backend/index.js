@@ -10275,7 +10275,6 @@ app.post('/api/fees/create', async (req, res) => {
         const feeId = result.insertId;
 
         if (isInstallmentAllowed === 1 && installment_details && installment_details.length > 0) {
-            // CHANGED: Added 'title' to columns and values
             const sqlInstallment = `INSERT INTO fee_installments (fee_schedule_id, installment_number, amount, due_date, title) VALUES ?`;
             const values = installment_details.map((inst, index) => [
                 feeId, 
