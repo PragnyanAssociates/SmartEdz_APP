@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     maxWidth: '95%',
     fontStyle: "italic",
-    marginBottom: 60,
+    marginBottom: 50,
     margintop: 0,
     // Adding a subtle text shadow to lift it off the background
     textShadowColor: 'rgba(255, 255, 255, 0.7)',
@@ -142,6 +142,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 16,
     paddingHorizontal: 40,
+    marginBottom: 90,
     borderRadius: 30,
     shadowColor: "#000000", // Shadow is more effective against an image
     shadowOffset: {

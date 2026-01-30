@@ -298,6 +298,7 @@ const TeacherAdminExamScreen = ({ navigation }: any) => {
             return Alert.alert("Validation Error", "Title, Class, and at least one row are required.");
         }
         setIsSaving(true);
+        // ★ KEY LOGIC: Sending user.id here tells the backend WHO is editing/creating
         const payload = { title, subtitle, class_group: selectedClass, exam_type: examType, schedule_data: rows, created_by_id: user?.id };
         try {
             if (editingSchedule) {
@@ -395,6 +396,7 @@ const TeacherAdminExamScreen = ({ navigation }: any) => {
                         <View style={styles.cardContent}>
                             <Text style={styles.cardTitle}>{item.title}</Text>
                             <Text style={styles.cardSubtitle}>Class: {item.class_group}</Text>
+                            {/* This "created_by" will now show the updater's name because of backend fix */}
                             <Text style={styles.cardCreator}>By: {item.created_by}</Text>
                         </View>
                         <View style={styles.cardActions}>

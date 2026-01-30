@@ -2704,7 +2704,7 @@ app.delete('/api/homework/submission/:submissionId', async (req, res) => {
 
 
 // ==========================================================
-// --- EXAM SCHEDULE API ROUTES (MODIFIED) ---
+// --- EXAM SCHEDULE API ROUTES (UPDATED) ---
 // ==========================================================
 
 // --- TEACHER / ADMIN ROUTES ---
@@ -2712,12 +2712,14 @@ app.delete('/api/homework/submission/:submissionId', async (req, res) => {
 // Get all exam schedules created
 app.get('/api/exam-schedules', async (req, res) => {
     try {
+        // This query joins on created_by_id. Since the PUT route now updates 
+        // created_by_id, this will show the name of the last person who edited it.
         const query = `
             SELECT es.id, es.title, es.class_group, es.exam_type, u.full_name as created_by
             FROM exam_schedules es
             JOIN users u ON es.created_by_id = u.id
             ORDER BY es.updated_at DESC
-        `; // ★ MODIFIED: Added es.exam_type
+        `;
         const [schedules] = await db.query(query);
         res.json(schedules);
     } catch (error) {
@@ -2726,7 +2728,7 @@ app.get('/api/exam-schedules', async (req, res) => {
     }
 });
 
-// Get a single, detailed exam schedule for editing (No changes needed, already uses *)
+// Get a single, detailed exam schedule for editing
 app.get('/api/exam-schedules/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -2744,8 +2746,8 @@ app.get('/api/exam-schedules/:id', async (req, res) => {
 
 // Create a new exam schedule
 app.post('/api/exam-schedules', async (req, res) => {
-    // ★ MODIFIED: Added exam_type
     const { class_group, title, subtitle, exam_type, schedule_data, created_by_id } = req.body;
+    
     if (!class_group || !title || !schedule_data || !created_by_id || !exam_type) {
         return res.status(400).json({ message: "Missing required fields." });
     }
@@ -2757,18 +2759,20 @@ app.post('/api/exam-schedules', async (req, res) => {
         const query = `
             INSERT INTO exam_schedules (class_group, title, subtitle, exam_type, schedule_data, created_by_id)
             VALUES (?, ?, ?, ?, ?, ?)
-        `; // ★ MODIFIED: Added exam_type column
-        // ★ MODIFIED: Added exam_type to values array
+        `; 
         await connection.query(query, [class_group, title, subtitle, exam_type, JSON.stringify(schedule_data), created_by_id]);
 
-        // (Notification logic remains the same)
+        // --- Notification Logic ---
         const [students] = await connection.query("SELECT id FROM users WHERE role = 'student' AND class_group = ?", [class_group]);
         const studentIds = students.map(s => s.id);
         const [teachers] = await connection.query("SELECT DISTINCT teacher_id FROM timetables WHERE class_group = ?", [class_group]);
         const teacherIds = teachers.map(t => t.teacher_id);
         const allRecipientIds = [...new Set([...studentIds, ...teacherIds])];
+        
+        // Get name of creator
         const [[admin]] = await connection.query("SELECT full_name FROM users WHERE id = ?", [created_by_id]);
-        const senderName = admin.full_name || "School Administration";
+        const senderName = admin?.full_name || "School Administration";
+        
         const notificationTitle = `New Exam Schedule Published`;
         const notificationMessage = `The schedule for "${title}" (${class_group}) has been published. Please check the details.`;
 
@@ -2791,31 +2795,35 @@ app.post('/api/exam-schedules', async (req, res) => {
 // Update an existing exam schedule
 app.put('/api/exam-schedules/:id', async (req, res) => {
     const { id } = req.params;
-    // ★ MODIFIED: Added exam_type
     const { class_group, title, subtitle, exam_type, schedule_data, created_by_id } = req.body;
 
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
 
+        // ★ FIX HERE: We now update 'created_by_id' in the SET clause.
+        // This ensures the "By: Name" changes to the person who just edited it.
         const query = `
             UPDATE exam_schedules
-            SET class_group = ?, title = ?, subtitle = ?, exam_type = ?, schedule_data = ?
+            SET class_group = ?, title = ?, subtitle = ?, exam_type = ?, schedule_data = ?, created_by_id = ?
             WHERE id = ?
-        `; // ★ MODIFIED: Added exam_type to SET clause
-        // ★ MODIFIED: Added exam_type to values array
-        await connection.query(query, [class_group, title, subtitle, exam_type, JSON.stringify(schedule_data), id]);
+        `; 
+        
+        await connection.query(query, [class_group, title, subtitle, exam_type, JSON.stringify(schedule_data), created_by_id, id]);
 
-        // (Notification logic remains the same)
+        // --- Notification Logic ---
         const [students] = await connection.query("SELECT id FROM users WHERE role = 'student' AND class_group = ?", [class_group]);
         const studentIds = students.map(s => s.id);
         const [teachers] = await connection.query("SELECT DISTINCT teacher_id FROM timetables WHERE class_group = ?", [class_group]);
         const teacherIds = teachers.map(t => t.teacher_id);
         const allRecipientIds = [...new Set([...studentIds, ...teacherIds])];
+        
+        // Get name of the editor (updater)
         const [[admin]] = await connection.query("SELECT full_name FROM users WHERE id = ?", [created_by_id]);
-        const senderName = admin.full_name || "School Administration";
+        const senderName = admin?.full_name || "School Administration";
+        
         const notificationTitle = `Exam Schedule Updated`;
-        const notificationMessage = `The schedule for "${title}" (${class_group}) has been modified. Please review the updated details.`;
+        const notificationMessage = `The schedule for "${title}" (${class_group}) has been modified by ${senderName}. Please review the updated details.`;
 
         if (allRecipientIds.length > 0) {
             await createBulkNotifications(connection, allRecipientIds, senderName, notificationTitle, notificationMessage, '/exam-schedule');
@@ -2833,7 +2841,7 @@ app.put('/api/exam-schedules/:id', async (req, res) => {
     }
 });
 
-// Delete an exam schedule (No changes needed)
+// Delete an exam schedule
 app.delete('/api/exam-schedules/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -2845,8 +2853,7 @@ app.delete('/api/exam-schedules/:id', async (req, res) => {
     }
 });
 
-
-// --- STUDENT ROUTE --- (No changes needed, already uses *)
+// --- STUDENT ROUTE ---
 app.get('/api/exam-schedules/class/:classGroup', async (req, res) => {
     const { classGroup } = req.params;
     try {

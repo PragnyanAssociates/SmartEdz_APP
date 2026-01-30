@@ -17,11 +17,10 @@ const ScheduleCard = ({ item }: { item: any }) => {
                 </View>
             )}
             
-            {/* ★ CHANGED: Only render subtitle if text exists. This removes the huge gap when empty. */}
+            {/* Only render subtitle if text exists */}
             {item.subtitle ? (
                 <Text style={styles.scheduleSubtitle}>{item.subtitle}</Text>
             ) : (
-                // Optional: A tiny spacer (5px) if subtitle is missing, to keep it breathing but tight
                 <View style={{ marginBottom: 5 }} />
             )}
 
