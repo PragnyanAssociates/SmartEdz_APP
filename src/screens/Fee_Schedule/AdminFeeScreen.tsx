@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker'; // Make sure to install this
+import { Picker } from '@react-native-picker/picker';
 import apiClient from '../../api/client'; 
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -44,7 +44,9 @@ interface StudentFeeStatus {
     submitted_at: string | null;
 }
 
+// Updated Interface to include Title
 interface InstallmentItem {
+    title: string; // Added Title
     amount: string;
     due_date: string; 
     dateObject: Date; 
@@ -144,7 +146,13 @@ const AdminFeeScreen = () => {
             try {
                 const res = await apiClient.get(`/fees/installments/${item.id}`);
                 if (res.data && res.data.length > 0) {
-                    const mapped = res.data.map((inst: any) => ({ amount: inst.amount.toString(), due_date: formatDBStringForDisplay(inst.due_date), dateObject: new Date(inst.due_date) }));
+                    // Map response including the title
+                    const mapped = res.data.map((inst: any) => ({ 
+                        title: inst.title || '', // Handle title
+                        amount: inst.amount.toString(), 
+                        due_date: formatDBStringForDisplay(inst.due_date), 
+                        dateObject: new Date(inst.due_date) 
+                    }));
                     setInstallmentBreakdown(mapped);
                 } else { handleInstallmentCountChange(item.max_installments.toString()); }
             } catch (error) { handleInstallmentCountChange(item.max_installments.toString()); }
@@ -170,7 +178,11 @@ const AdminFeeScreen = () => {
         
         if (newFee.installments) {
             if (installmentBreakdown.length === 0) return Alert.alert("Error", "Please specify number of installments");
-            for (let i = 0; i < installmentBreakdown.length; i++) if (!installmentBreakdown[i].amount || !installmentBreakdown[i].due_date) return Alert.alert("Error", `Fill details for Installment ${i + 1}`);
+            for (let i = 0; i < installmentBreakdown.length; i++) {
+                if (!installmentBreakdown[i].amount || !installmentBreakdown[i].due_date) {
+                    return Alert.alert("Error", `Fill Amount and Date for Installment ${i + 1}`);
+                }
+            }
         }
 
         try {
@@ -181,7 +193,11 @@ const AdminFeeScreen = () => {
                 total_amount: cleanTotalAmount, 
                 due_date: formatDateForDB(newFee.dateObject), 
                 allow_installments: newFee.installments, 
-                installment_details: newFee.installments ? installmentBreakdown.map(inst => ({ amount: sanitizeAmount(inst.amount), due_date: formatDateForDB(inst.dateObject) })) : [] 
+                installment_details: newFee.installments ? installmentBreakdown.map(inst => ({ 
+                    title: inst.title || '', // Include Title in payload
+                    amount: sanitizeAmount(inst.amount), 
+                    due_date: formatDateForDB(inst.dateObject) 
+                })) : [] 
             };
             
             if (isEditing && editId) { 
@@ -215,9 +231,31 @@ const AdminFeeScreen = () => {
             }
         }
     };
+
     const openDatePicker = (type: 'main' | 'installment', index: number = -1) => { setDatePickerType(type); setActiveInstallmentIndex(index); setShowDatePicker(true); };
-    const handleInstallmentCountChange = (text: string) => { setNumberOfInstallments(text); const count = parseInt(text); if (!isNaN(count) && count > 0 && count <= 12) { const arr: InstallmentItem[] = []; for (let i = 0; i < count; i++) { if (installmentBreakdown[i]) arr.push(installmentBreakdown[i]); else arr.push({ amount: '', due_date: '', dateObject: new Date() }); } setInstallmentBreakdown(arr); } else setInstallmentBreakdown([]); };
-    const updateInstallmentAmount = (index: number, val: string) => { const updatedList = [...installmentBreakdown]; updatedList[index].amount = val; setInstallmentBreakdown(updatedList); };
+
+    // Initialize list with Title, Amount, Date
+    const handleInstallmentCountChange = (text: string) => { 
+        setNumberOfInstallments(text); 
+        const count = parseInt(text); 
+        if (!isNaN(count) && count > 0 && count <= 12) { 
+            const arr: InstallmentItem[] = []; 
+            for (let i = 0; i < count; i++) { 
+                if (installmentBreakdown[i]) arr.push(installmentBreakdown[i]); 
+                else arr.push({ title: '', amount: '', due_date: '', dateObject: new Date() }); 
+            } 
+            setInstallmentBreakdown(arr); 
+        } else {
+            setInstallmentBreakdown([]); 
+        }
+    };
+
+    // Generic function to update Installment fields (Title or Amount)
+    const updateInstallmentField = (index: number, field: 'title' | 'amount', val: string) => { 
+        const updatedList = [...installmentBreakdown]; 
+        updatedList[index][field] = val; 
+        setInstallmentBreakdown(updatedList); 
+    };
 
     const fetchStudentStatusForFee = async (fee: FeeSchedule) => {
         setLoading(true); setSelectedFee(fee); setActiveTab('all');
@@ -241,7 +279,6 @@ const AdminFeeScreen = () => {
             Alert.alert("Success", status === 'paid' ? "Payment Approved" : "Payment Rejected");
             setVerifyModalVisible(false); 
             
-            // Refresh list
             if (selectedFee) fetchStudentStatusForFee(selectedFee); 
 
         } catch (error: any) { 
@@ -299,7 +336,6 @@ const AdminFeeScreen = () => {
                         <View style={{width: 40}} /> 
                     </View>
 
-                    {/* --- UPDATED TABS --- */}
                     <View style={styles.tabContainer}>
                         <TouchableOpacity style={[styles.tabBtn, activeTab === 'all' && styles.tabBtnActive]} onPress={() => setActiveTab('all')}>
                             <Text style={[styles.tabText, activeTab === 'all' && {color:'#E74C3C'}]}>All List</Text>
@@ -321,7 +357,6 @@ const AdminFeeScreen = () => {
                                         {student.installment_number && student.installment_number > 0 ? ` (Inst ${student.installment_number})` : ''}
                                     </Text>
                                 </View>
-                                {/* Show Eye Button for Pending OR Paid */}
                                 {(student.status === 'pending' || student.status === 'paid') && (
                                     <TouchableOpacity style={styles.eyeBtn} onPress={() => { setSelectedStudentForVerify(student); setVerifyModalVisible(true); }}>
                                         <Icon name="visibility" size={20} color="#FFF" />
@@ -354,7 +389,6 @@ const AdminFeeScreen = () => {
                                 </Picker>
                             </View>
 
-                            {/* CUSTOM TITLE INPUT (Visible only if ADD + is selected) */}
                             {selectedFeeType === "ADD +" && (
                                 <View style={{marginTop: 5, marginBottom: 10}}>
                                     <Text style={[styles.label, {fontSize: 12}]}>Enter Custom Fee Name:</Text>
@@ -391,11 +425,46 @@ const AdminFeeScreen = () => {
                                 <View style={styles.installmentContainer}>
                                     <Text style={styles.label}>Number of Installments:</Text>
                                     <TextInput placeholder="e.g. 3" style={styles.input} keyboardType="numeric" value={numberOfInstallments} onChangeText={handleInstallmentCountChange} />
+                                    
+                                    {/* HEADERS for the list */}
+                                    {installmentBreakdown.length > 0 && (
+                                        <View style={{flexDirection: 'row', paddingLeft: 35, marginBottom: 5}}>
+                                            <Text style={{flex: 1.5, fontSize: 10, fontWeight:'bold', color: '#666'}}>Title</Text>
+                                            <Text style={{flex: 1, fontSize: 10, fontWeight:'bold', color: '#666'}}>Amount</Text>
+                                            <Text style={{flex: 1, fontSize: 10, fontWeight:'bold', color: '#666'}}>Due Date</Text>
+                                        </View>
+                                    )}
+
                                     {installmentBreakdown.map((item, index) => (
                                         <View key={index} style={styles.instRow}>
-                                            <Text style={styles.instLabel}>Inst. {index + 1}:</Text>
-                                            <TextInput placeholder="Amount" style={[styles.input, styles.instInput]} keyboardType="numeric" value={item.amount} onChangeText={(val) => updateInstallmentAmount(index, val)} />
-                                            <TouchableOpacity onPress={() => openDatePicker('installment', index)} style={[styles.dateInput, styles.instDateInput]}><Text style={{fontSize: 12, color: item.due_date ? '#333' : '#999'}}>{item.due_date || "DD/MM/YYYY"}</Text></TouchableOpacity>
+                                            <Text style={styles.instLabel}>{index + 1}.</Text>
+                                            
+                                            {/* ADDED: Title Input */}
+                                            <TextInput 
+                                                placeholder="Title" 
+                                                style={[styles.input, styles.instInput, {flex: 1.5, marginRight: 5}]} 
+                                                value={item.title} 
+                                                onChangeText={(val) => updateInstallmentField(index, 'title', val)} 
+                                            />
+                                            
+                                            {/* Amount Input */}
+                                            <TextInput 
+                                                placeholder="Amt" 
+                                                style={[styles.input, styles.instInput, {flex: 1, marginRight: 5}]} 
+                                                keyboardType="numeric" 
+                                                value={item.amount} 
+                                                onChangeText={(val) => updateInstallmentField(index, 'amount', val)} 
+                                            />
+                                            
+                                            {/* Date Input */}
+                                            <TouchableOpacity 
+                                                onPress={() => openDatePicker('installment', index)} 
+                                                style={[styles.dateInput, styles.instDateInput, {flex: 1}]}
+                                            >
+                                                <Text style={{fontSize: 11, color: item.due_date ? '#333' : '#999'}}>
+                                                    {item.due_date || "DD/MM"}
+                                                </Text>
+                                            </TouchableOpacity>
                                         </View>
                                     ))}
                                 </View>
@@ -409,7 +478,7 @@ const AdminFeeScreen = () => {
 
             {showDatePicker && <DateTimePicker value={datePickerType === 'main' ? newFee.dateObject : (activeInstallmentIndex > -1 ? installmentBreakdown[activeInstallmentIndex].dateObject : new Date())} mode="date" display="default" onChange={handleDateChange} />}
 
-            {/* --- VERIFY PAYMENT MODAL --- */}
+            {/* Verify Modal */}
             <Modal visible={isVerifyModalVisible} animationType="fade" transparent>
                 <View style={styles.modalOverlay}>
                     <View style={styles.simpleModalContent}>
@@ -488,7 +557,6 @@ const styles = StyleSheet.create({
     
     input: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, marginBottom: 10, backgroundColor: '#FAFAFA' },
     
-    // Picker Styles
     pickerContainer: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, backgroundColor: '#FAFAFA', marginBottom: 10, overflow: 'hidden' },
     picker: { height: 50, width: '100%' },
 
@@ -496,10 +564,12 @@ const styles = StyleSheet.create({
     checkboxRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 5 },
     label: { fontSize: 14, fontWeight: 'bold', color: '#555', marginBottom: 5 },
     installmentContainer: { backgroundColor: '#F0F4F8', padding: 10, borderRadius: 8, marginBottom: 10 },
+    
+    // Updated Installment Rows for 3 Columns
     instRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 },
-    instLabel: { width: 50, fontSize: 12, fontWeight: 'bold', color: '#555' },
-    instInput: { flex: 1, marginRight: 5, marginBottom: 0, paddingVertical: 5 },
-    instDateInput: { flex: 1, marginBottom: 0, paddingVertical: 8 },
+    instLabel: { width: 25, fontSize: 12, fontWeight: 'bold', color: '#555' },
+    instInput: { marginBottom: 0, paddingVertical: 5, fontSize: 13, height: 40 },
+    instDateInput: { marginBottom: 0, paddingVertical: 8, height: 40, justifyContent:'center' },
     
     simpleModalContent: { backgroundColor: '#FFF', width: '85%', borderRadius: 12, padding: 15 },
     modalTitleSmall: { fontSize: 16, fontWeight: 'bold', color: '#333' },

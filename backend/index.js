@@ -10262,7 +10262,7 @@ app.put('/api/fees/verify', async (req, res) => {
     }
 });
 
-// 1. [ADMIN] Create a Fee Schedule
+// 1. [ADMIN] Create a Fee Schedule (UPDATED FOR TITLES)
 app.post('/api/fees/create', async (req, res) => {
     const { class_group, title, description, total_amount, due_date, allow_installments, installment_details } = req.body;
     const connection = await db.getConnection();
@@ -10275,8 +10275,15 @@ app.post('/api/fees/create', async (req, res) => {
         const feeId = result.insertId;
 
         if (isInstallmentAllowed === 1 && installment_details && installment_details.length > 0) {
-            const sqlInstallment = `INSERT INTO fee_installments (fee_schedule_id, installment_number, amount, due_date) VALUES ?`;
-            const values = installment_details.map((inst, index) => [feeId, index + 1, inst.amount, inst.due_date]);
+            // CHANGED: Added 'title' to columns and values
+            const sqlInstallment = `INSERT INTO fee_installments (fee_schedule_id, installment_number, amount, due_date, title) VALUES ?`;
+            const values = installment_details.map((inst, index) => [
+                feeId, 
+                index + 1, 
+                inst.amount, 
+                inst.due_date,
+                inst.title || '' // Added Title
+            ]);
             await connection.query(sqlInstallment, [values]);
         }
         await connection.commit();
@@ -10328,7 +10335,7 @@ app.get('/api/fees/list/:class_group', async (req, res) => {
     }
 });
 
-// 5. [STUDENT] Get Fee Details
+// 5. [STUDENT] Get Fee Details (UPDATED TO RETURN TITLE)
 app.get('/api/student/fee-details', async (req, res) => {
     const { fee_schedule_id, student_id } = req.query;
     if(!fee_schedule_id || !student_id) return res.status(400).json({ message: 'Missing parameters' });
@@ -10342,6 +10349,7 @@ app.get('/api/student/fee-details', async (req, res) => {
             return {
                 id: inst.id,
                 installment_number: inst.installment_number,
+                title: inst.title, // Added Title here
                 amount: inst.amount,
                 due_date: inst.due_date,
                 status: sub ? sub.status : 'unpaid',
@@ -10433,11 +10441,12 @@ app.get('/api/fees/status/:fee_schedule_id', async (req, res) => {
     }
 });
 
-// 10. [ADMIN] Get Installment Details
+// 10. [ADMIN] Get Installment Details (UPDATED TO FETCH TITLE)
 app.get('/api/fees/installments/:fee_schedule_id', async (req, res) => {
     const { fee_schedule_id } = req.params;
     try {
-        const sql = `SELECT amount, due_date FROM fee_installments WHERE fee_schedule_id = ? ORDER BY installment_number ASC`;
+        // CHANGED: Added 'title' to SELECT
+        const sql = `SELECT title, amount, due_date FROM fee_installments WHERE fee_schedule_id = ? ORDER BY installment_number ASC`;
         const [rows] = await db.query(sql, [fee_schedule_id]);
         res.json(rows);
     } catch (err) {
