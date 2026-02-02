@@ -9968,7 +9968,7 @@ app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     }
 });
 
-// 5. Get Students + Feedback (Fixed Parameter Order for Analytics)
+// 5. Get Students + Feedback (Fixed Logic)
 app.get('/api/feedback/students', async (req, res) => {
     const { class_group, teacher_id, mode, subject } = req.query;
 
@@ -9978,7 +9978,7 @@ app.get('/api/feedback/students', async (req, res) => {
 
         // --- ANALYTICS MODE (For Compare Graph) ---
         if (mode === 'analytics') {
-            // 1. Start SQL Query
+            // 1. Base Query
             sql = `
                 SELECT 
                     u.id as student_id, 
@@ -9989,32 +9989,27 @@ app.get('/api/feedback/students', async (req, res) => {
                 LEFT JOIN user_profiles p ON u.id = p.user_id
             `;
 
-            // 2. Prepare Teacher Filter (Subquery) parameters
+            // 2. Filter Feedback by Subject (if specific subject selected)
             let teacherFilter = "";
             let joinParams = [];
 
             if (subject && subject !== 'All Subjects') {
-                // If specific subject: Filter feedback to only include teachers of that subject
+                // Only count feedback from teachers who teach this subject in this class
                 teacherFilter = `
                     AND f.teacher_id IN (
                         SELECT DISTINCT teacher_id FROM timetables 
                         WHERE class_group = ? AND subject_name = ?
                     )
                 `;
-                // IMPORTANT: These params correspond to the ? inside teacherFilter
                 joinParams.push(class_group, subject);
             }
 
-            // 3. Append Join with Filter
+            // 3. Append Join and Where Clauses
             sql += ` LEFT JOIN student_feedback f ON u.id = f.student_id ${teacherFilter} `;
-
-            // 4. Append WHERE Clause
             sql += ` WHERE u.role = 'student' AND u.class_group = ? `;
-            
-            // 5. Append Grouping
             sql += ` GROUP BY u.id ORDER BY CAST(p.roll_no AS UNSIGNED) ASC `;
 
-            // 6. Combine Parameters in correct order: [Join Params, Where Params]
+            // 4. Combine Parameters: [Subquery Params] + [Where Clause Params]
             params = [...joinParams, class_group];
 
         } 
@@ -10073,7 +10068,7 @@ app.get('/api/feedback/students', async (req, res) => {
 
         const [rows] = await db.query(sql, params);
 
-        // Format for analytics (calculate percentages)
+        // Format for analytics
         if (mode === 'analytics') {
             const formatted = rows.map(r => ({
                 ...r,

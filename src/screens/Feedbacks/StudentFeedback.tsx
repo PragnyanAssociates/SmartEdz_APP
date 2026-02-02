@@ -125,12 +125,12 @@ const StudentFeedback = () => {
             if (classesData.length > 0) {
                 const defaultClass = classesData.includes("Class 10") ? "Class 10" : classesData[0];
                 setSelectedClass(defaultClass);
-                setCompareClass(defaultClass); // Set default for compare too
+                setCompareClass(defaultClass); 
             }
         } catch (error) { console.error('Error fetching classes', error); }
     };
 
-    // Fetch Subjects when Class changes (Main Screen)
+    // Fetch Subjects when Class changes
     useEffect(() => {
         if (!selectedClass) {
             setAvailableSubjects([]);
@@ -158,7 +158,7 @@ const StudentFeedback = () => {
         fetchSubjects();
     }, [selectedClass, user]);
 
-    // Fetch Teachers when Subject changes (Main Screen)
+    // Fetch Teachers when Subject changes
     useEffect(() => {
         if (!selectedClass || !selectedSubject || isOverallView) {
             setAvailableTeachers([]);
@@ -183,7 +183,7 @@ const StudentFeedback = () => {
         }
     }, [selectedClass, selectedSubject, user]);
 
-    // --- 3. Fetch Student Data (List View) ---
+    // --- 3. Fetch Student Data (List) ---
     const fetchStudentData = useCallback(async () => {
         if (!selectedClass || (!isOverallView && !selectedTeacherId)) {
             setStudents([]);
@@ -192,11 +192,8 @@ const StudentFeedback = () => {
         setLoading(true);
         try {
             const params: any = { class_group: selectedClass };
-            if (isOverallView) {
-                params.mode = 'overall';
-            } else {
-                params.teacher_id = selectedTeacherId;
-            }
+            if (isOverallView) params.mode = 'overall';
+            else params.teacher_id = selectedTeacherId;
 
             const response = await apiClient.get('/feedback/students', { params });
             const formattedData = response.data.map((s: any) => ({
@@ -206,11 +203,8 @@ const StudentFeedback = () => {
             }));
             setStudents(formattedData);
             setHasChanges(false);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { console.error(error); } 
+        finally { setLoading(false); }
     }, [selectedClass, selectedTeacherId, isOverallView]);
 
     useEffect(() => {
@@ -271,8 +265,6 @@ const StudentFeedback = () => {
                         params: { class_group: compareClass } 
                     });
                     setCompareSubjectsList(['All Subjects', ...response.data]);
-                    // Only reset subject if it's not in the new list (or defaulting logic)
-                    // For now, let's keep 'All Subjects' as default when switching class
                     setCompareSubject('All Subjects'); 
                 } catch (e) { console.error(e); }
             };
@@ -298,18 +290,26 @@ const StudentFeedback = () => {
             const res = await apiClient.get('/feedback/students', { params });
             let data = res.data;
 
-            // Sorting
-            data.sort((a: AnalyticsItem, b: AnalyticsItem) => {
-                if (compareSort === 'roll') {
-                    return parseInt(a.roll_no || '0') - parseInt(b.roll_no || '0');
-                } else if (compareSort === 'high') {
-                    return parseFloat(b.avg_rating) - parseFloat(a.avg_rating);
-                } else {
-                    return parseFloat(a.avg_rating) - parseFloat(b.avg_rating);
-                }
-            });
+            // --- CHECK FOR EMPTY DATA ---
+            // If the subject hasn't been marked yet, everyone will have 0 rating.
+            // We don't want to show a graph of 0s. We want to show "No Data Available".
+            const hasData = data.some((item: any) => parseFloat(item.percentage) > 0);
 
-            setAnalyticsData(data);
+            if (!hasData) {
+                setAnalyticsData([]); // Use empty array to trigger "No data available" message
+            } else {
+                // Sorting
+                data.sort((a: AnalyticsItem, b: AnalyticsItem) => {
+                    if (compareSort === 'roll') {
+                        return parseInt(a.roll_no || '0') - parseInt(b.roll_no || '0');
+                    } else if (compareSort === 'high') {
+                        return parseFloat(b.avg_rating) - parseFloat(a.avg_rating);
+                    } else {
+                        return parseFloat(a.avg_rating) - parseFloat(b.avg_rating);
+                    }
+                });
+                setAnalyticsData(data);
+            }
         } catch (e) { console.error(e); } 
         finally { setLoadingAnalytics(false); }
     };
