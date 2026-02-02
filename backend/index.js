@@ -10130,65 +10130,57 @@ app.post('/api/teacher-feedback', async (req, res) => {
     }
 });
 
-// 3. [ADMIN VIEW] Get Feedback 
-// Mode 1: specific teacher (list students)
-// Mode 2: "all" teachers (matrix view)
+// 3. [ADMIN VIEW] Get Feedback
+// Mode 'analytics': Bar graphs (aggregated)
+// Mode 'list': Specific teacher details
 app.get('/api/admin/teacher-feedback', async (req, res) => {
     const { teacher_id, class_group, mode } = req.query;
 
     try {
-        // --- CASE A: ALL TEACHERS (MATRIX VIEW) ---
-        if (mode === 'all') {
-            // 1. Get all students in the class
-            const [students] = await db.query(`
-                SELECT u.id, u.full_name, p.roll_no 
-                FROM users u 
-                LEFT JOIN user_profiles p ON u.id = p.user_id 
-                WHERE u.class_group = ? AND u.role = 'student' 
-                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
-            `, [class_group]);
+        // --- CASE A: ANALYTICS (BAR GRAPH - ALL TEACHERS) ---
+        if (mode === 'analytics') {
+            let sql = `
+                SELECT 
+                    u.id as teacher_id,
+                    u.full_name as teacher_name,
+                    COUNT(tf.rating) as total_reviews,
+                    IFNULL(AVG(tf.rating), 0) as avg_rating
+                FROM users u
+                LEFT JOIN teacher_feedback tf ON u.id = tf.teacher_id
+                WHERE u.role = 'teacher' 
+            `;
+            
+            const params = [];
 
-            // 2. Get all teachers assigned to this class
-            const [teachers] = await db.query(`
-                SELECT DISTINCT u.id, u.full_name 
-                FROM timetables t 
-                JOIN users u ON t.teacher_id = u.id 
-                WHERE t.class_group = ?
-            `, [class_group]);
+            // If a specific class is selected, filter by it. 
+            // If class_group is 'all' (or undefined), we do NOT filter by class, getting global average.
+            if (class_group && class_group !== 'all') {
+                sql += ` AND tf.class_group = ? `;
+                params.push(class_group);
+            }
 
-            // 3. Get all feedback for this class
-            const [feedbacks] = await db.query(`
-                SELECT student_id, teacher_id, rating, remarks 
-                FROM teacher_feedback 
-                WHERE class_group = ?
-            `, [class_group]);
+            sql += ` GROUP BY u.id `;
 
-            // 4. Structure data: Map feedbacks to student objects
-            const matrix = students.map(student => {
-                const studentFeedback = {};
-                feedbacks.forEach(fb => {
-                    if (fb.student_id === student.id) {
-                        studentFeedback[fb.teacher_id] = {
-                            rating: fb.rating,
-                            remarks: fb.remarks
-                        };
-                    }
-                });
-                return {
-                    ...student,
-                    feedback_map: studentFeedback
-                };
-            });
+            const [rows] = await db.query(sql, params);
+
+            // Format data for bar chart
+            const analytics = rows.map(row => ({
+                teacher_id: row.teacher_id,
+                teacher_name: row.teacher_name,
+                avg_rating: parseFloat(row.avg_rating).toFixed(1),
+                percentage: ((parseFloat(row.avg_rating) / 5) * 100).toFixed(1), // Convert 5-star to percentage
+                total_reviews: row.total_reviews
+            }));
 
             return res.json({ 
-                mode: 'matrix',
-                teachers: teachers, 
-                students: matrix 
+                mode: 'analytics',
+                data: analytics 
             });
         }
 
         // --- CASE B: SPECIFIC TEACHER (LIST VIEW) ---
-        const sql = `
+        // Note: For list view, we usually need a specific class to list specific students.
+        let sql = `
             SELECT 
                 u.full_name as student_name,
                 p.roll_no,
@@ -10197,10 +10189,18 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
             FROM teacher_feedback tf
             JOIN users u ON tf.student_id = u.id
             LEFT JOIN user_profiles p ON u.id = p.user_id
-            WHERE tf.teacher_id = ? AND tf.class_group = ?
-            ORDER BY tf.rating DESC
+            WHERE tf.teacher_id = ?
         `;
-        const [rows] = await db.query(sql, [teacher_id, class_group]);
+        const params = [teacher_id];
+
+        if (class_group && class_group !== 'all') {
+            sql += ` AND tf.class_group = ? `;
+            params.push(class_group);
+        }
+
+        sql += ` ORDER BY tf.rating DESC `;
+
+        const [rows] = await db.query(sql, params);
         
         // Calculate average
         let avg = 0;
