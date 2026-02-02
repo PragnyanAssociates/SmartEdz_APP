@@ -9909,7 +9909,6 @@ app.get('/api/feedback/classes', async (req, res) => {
         const [rows] = await db.query("SELECT DISTINCT class_group FROM timetables ORDER BY class_group");
         res.json(rows.map(r => r.class_group));
     } catch (err) {
-        console.error(err);
         res.status(500).json({ message: 'Error fetching classes' });
     }
 });
@@ -9920,17 +9919,14 @@ app.get('/api/feedback/subjects', async (req, res) => {
     try {
         let sql = "SELECT DISTINCT subject_name FROM timetables WHERE class_group = ?";
         const params = [class_group];
-
         if (teacher_id) {
             sql += " AND teacher_id = ?";
             params.push(teacher_id);
         }
-        
         sql += " ORDER BY subject_name";
         const [rows] = await db.query(sql, params);
         res.json(rows.map(r => r.subject_name));
     } catch (err) {
-        console.error(err);
         res.status(500).json({ message: 'Error fetching subjects' });
     }
 });
@@ -9939,183 +9935,106 @@ app.get('/api/feedback/subjects', async (req, res) => {
 app.get('/api/feedback/teachers', async (req, res) => {
     const { class_group, subject } = req.query;
     try {
-        const sql = `
-            SELECT DISTINCT u.id, u.full_name 
-            FROM timetables t
-            JOIN users u ON t.teacher_id = u.id
-            WHERE t.class_group = ? AND t.subject_name = ?
-        `;
+        const sql = `SELECT DISTINCT u.id, u.full_name FROM timetables t JOIN users u ON t.teacher_id = u.id WHERE t.class_group = ? AND t.subject_name = ?`;
         const [rows] = await db.query(sql, [class_group, subject]);
         res.json(rows);
     } catch (err) {
-        console.error(err);
         res.status(500).json({ message: 'Error fetching teachers' });
     }
 });
 
-// 4. Get classes assigned to a teacher
+// 4. Get assigned classes
 app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     const { teacherId } = req.params;
     try {
-        const [rows] = await db.query(
-            "SELECT DISTINCT class_group FROM timetables WHERE teacher_id = ? ORDER BY class_group", 
-            [teacherId]
-        );
+        const [rows] = await db.query("SELECT DISTINCT class_group FROM timetables WHERE teacher_id = ? ORDER BY class_group", [teacherId]);
         res.json(rows.map(r => r.class_group));
     } catch (err) {
-        console.error(err);
         res.status(500).json({ message: 'Error fetching classes' });
     }
 });
 
-// 5. Get Students + Feedback (Fixed Logic)
+// 5. Get Students + Feedback (Fixed subject logic)
 app.get('/api/feedback/students', async (req, res) => {
     const { class_group, teacher_id, mode, subject } = req.query;
-
     try {
         let sql = "";
         let params = [];
 
-        // --- ANALYTICS MODE (For Compare Graph) ---
         if (mode === 'analytics') {
-            // 1. Base Query
+            // Filter by subject to ensure Telugu shows Telugu data
+            let subFilter = (subject && subject !== 'All Subjects') ? "AND f.subject_name = ?" : "";
+            if (subFilter) params.push(subject);
+            
             sql = `
-                SELECT 
-                    u.id as student_id, 
-                    u.full_name, 
-                    p.roll_no,
-                    IFNULL(AVG(f.status_marks), 0) as avg_rating
+                SELECT u.id as student_id, u.full_name, p.roll_no, IFNULL(AVG(f.rating), 0) as avg_rating
                 FROM users u
                 LEFT JOIN user_profiles p ON u.id = p.user_id
-            `;
-
-            // 2. Filter Feedback by Subject (if specific subject selected)
-            let teacherFilter = "";
-            let joinParams = [];
-
-            if (subject && subject !== 'All Subjects') {
-                // Only count feedback from teachers who teach this subject in this class
-                teacherFilter = `
-                    AND f.teacher_id IN (
-                        SELECT DISTINCT teacher_id FROM timetables 
-                        WHERE class_group = ? AND subject_name = ?
-                    )
-                `;
-                joinParams.push(class_group, subject);
-            }
-
-            // 3. Append Join and Where Clauses
-            sql += ` LEFT JOIN student_feedback f ON u.id = f.student_id ${teacherFilter} `;
-            sql += ` WHERE u.role = 'student' AND u.class_group = ? `;
-            sql += ` GROUP BY u.id ORDER BY CAST(p.roll_no AS UNSIGNED) ASC `;
-
-            // 4. Combine Parameters: [Subquery Params] + [Where Clause Params]
-            params = [...joinParams, class_group];
-
+                LEFT JOIN teacher_feedback f ON u.id = f.student_id ${subFilter}
+                WHERE u.role = 'student' AND u.class_group = ?
+                GROUP BY u.id ORDER BY CAST(p.roll_no AS UNSIGNED) ASC`;
+            params.push(class_group);
         } 
-        
-        // --- OVERALL MODE (Aggregated View) ---
         else if (mode === 'overall') {
+            // "All Subjects" Average Logic
             sql = `
-                SELECT 
-                    u.id as student_id, 
-                    u.full_name, 
-                    p.roll_no,
-                    ROUND(AVG(f.status_marks)) as status_marks,
-                    CASE ROUND(AVG(
-                        CASE f.remarks_category 
-                            WHEN 'Good' THEN 3 
-                            WHEN 'Average' THEN 2 
-                            WHEN 'Poor' THEN 1 
-                            ELSE NULL 
-                        END
-                    ))
-                        WHEN 3 THEN 'Good'
-                        WHEN 2 THEN 'Average'
-                        WHEN 1 THEN 'Poor'
-                        ELSE NULL
-                    END as remarks_category
+                SELECT u.id as student_id, u.full_name, p.roll_no, 
+                ROUND(AVG(f.rating)) as rating,
+                CASE ROUND(AVG(CASE f.remarks WHEN 'Good' THEN 3 WHEN 'Average' THEN 2 WHEN 'Poor' THEN 1 END))
+                    WHEN 3 THEN 'Good' WHEN 2 THEN 'Average' WHEN 1 THEN 'Poor' ELSE NULL
+                END as remarks
                 FROM users u
                 LEFT JOIN user_profiles p ON u.id = p.user_id
-                LEFT JOIN student_feedback f ON u.id = f.student_id
+                LEFT JOIN teacher_feedback f ON u.id = f.student_id
                 WHERE u.role = 'student' AND u.class_group = ?
-                GROUP BY u.id
-                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
-            `;
+                GROUP BY u.id ORDER BY CAST(p.roll_no AS UNSIGNED) ASC`;
             params = [class_group];
-
         } 
-        
-        // --- INDIVIDUAL TEACHER MODE ---
         else {
+            // Teacher View (Filtered by subject)
             sql = `
-                SELECT 
-                    u.id as student_id, 
-                    u.full_name, 
-                    p.roll_no,
-                    f.status_marks,
-                    f.remarks_category
+                SELECT u.id as student_id, u.full_name, p.roll_no, f.rating, f.remarks
                 FROM users u
                 LEFT JOIN user_profiles p ON u.id = p.user_id
-                LEFT JOIN student_feedback f 
-                    ON u.id = f.student_id 
-                    AND f.teacher_id = ? 
+                LEFT JOIN teacher_feedback f ON u.id = f.student_id AND f.teacher_id = ? AND f.subject_name = ?
                 WHERE u.role = 'student' AND u.class_group = ?
-                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
-            `;
-            params = [teacher_id, class_group];
+                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC`;
+            params = [teacher_id, subject, class_group];
         }
 
         const [rows] = await db.query(sql, params);
-
-        // Format for analytics
         if (mode === 'analytics') {
-            const formatted = rows.map(r => ({
+            return res.json(rows.map(r => ({
                 ...r,
                 percentage: ((r.avg_rating / 5) * 100).toFixed(1),
                 avg_rating: parseFloat(r.avg_rating).toFixed(1)
-            }));
-            return res.json(formatted);
+            })));
         }
-
         res.json(rows);
     } catch (err) {
-        console.error(err);
         res.status(500).json({ message: 'Error fetching data' });
     }
 });
 
 // 6. Save Feedback
 app.post('/api/feedback', async (req, res) => {
-    const { teacher_id, class_group, feedback_data } = req.body;
+    const { teacher_id, class_group, subject_name, feedback_data } = req.body;
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
         for (const item of feedback_data) {
-            // Only save if marks or remarks exist
-            if (item.status_marks || item.remarks_category) {
+            if (item.rating || item.remarks) {
                 const sql = `
-                    INSERT INTO student_feedback 
-                    (student_id, teacher_id, class_group, status_marks, remarks_category)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                    status_marks = VALUES(status_marks),
-                    remarks_category = VALUES(remarks_category)
-                `;
-                await connection.query(sql, [
-                    item.student_id, 
-                    teacher_id, 
-                    class_group, 
-                    item.status_marks, 
-                    item.remarks_category
-                ]);
+                    INSERT INTO teacher_feedback (student_id, teacher_id, class_group, subject_name, rating, remarks)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE rating = VALUES(rating), remarks = VALUES(remarks)`;
+                await connection.query(sql, [item.student_id, teacher_id, class_group, subject_name, item.rating, item.remarks]);
             }
         }
         await connection.commit();
         res.json({ message: 'Saved successfully' });
     } catch (err) {
         await connection.rollback();
-        console.error(err);
         res.status(500).json({ message: 'Error saving feedback' });
     } finally {
         connection.release();
