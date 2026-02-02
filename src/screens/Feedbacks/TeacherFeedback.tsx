@@ -43,8 +43,8 @@ interface MatrixStudent {
 interface AnalyticsItem {
     teacher_id: number;
     teacher_name: string;
-    avg_rating: number; // 1.0 to 5.0
-    percentage: number; // 0 to 100
+    avg_rating: number;
+    percentage: number;
     total_reviews: number;
 }
 
@@ -55,21 +55,23 @@ const TeacherFeedback = () => {
     // --- STUDENT STATE ---
     const [myTeachers, setMyTeachers] = useState<TeacherRow[]>([]);
     
-    // --- ADMIN STATE ---
+    // --- ADMIN STATE (Main Screen) ---
     const [allClasses, setAllClasses] = useState<string[]>([]);
-    const [selectedClass, setSelectedClass] = useState('All Classes'); // Default
+    const [selectedClass, setSelectedClass] = useState('All Classes');
     const [classTeachers, setClassTeachers] = useState<{id: number | string, full_name: string}[]>([]);
     const [selectedTeacherId, setSelectedTeacherId] = useState<string>('all'); 
     
-    // Sorting & Comparison
-    const [showSortModal, setShowSortModal] = useState(false);
-    const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = High to Low
-
-    // Admin Data Holders
+    // Data Holders (Main Screen)
     const [adminReviews, setAdminReviews] = useState<AdminReviewRow[]>([]); // List View
     const [matrixData, setMatrixData] = useState<{teachers: any[], students: MatrixStudent[]} | null>(null); // Matrix View
-    const [analyticsData, setAnalyticsData] = useState<AnalyticsItem[]>([]); // Bar Graph View
     const [stats, setStats] = useState({ average: '0.0', total: 0 });
+
+    // --- COMPARE PAGE STATE (Modal) ---
+    const [showComparePage, setShowComparePage] = useState(false);
+    const [compareClass, setCompareClass] = useState('All Classes'); // Default in Compare Page
+    const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // desc = High to Low
+    const [analyticsData, setAnalyticsData] = useState<AnalyticsItem[]>([]);
+    const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
     // --- INITIAL LOAD ---
     useEffect(() => {
@@ -145,23 +147,21 @@ const TeacherFeedback = () => {
     };
 
     // ==========================================
-    // ADMIN LOGIC
+    // ADMIN LOGIC (MAIN SCREEN)
     // ==========================================
     const fetchClasses = async () => {
         try {
             const res = await apiClient.get('/feedback/classes');
-            // Prepend "All Classes"
             setAllClasses(['All Classes', ...res.data]);
         } catch (e) { console.error(e); }
     };
 
-    // When Class Changes -> Fetch Teachers
+    // 1. Fetch Teachers for Dropdown (Main Screen)
     useEffect(() => {
         if (user?.role === 'admin') {
             const loadTeachers = async () => {
                 try {
                     let tList = [];
-                    // If specific class, fetch assigned teachers
                     if (selectedClass && selectedClass !== 'All Classes') {
                         const res = await apiClient.get(`/timetable/${selectedClass}`);
                         const uniqueTeachers = new Map();
@@ -169,39 +169,28 @@ const TeacherFeedback = () => {
                             if(slot.teacher_id) uniqueTeachers.set(slot.teacher_id, slot.teacher_name);
                         });
                         tList = Array.from(uniqueTeachers, ([id, full_name]) => ({ id, full_name }));
-                    } else {
-                        // All Classes - You might want to fetch a list of ALL teachers here if needed
-                        // For now, we will handle aggregation in 'All Teachers' mode
-                        tList = []; 
-                    }
-                    
-                    // ADD "ALL TEACHERS" OPTION
+                    } 
                     tList = [{ id: 'all', full_name: 'All Teachers' }, ...tList];
-                    
                     setClassTeachers(tList);
-                    setSelectedTeacherId('all'); // Reset to all
+                    setSelectedTeacherId('all'); 
                 } catch(e) { console.error(e); }
             };
             loadTeachers();
         }
     }, [selectedClass, user]);
 
-    // When Teacher/Class/Sort Changes -> Fetch Data 
+    // 2. Fetch Data for Matrix/List (Main Screen)
     useEffect(() => {
-        if (user?.role === 'admin') {
+        if (user?.role === 'admin' && !showComparePage) {
             const loadReviews = async () => {
                 setLoading(true);
                 try {
                     const params: any = {};
-                    
-                    // Handle Class param
                     if (selectedClass === 'All Classes') params.class_group = 'all';
                     else params.class_group = selectedClass;
 
-                    // Handle Teacher Param & Mode
                     if (selectedTeacherId === 'all') {
-                        // New Logic: If 'all' teachers selected, show Analytics (Bar Graphs)
-                        params.mode = 'analytics';
+                         params.mode = 'matrix'; // Default to Matrix for main screen "All"
                     } else {
                         params.teacher_id = selectedTeacherId;
                         params.mode = 'list';
@@ -209,38 +198,59 @@ const TeacherFeedback = () => {
 
                     const res = await apiClient.get('/admin/teacher-feedback', { params });
                     
-                    if (res.data.mode === 'analytics') {
-                        // GRAPH DATA
-                        let data = res.data.data;
-                        // Sort Data
-                        data.sort((a: AnalyticsItem, b: AnalyticsItem) => {
-                            return sortOrder === 'desc' 
-                                ? b.avg_rating - a.avg_rating 
-                                : a.avg_rating - b.avg_rating;
-                        });
-                        setAnalyticsData(data);
-                        setAdminReviews([]);
-                        setMatrixData(null);
-                    } 
-                    else if (res.data.mode === 'matrix') {
-                        // MATRIX VIEW (Legacy fallback if needed, but we prioritize graphs now)
+                    if (res.data.mode === 'matrix') {
                         setMatrixData({ teachers: res.data.teachers, students: res.data.students });
                         setAdminReviews([]); 
-                        setAnalyticsData([]);
-                    } 
-                    else {
-                        // LIST VIEW (Specific Teacher)
+                    } else {
                         setAdminReviews(res.data.reviews);
                         setStats({ average: res.data.average, total: res.data.total });
                         setMatrixData(null); 
-                        setAnalyticsData([]);
                     }
                 } catch (e) { console.error(e); }
                 finally { setLoading(false); }
             };
             loadReviews();
         }
-    }, [selectedTeacherId, selectedClass, sortOrder, user]);
+    }, [selectedTeacherId, selectedClass, user, showComparePage]);
+
+
+    // ==========================================
+    // COMPARE PAGE LOGIC
+    // ==========================================
+    useEffect(() => {
+        if (showComparePage) {
+            fetchAnalytics();
+        }
+    }, [showComparePage, compareClass, sortOrder]);
+
+    const fetchAnalytics = async () => {
+        setLoadingAnalytics(true);
+        try {
+            const params: any = { mode: 'analytics' };
+            
+            // Filter by class or All
+            if (compareClass === 'All Classes') params.class_group = 'all';
+            else params.class_group = compareClass;
+
+            const res = await apiClient.get('/admin/teacher-feedback', { params });
+            
+            let data = res.data.data || [];
+            
+            // Sort
+            data.sort((a: AnalyticsItem, b: AnalyticsItem) => {
+                return sortOrder === 'desc' 
+                    ? b.avg_rating - a.avg_rating 
+                    : a.avg_rating - b.avg_rating;
+            });
+            
+            setAnalyticsData(data);
+
+        } catch (error) {
+            console.error("Analytics Error", error);
+        } finally {
+            setLoadingAnalytics(false);
+        }
+    };
 
 
     // ==========================================
@@ -353,7 +363,7 @@ const TeacherFeedback = () => {
                 </ScrollView>
             )}
 
-            {/* ======================= ADMIN VIEW ======================= */}
+            {/* ======================= ADMIN VIEW (MAIN) ======================= */}
             {user?.role === 'admin' && (
                 <View style={{flex: 1}}>
                     {/* Filters */}
@@ -373,14 +383,14 @@ const TeacherFeedback = () => {
                             {/* COMPARE BUTTON */}
                             <TouchableOpacity 
                                 style={styles.compareBtn}
-                                onPress={() => setShowSortModal(true)}
+                                onPress={() => setShowComparePage(true)}
                             >
                                 <Text style={styles.compareBtnText}>COM</Text>
-                                <MaterialIcons name="sort" size={16} color="#FFF" />
+                                <MaterialIcons name="bar-chart" size={20} color="#FFF" />
                             </TouchableOpacity>
                         </View>
 
-                        {/* Teacher Picker (Only if specific class selected, or always allow drilldown) */}
+                        {/* Teacher Picker */}
                         <View style={styles.pickerWrapper}>
                             <Picker
                                 selectedValue={selectedTeacherId}
@@ -394,63 +404,7 @@ const TeacherFeedback = () => {
 
                     {loading ? <ActivityIndicator color="#008080" style={{marginTop:20}} /> : (
                         <>
-                            {/* CASE 1: ANALYTICS / BAR GRAPHS (All Teachers) */}
-                            {selectedTeacherId === 'all' && analyticsData.length > 0 && (
-                                <ScrollView contentContainerStyle={{ paddingBottom: 60, paddingHorizontal: 15 }}>
-                                    <Text style={styles.sectionTitle}>
-                                        Overall Performance ({sortOrder === 'desc' ? 'High to Low' : 'Low to High'})
-                                    </Text>
-                                    
-                                    <View style={styles.chartContainer}>
-                                        {analyticsData.map((item, index) => {
-                                            // Determine Color based on Percentage
-                                            let barColor = '#3b82f6'; // Blue (Avg)
-                                            if (item.percentage >= 85) barColor = '#10b981'; // Green
-                                            else if (item.percentage < 50) barColor = '#ef4444'; // Red
-
-                                            return (
-                                                <View key={item.teacher_id} style={styles.barColumn}>
-                                                    {/* Percentage Label */}
-                                                    <Text style={styles.barLabelTop}>{Math.round(item.percentage)}%</Text>
-                                                    
-                                                    {/* Bar */}
-                                                    <View style={styles.barBackground}>
-                                                        <View style={[styles.barFill, { height: `${item.percentage}%`, backgroundColor: barColor }]}>
-                                                            {/* Rating Inside Bar */}
-                                                            {item.percentage > 20 && (
-                                                                <Text style={styles.barTextInside}>
-                                                                    {item.avg_rating}
-                                                                </Text>
-                                                            )}
-                                                        </View>
-                                                    </View>
-                                                    
-                                                    {/* Teacher Name / ID */}
-                                                    <Text style={styles.barLabelBottom} numberOfLines={1}>
-                                                        {item.teacher_name.split(' ')[0]}
-                                                    </Text>
-                                                </View>
-                                            );
-                                        })}
-                                    </View>
-
-                                    {/* Stats List below graph */}
-                                    <View style={{marginTop: 20}}>
-                                        {analyticsData.map((item, idx) => (
-                                            <View key={idx} style={styles.statRow}>
-                                                <Text style={styles.statRowName}>{idx + 1}. {item.teacher_name}</Text>
-                                                <View style={{flexDirection:'row', alignItems:'center'}}>
-                                                    <Text style={{fontWeight:'bold', marginRight: 5}}>{item.avg_rating}</Text>
-                                                    <MaterialIcons name="star" size={14} color="#FFC107" />
-                                                    <Text style={{fontSize: 12, color: '#999', marginLeft: 5}}>({item.total_reviews} reviews)</Text>
-                                                </View>
-                                            </View>
-                                        ))}
-                                    </View>
-                                </ScrollView>
-                            )}
-
-                            {/* CASE 2: SPECIFIC TEACHER (List View) */}
+                            {/* LIST VIEW (Single Teacher) */}
                             {selectedTeacherId !== 'all' && selectedTeacherId !== '' && (
                                 <>
                                     <View style={styles.statsContainer}>
@@ -488,58 +442,216 @@ const TeacherFeedback = () => {
                                     </ScrollView>
                                 </>
                             )}
+
+                            {/* MATRIX VIEW (All Teachers) */}
+                            {selectedTeacherId === 'all' && matrixData && (
+                                <ScrollView horizontal contentContainerStyle={{flexGrow: 1}}>
+                                    <View>
+                                        {/* Matrix Header */}
+                                        <View style={[styles.matrixHeaderRow, { minWidth: FIXED_COLS_WIDTH + (matrixData.teachers.length * TEACHER_COL_WIDTH) }]}>
+                                            <View style={{width: ROLL_COL_WIDTH, justifyContent:'center', alignItems:'center'}}><Text style={styles.th}>Roll</Text></View>
+                                            <View style={{width: NAME_COL_WIDTH, justifyContent:'center'}}><Text style={styles.th}>Student Name</Text></View>
+                                            {matrixData.teachers.map((t) => (
+                                                <View key={t.id} style={{width: TEACHER_COL_WIDTH, justifyContent:'center', alignItems:'center', paddingHorizontal: 2}}>
+                                                    <Text style={[styles.th, { textAlign: 'center' }]} numberOfLines={2}>
+                                                        {t.full_name.split(' ')[0]}
+                                                    </Text>
+                                                </View>
+                                            ))}
+                                        </View>
+
+                                        {/* Matrix Rows */}
+                                        <ScrollView contentContainerStyle={{paddingBottom: 60}}>
+                                            {matrixData.students.map((stu) => (
+                                                <View key={stu.id} style={[styles.matrixRow, { minWidth: FIXED_COLS_WIDTH + (matrixData.teachers.length * TEACHER_COL_WIDTH) }]}>
+                                                    <View style={{width: ROLL_COL_WIDTH, justifyContent:'center', alignItems:'center'}}><Text style={styles.rollNo}>{stu.roll_no || '-'}</Text></View>
+                                                    <View style={{width: NAME_COL_WIDTH}}><Text style={styles.studentName} numberOfLines={1}>{stu.full_name}</Text></View>
+                                                    
+                                                    {matrixData.teachers.map((t) => {
+                                                        const fb = stu.feedback_map[t.id];
+                                                        return (
+                                                            <View key={t.id} style={styles.matrixCell}>
+                                                                {fb ? (
+                                                                    <>
+                                                                       <StarRating rating={fb.rating} readOnly size={12} /> 
+                                                                       <Text style={[styles.miniBadge, {
+                                                                           backgroundColor: fb.remarks === 'Good' ? '#10b981' : fb.remarks === 'Poor' ? '#ef4444' : '#3b82f6'
+                                                                       }]}>
+                                                                           {fb.remarks ? fb.remarks.charAt(0) : '-'}
+                                                                       </Text>
+                                                                    </>
+                                                                ) : (
+                                                                    <Text style={{color:'#ccc'}}>-</Text>
+                                                                )}
+                                                            </View>
+                                                        )
+                                                    })}
+                                                </View>
+                                            ))}
+                                        </ScrollView>
+                                    </View>
+                                </ScrollView>
+                            )}
                         </>
                     )}
                 </View>
             )}
 
-            {/* --- SORT SELECTION MODAL --- */}
+            {/* ========================================================== */}
+            {/* COMPARE PAGE (New Screen via Modal) */}
+            {/* ========================================================== */}
             <Modal
-                visible={showSortModal}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setShowSortModal(false)}
+                visible={showComparePage}
+                animationType="slide"
+                onRequestClose={() => setShowComparePage(false)}
             >
-                <TouchableOpacity 
-                    style={styles.modalOverlay} 
-                    activeOpacity={1} 
-                    onPress={() => setShowSortModal(false)}
-                >
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Sort Rating</Text>
-                        <TouchableOpacity 
-                            style={styles.modalOption} 
-                            onPress={() => { setSortOrder('desc'); setShowSortModal(false); }}
-                        >
-                            <Text style={[styles.modalOptionText, sortOrder === 'desc' && styles.selectedOption]}>High to Low</Text>
-                            {sortOrder === 'desc' && <MaterialIcons name="check" size={20} color="#008080" />}
+                <SafeAreaView style={styles.pageContainer}>
+                    
+                    {/* Page Header */}
+                    <View style={styles.pageHeader}>
+                        <TouchableOpacity onPress={() => setShowComparePage(false)} style={styles.backButton}>
+                            <MaterialIcons name="arrow-back" size={24} color="#333" />
                         </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={styles.modalOption} 
-                            onPress={() => { setSortOrder('asc'); setShowSortModal(false); }}
-                        >
-                            <Text style={[styles.modalOptionText, sortOrder === 'asc' && styles.selectedOption]}>Low to High</Text>
-                            {sortOrder === 'asc' && <MaterialIcons name="check" size={20} color="#008080" />}
-                        </TouchableOpacity>
+                        <Text style={styles.pageTitle}>Performance Analytics</Text>
+                        <View style={{width:24}} /> 
                     </View>
-                </TouchableOpacity>
+
+                    {/* Compare Filters */}
+                    <View style={styles.compareFilterContainer}>
+                        
+                        {/* Class Filter */}
+                        <View style={{ marginBottom: 15 }}>
+                            <Text style={styles.filterLabel}>Select Class:</Text>
+                            <View style={styles.pickerWrapper}>
+                                <Picker
+                                    selectedValue={compareClass}
+                                    onValueChange={(val) => setCompareClass(val)}
+                                    style={styles.picker}
+                                >
+                                    {allClasses.map(c => <Picker.Item key={c} label={c} value={c} />)}
+                                </Picker>
+                            </View>
+                        </View>
+
+                        {/* Sort Filter */}
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                            <Text style={styles.filterLabel}>Sort Order:</Text>
+                            <View style={styles.sortToggleContainer}>
+                                <TouchableOpacity 
+                                    style={[styles.sortBtn, sortOrder === 'desc' && styles.sortBtnActive]}
+                                    onPress={() => setSortOrder('desc')}
+                                >
+                                    <Text style={[styles.sortBtnText, sortOrder === 'desc' && styles.sortBtnTextActive]}>High to Low</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[styles.sortBtn, sortOrder === 'asc' && styles.sortBtnActive]}
+                                    onPress={() => setSortOrder('asc')}
+                                >
+                                    <Text style={[styles.sortBtnText, sortOrder === 'asc' && styles.sortBtnTextActive]}>Low to High</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* Bar Graph Content */}
+                    {loadingAnalytics ? <ActivityIndicator size="large" color="#008080" style={{marginTop: 50}} /> : (
+                        <ScrollView contentContainerStyle={{ paddingBottom: 40, paddingHorizontal: 15 }}>
+                            
+                            {analyticsData.length > 0 ? (
+                                <View style={styles.graphContainer}>
+                                    {analyticsData.map((item) => {
+                                        // Color Logic
+                                        let barColor = '#3b82f6'; // Average (Blue)
+                                        if (item.percentage >= 85) barColor = '#10b981'; // Good (Green)
+                                        else if (item.percentage < 50) barColor = '#ef4444'; // Poor (Red)
+
+                                        return (
+                                            <View key={item.teacher_id} style={styles.barWrapper}>
+                                                {/* Percentage Top */}
+                                                <Text style={styles.barLabelTop}>{Math.round(item.percentage)}%</Text>
+                                                
+                                                {/* Vertical Bar */}
+                                                <View style={styles.barTrack}>
+                                                    <View style={[
+                                                        styles.barFill, 
+                                                        { 
+                                                            height: `${item.percentage}%`, 
+                                                            backgroundColor: barColor 
+                                                        }
+                                                    ]} />
+                                                </View>
+                                                
+                                                {/* Footer Info */}
+                                                <Text style={styles.barLabelBottom} numberOfLines={1}>
+                                                    {item.teacher_name.split(' ')[0]}
+                                                </Text>
+                                                <View style={{flexDirection:'row', alignItems:'center', marginTop: 2}}>
+                                                    <Text style={{fontSize: 10, fontWeight:'bold'}}>{item.avg_rating}</Text>
+                                                    <MaterialIcons name="star" size={10} color="#FFC107" />
+                                                </View>
+                                            </View>
+                                        );
+                                    })}
+                                </View>
+                            ) : (
+                                <Text style={styles.emptyText}>No rating data available for {compareClass}.</Text>
+                            )}
+
+                            {/* Detailed List Below Graph */}
+                            {analyticsData.length > 0 && (
+                                <View style={{marginTop: 30, borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 10}}>
+                                    <Text style={{fontWeight:'bold', marginBottom: 10, color:'#555'}}>Detailed Stats:</Text>
+                                    {analyticsData.map((item, index) => (
+                                        <View key={index} style={styles.detailRow}>
+                                            <Text style={styles.detailName}>{index+1}. {item.teacher_name}</Text>
+                                            <View style={{flexDirection:'row', gap: 10}}>
+                                                <Text style={{color:'#666', fontSize:12}}>{item.total_reviews} Reviews</Text>
+                                                <Text style={{fontWeight:'bold', color:'#333'}}>{item.avg_rating} ★</Text>
+                                            </View>
+                                        </View>
+                                    ))}
+                                </View>
+                            )}
+
+                        </ScrollView>
+                    )}
+
+                    {/* Footer Legend in Compare Page */}
+                    <View style={styles.footerContainer}>
+                        <View style={styles.legendGroup}>
+                            <View style={[styles.dot, { backgroundColor: '#10b981' }]} />
+                            <Text style={styles.legendText}> 85-100%</Text>
+                        </View>
+                        <View style={styles.legendGroup}>
+                            <View style={[styles.dot, { backgroundColor: '#3b82f6' }]} />
+                            <Text style={styles.legendText}> 50-85%</Text>
+                        </View>
+                        <View style={styles.legendGroup}>
+                            <View style={[styles.dot, { backgroundColor: '#ef4444' }]} />
+                            <Text style={styles.legendText}> 0-50%</Text>
+                        </View>
+                    </View>
+                </SafeAreaView>
             </Modal>
 
-            {/* --- FOOTER LEGEND --- */}
-            <View style={styles.footerContainer}>
-                <View style={styles.legendGroup}>
-                    <View style={[styles.dot, { backgroundColor: '#10b981' }]} />
-                    <Text style={styles.legendText}> 85-100%</Text>
+
+            {/* --- MAIN FOOTER LEGEND --- */}
+            {!showComparePage && (
+                <View style={styles.footerContainer}>
+                    <View style={styles.legendGroup}>
+                        <Text style={styles.legendLabel}>Scale: </Text>
+                        <MaterialIcons name="star" size={14} color="#FFC107" />
+                        <Text style={styles.legendText}> (1-5)</Text>
+                    </View>
+                    <View style={styles.verticalDivider} />
+                    <View style={styles.legendGroup}>
+                        <Text style={styles.legendLabel}>Note: </Text>
+                        <Text style={[styles.legendText, { color: '#10b981', fontWeight:'bold' }]}>G</Text><Text style={styles.legendText}>=Good, </Text>
+                        <Text style={[styles.legendText, { color: '#3b82f6', fontWeight:'bold' }]}>A</Text><Text style={styles.legendText}>=Avg, </Text>
+                        <Text style={[styles.legendText, { color: '#ef4444', fontWeight:'bold' }]}>P</Text><Text style={styles.legendText}>=Poor</Text>
+                    </View>
                 </View>
-                <View style={styles.legendGroup}>
-                    <View style={[styles.dot, { backgroundColor: '#3b82f6' }]} />
-                    <Text style={styles.legendText}> 50-85%</Text>
-                </View>
-                <View style={styles.legendGroup}>
-                    <View style={[styles.dot, { backgroundColor: '#ef4444' }]} />
-                    <Text style={styles.legendText}> 0-50%</Text>
-                </View>
-            </View>
+            )}
 
         </SafeAreaView>
     );
@@ -547,6 +659,7 @@ const TeacherFeedback = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F2F5F8' },
+    pageContainer: { flex: 1, backgroundColor: '#fff' },
 
     // Header
     headerCard: {
@@ -562,6 +675,39 @@ const styles = StyleSheet.create({
     headerTextContainer: { justifyContent: 'center' },
     headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
     headerSubtitle: { fontSize: 13, color: '#666' },
+
+    // Compare Page Header
+    pageHeader: { 
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 15, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#eee', backgroundColor: '#fff'
+    },
+    backButton: { padding: 5 },
+    pageTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+
+    // Compare Page Filters
+    compareFilterContainer: { padding: 15, backgroundColor: '#f9f9f9', borderBottomWidth: 1, borderBottomColor: '#eee' },
+    filterLabel: { fontSize: 14, fontWeight: '600', color: '#444', marginBottom: 5 },
+    
+    sortToggleContainer: { flexDirection: 'row', backgroundColor: '#e2e8f0', borderRadius: 8, pading: 2 },
+    sortBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
+    sortBtnActive: { backgroundColor: '#fff', elevation: 1 },
+    sortBtnText: { fontSize: 12, color: '#666' },
+    sortBtnTextActive: { color: '#008080', fontWeight: 'bold' },
+
+    // Graph Styles
+    graphContainer: { 
+        flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', 
+        alignItems: 'flex-end', marginTop: 20, gap: 10 
+    },
+    barWrapper: { alignItems: 'center', width: 60, marginBottom: 15 },
+    barTrack: { width: 30, height: 180, backgroundColor: '#f1f5f9', borderRadius: 4, justifyContent: 'flex-end', overflow: 'hidden' },
+    barFill: { width: '100%', borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+    barLabelTop: { fontSize: 11, fontWeight: 'bold', marginBottom: 4, color: '#333' },
+    barLabelBottom: { fontSize: 11, fontWeight: '600', marginTop: 6, color: '#444' },
+
+    // Detail List Styles
+    detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+    detailName: { color: '#333', fontSize: 14 },
 
     // --- Student View Styles ---
     cardRow: {
@@ -586,29 +732,12 @@ const styles = StyleSheet.create({
     },
     picker: { width: '100%', color: '#333' },
     
-    // Compare Button
     compareBtn: {
         backgroundColor: '#ef4444', marginLeft: 8, borderRadius: 8, height: 45,
         paddingHorizontal: 15, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 5,
         elevation: 2
     },
     compareBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-
-    // Chart Styles
-    sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 15 },
-    chartContainer: { 
-        flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', 
-        height: 200, marginTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#ccc' 
-    },
-    barColumn: { alignItems: 'center', width: 50 },
-    barBackground: { width: 30, height: 160, backgroundColor: '#f0f0f0', borderRadius: 15, justifyContent: 'flex-end', overflow: 'hidden' },
-    barFill: { width: '100%', borderTopLeftRadius: 15, borderTopRightRadius: 15, justifyContent: 'center', alignItems: 'center' },
-    barLabelTop: { fontSize: 10, color: '#333', fontWeight: 'bold', marginBottom: 2 },
-    barLabelBottom: { fontSize: 11, color: '#333', marginTop: 5, fontWeight: '600' },
-    barTextInside: { color: '#fff', fontSize: 10, fontWeight: 'bold', transform: [{ rotate: '-90deg' }], width: 40, textAlign: 'center' },
-    
-    statRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eee' },
-    statRowName: { fontSize: 14, color: '#333', flex: 1 },
 
     // List View
     statsContainer: { flexDirection: 'row', marginHorizontal: 10, marginBottom: 10 },
@@ -622,6 +751,12 @@ const styles = StyleSheet.create({
     studentName: { flex: 1, color: '#444' },
     adminRemarks: { fontSize: 12, fontWeight: '600', marginTop: 2 },
 
+    // Matrix View
+    matrixHeaderRow: { flexDirection: 'row', backgroundColor: '#e0e7ff', paddingVertical: 12, paddingHorizontal: 5, borderBottomWidth: 1, borderBottomColor: '#ccc' },
+    matrixRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingVertical: 10, paddingHorizontal: 5, borderBottomWidth: 1, borderBottomColor: '#eee' },
+    matrixCell: { width: TEACHER_COL_WIDTH, alignItems: 'center', justifyContent: 'center' },
+    miniBadge: { marginTop: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden', color: '#fff', fontSize: 10, fontWeight: 'bold' },
+
     emptyText: { textAlign: 'center', marginTop: 30, color: '#999' },
 
     // Footer
@@ -629,19 +764,14 @@ const styles = StyleSheet.create({
         position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', 
         borderTopWidth: 1, borderTopColor: '#f0f0f0', height: 45, 
         flexDirection: 'row', justifyContent: 'center', alignItems: 'center', 
-        paddingHorizontal: 15, elevation: 10, gap: 15
+        paddingHorizontal: 15, elevation: 10, gap: 10
     },
     legendGroup: { flexDirection: 'row', alignItems: 'center' },
-    dot: { width: 10, height: 10, borderRadius: 5, marginRight: 5 },
+    legendLabel: { fontSize: 12, fontWeight: '700', color: '#333', marginRight: 4 },
     legendText: { fontSize: 11, color: '#6b7280', fontWeight: '500' },
-
-    // Modal
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { backgroundColor: '#fff', width: '70%', borderRadius: 12, padding: 20, elevation: 5 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, textAlign: 'center', color: '#333' },
-    modalOption: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-    modalOptionText: { fontSize: 16, color: '#555' },
-    selectedOption: { color: '#008080', fontWeight: 'bold' }
+    verticalDivider: { height: 16, width: 1, backgroundColor: '#e5e7eb', marginHorizontal: 12 },
+    
+    dot: { width: 10, height: 10, borderRadius: 5, marginRight: 5 },
 });
 
 export default TeacherFeedback;
