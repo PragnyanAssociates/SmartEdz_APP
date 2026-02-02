@@ -9968,17 +9968,51 @@ app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     }
 });
 
-// 5. Get Students + Feedback (MODIFIED for "All Subjects")
+// 5. Get Students + Feedback (Updated for Analytics & Subject Filtering)
 app.get('/api/feedback/students', async (req, res) => {
-    const { class_group, teacher_id, mode } = req.query;
+    const { class_group, teacher_id, mode, subject } = req.query;
 
     try {
         let sql = "";
         let params = [];
 
-        if (mode === 'overall') {
-            // --- ALL SUBJECTS VIEW (AGGREGATION) ---
-            // Calculates Average Stars and "Average" Remark (mapped to 1-3)
+        // --- ANALYTICS MODE (For Compare Graph) ---
+        if (mode === 'analytics') {
+            // Base query: Get Student Info
+            let whereClause = "u.role = 'student' AND u.class_group = ?";
+            params = [class_group];
+
+            // Filter by Subject (Find teachers for this subject)
+            // If subject is NOT 'All Subjects', we only count feedback from teachers teaching that subject
+            let teacherFilter = "";
+            if (subject && subject !== 'All Subjects') {
+                // We need to filter feedback f where f.teacher_id matches teachers teaching this subject
+                teacherFilter = `
+                    AND f.teacher_id IN (
+                        SELECT DISTINCT teacher_id FROM timetables 
+                        WHERE class_group = ? AND subject_name = ?
+                    )
+                `;
+                params.push(class_group, subject);
+            }
+
+            sql = `
+                SELECT 
+                    u.id as student_id, 
+                    u.full_name, 
+                    p.roll_no,
+                    IFNULL(AVG(f.status_marks), 0) as avg_rating
+                FROM users u
+                LEFT JOIN user_profiles p ON u.id = p.user_id
+                LEFT JOIN student_feedback f ON u.id = f.student_id ${teacherFilter}
+                WHERE ${whereClause}
+                GROUP BY u.id
+                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
+            `;
+        } 
+        
+        // --- EXISTING MODES (Overall / Individual) ---
+        else if (mode === 'overall') {
             sql = `
                 SELECT 
                     u.id as student_id, 
@@ -10008,7 +10042,7 @@ app.get('/api/feedback/students', async (req, res) => {
             params = [class_group];
 
         } else {
-            // --- INDIVIDUAL TEACHER VIEW ---
+            // Individual Teacher View
             sql = `
                 SELECT 
                     u.id as student_id, 
@@ -10028,6 +10062,17 @@ app.get('/api/feedback/students', async (req, res) => {
         }
 
         const [rows] = await db.query(sql, params);
+
+        // For analytics, format percentage
+        if (mode === 'analytics') {
+            const formatted = rows.map(r => ({
+                ...r,
+                percentage: ((r.avg_rating / 5) * 100).toFixed(1),
+                avg_rating: parseFloat(r.avg_rating).toFixed(1)
+            }));
+            return res.json(formatted);
+        }
+
         res.json(rows);
     } catch (err) {
         console.error(err);

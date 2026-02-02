@@ -769,8 +769,8 @@ const styles = StyleSheet.create({
     // --- ANIMATED BAR STYLES ---
     barWrapper: { alignItems: 'center', width: 60, marginHorizontal: 8, height: 280, justifyContent: 'flex-end' },
     barLabelTop: { fontSize: 10, fontWeight: 'bold', color: '#333', marginBottom: 4 },
-    barTrack: { width: 30, height: 220, backgroundColor: '#F0F0F0', borderRadius: 15, justifyContent: 'flex-end', overflow: 'hidden' },
-    barFill: { width: '100%', borderRadius: 15 },
+    barTrack: { width: 30, height: 220, backgroundColor: '#F0F0F0', borderRadius: 0, justifyContent: 'flex-end', overflow: 'hidden' },
+    barFill: { width: '100%', borderRadius: 0 },
     barLabelBottom: { fontSize: 11, fontWeight: '600', color: '#333', marginTop: 6, textAlign:'center', width: '100%' },
 
 });
