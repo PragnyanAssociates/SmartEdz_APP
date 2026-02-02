@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View, Text, StyleSheet, SafeAreaView, ScrollView,
-    TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, Easing, Dimensions
+    TouchableOpacity, ActivityIndicator, Alert, Modal, Animated, Easing
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -17,7 +17,7 @@ const COL_WIDTHS = {
 };
 const TABLE_MIN_WIDTH = COL_WIDTHS.ROLL + COL_WIDTHS.NAME + COL_WIDTHS.STATUS + COL_WIDTHS.REMARKS; 
 
-// --- ANIMATED BAR COMPONENT (For the Compare Modal) ---
+// --- ANIMATED BAR COMPONENT ---
 const AnimatedBar = ({ percentage, rating, label, color }) => {
     const animatedHeight = useRef(new Animated.Value(0)).current;
 
@@ -72,8 +72,8 @@ const StudentFeedback = () => {
 
     // --- Compare Modal State ---
     const [showCompareModal, setShowCompareModal] = useState(false);
-    const [compareSubject, setCompareSubject] = useState('All Subjects'); // Filter inside modal
-    const [sortOrder, setSortOrder] = useState('desc'); // 'desc' (High to Low) | 'asc' (Low to High) | 'roll'
+    const [compareSubject, setCompareSubject] = useState('All Subjects'); 
+    const [sortOrder, setSortOrder] = useState('desc'); 
     const [analyticsData, setAnalyticsData] = useState([]);
     const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
@@ -99,8 +99,8 @@ const StudentFeedback = () => {
             }
             setAllClasses(classesData);
             if (classesData.length > 0) {
-                const defaultClass = classesData.includes("Class 10") ? "Class 10" : classesData[0];
-                setSelectedClass(defaultClass);
+                // Auto-select first class if available
+                setSelectedClass(classesData[0]);
             }
         } catch (error) { console.error('Error fetching classes', error); }
     };
@@ -132,7 +132,7 @@ const StudentFeedback = () => {
         fetchSubjects();
     }, [selectedClass, user]);
 
-    // Fetch Teachers (For List View Editing)
+    // Fetch Teachers (For Admin List View Editing)
     useEffect(() => {
         if (!selectedClass || !selectedSubject || isOverallView) {
             setAvailableTeachers([]);
@@ -160,6 +160,8 @@ const StudentFeedback = () => {
     // --- 3. Fetch List Data (Main Screen) ---
     const fetchStudentData = useCallback(async () => {
         if (!selectedClass) { setStudents([]); return; }
+        
+        // Validation: Don't fetch if detailed view is selected but no teacher/subject is ready
         if (!isOverallView && (!selectedTeacherId || !selectedSubject)) {
             setStudents([]); return;
         }
@@ -185,6 +187,7 @@ const StudentFeedback = () => {
             setHasChanges(false);
         } catch (error) {
             Alert.alert('Error', 'Failed to load student list.');
+            console.error(error);
         } finally {
             setLoading(false);
         }
@@ -194,7 +197,7 @@ const StudentFeedback = () => {
         if ((isOverallView && selectedClass) || (selectedClass && selectedSubject && selectedTeacherId)) {
             fetchStudentData();
         }
-    }, [selectedClass, selectedSubject, selectedTeacherId, isOverallView, fetchStudentData]);
+    }, [fetchStudentData]);
 
 
     // --- 4. Analytics Data (Modal) ---
@@ -207,11 +210,10 @@ const StudentFeedback = () => {
     const fetchAnalytics = async () => {
         setLoadingAnalytics(true);
         try {
-            // Logic: Compare students within the selected class, filtered by subject
             const params = { 
                 class_group: selectedClass,
                 mode: 'analytics',
-                subject: compareSubject // Can be "All Subjects" or specific
+                subject: compareSubject 
             };
 
             const response = await apiClient.get('/feedback/students', { params });
@@ -227,7 +229,7 @@ const StudentFeedback = () => {
             // Filter out empty data
             data = data.filter(s => s.avg_rating > 0);
 
-            // Sort
+            // Sort logic
             if (sortOrder === 'desc') {
                 data.sort((a, b) => b.percentage - a.percentage);
             } else if (sortOrder === 'asc') {
@@ -254,7 +256,7 @@ const StudentFeedback = () => {
             const payload = {
                 teacher_id: selectedTeacherId,
                 class_group: selectedClass,
-                subject_name: selectedSubject,
+                subject_name: selectedSubject, // Sending correct subject name
                 feedback_data: students.map(s => ({
                     student_id: s.student_id,
                     status_marks: s.status_marks === 0 ? null : s.status_marks, 
@@ -264,7 +266,10 @@ const StudentFeedback = () => {
             await apiClient.post('/feedback', payload);
             Alert.alert("Success", "Student behavior updated!");
             setHasChanges(false);
+            // Optional: Refresh data
+            fetchStudentData();
         } catch (error) {
+            console.error(error);
             Alert.alert("Error", "Failed to save feedback.");
         } finally {
             setLoading(false);
@@ -464,7 +469,7 @@ const StudentFeedback = () => {
                 </View>
             )}
 
-            {/* MAIN SCREEN LEGEND */}
+            {/* FOOTER LEGEND */}
             <View style={styles.footerContainer}>
                 <View style={styles.legendGroup}>
                     <Text style={styles.legendLabel}>Scale: </Text>
@@ -481,7 +486,7 @@ const StudentFeedback = () => {
             </View>
 
             {/* ========================================================== */}
-            {/* COMPARISON MODAL - SEPARATE SCREEN OVERLAY */}
+            {/* COMPARISON MODAL */}
             {/* ========================================================== */}
             <Modal
                 visible={showCompareModal}
@@ -512,7 +517,7 @@ const StudentFeedback = () => {
                                 >
                                     <Picker.Item label="All Subjects" value="All Subjects" />
                                     {availableSubjects
-                                        .filter(s => s !== "All Subjects") // Avoid duplicate All Subjects if already in list
+                                        .filter(s => s !== "All Subjects")
                                         .map(s => <Picker.Item key={s} label={s} value={s} />)
                                     }
                                 </Picker>
@@ -545,7 +550,7 @@ const StudentFeedback = () => {
                         </View>
                     </View>
 
-                    {/* GRAPH CONTENT (HORIZONTAL SCROLL) */}
+                    {/* GRAPH CONTENT */}
                     <View style={styles.graphContainer}>
                         {loadingAnalytics ? (
                             <ActivityIndicator size="large" color="#008080" />
@@ -556,10 +561,9 @@ const StudentFeedback = () => {
                                 contentContainerStyle={{paddingHorizontal: 10, alignItems:'flex-end'}}
                             >
                                 {analyticsData.map((item, idx) => {
-                                    // Determine Color
-                                    let color = '#3b82f6'; // Avg Blue
-                                    if(item.percentage >= 85) color = '#10b981'; // Green
-                                    else if(item.percentage < 50) color = '#ef4444'; // Red
+                                    let color = '#3b82f6';
+                                    if(item.percentage >= 85) color = '#10b981';
+                                    else if(item.percentage < 50) color = '#ef4444';
 
                                     return (
                                         <AnimatedBar 
@@ -605,8 +609,6 @@ const StudentFeedback = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F2F5F8' }, 
-    
-    // Header
     headerCard: {
         backgroundColor: '#FFFFFF', paddingHorizontal: 15, paddingVertical: 12,
         width: '96%', alignSelf: 'center', marginTop: 15, marginBottom: 10,
@@ -623,29 +625,17 @@ const styles = StyleSheet.create({
     headerSubtitle: { fontSize: 13, color: '#666666' },
     overallBadge: { backgroundColor: '#FFEDD5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#FED7AA' },
     overallBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#F97316' },
-
-    // Filters
     filterContainer: { paddingHorizontal: 20, marginBottom: 5 },
     pickerWrapper: {
         borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, marginBottom: 10,
         backgroundColor: '#fff', overflow: 'hidden', height: 45, justifyContent: 'center'
     },
     picker: { width: '100%', color: '#1f2937' },
-    
-    // THE COM BUTTON STYLE
     comButton: {
-        backgroundColor: '#ef4444', 
-        height: 45, 
-        paddingHorizontal: 15, 
-        borderRadius: 8,
-        justifyContent: 'center', 
-        alignItems: 'center',
-        flexDirection: 'row',
-        elevation: 2
+        backgroundColor: '#ef4444', height: 45, paddingHorizontal: 15, borderRadius: 8,
+        justifyContent: 'center', alignItems: 'center', flexDirection: 'row', elevation: 2
     },
     comBtnText: { color:'#fff', fontWeight:'bold', fontSize: 12 },
-
-    // Table
     tableHeader: {
         flexDirection: 'row', backgroundColor: '#e0e7ff', paddingVertical: 12,
         borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#c7d2fe',
@@ -660,8 +650,6 @@ const styles = StyleSheet.create({
     td: { fontSize: 13, color: '#374151' },
     remarkBtn: { width: 36, height: 36, borderRadius: 6, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
     remarkBtnText: { fontWeight: 'bold', fontSize: 14 },
-    
-    // Common
     floatingSaveContainer: {
         position: 'absolute', bottom: 50, left: 0, right: 0, alignItems: 'center', paddingBottom: 10, zIndex: 10,
     },
@@ -682,8 +670,6 @@ const styles = StyleSheet.create({
     verticalDivider: { height: 16, width: 1, backgroundColor: '#e5e7eb', marginHorizontal: 12 },
     emptyContainer: { alignItems: 'center', marginTop: 50, width: '100%' },
     emptyText: { textAlign: 'center', marginTop: 10, color: '#94a3b8', fontSize: 14 },
-
-    // --- MODAL STYLES ---
     modalHeader: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
         padding: 15, backgroundColor: '#fff', elevation: 2
@@ -697,8 +683,6 @@ const styles = StyleSheet.create({
     sortBtnText: { fontSize: 11, color: '#666' },
     graphContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 20 },
     modalFooter: { flexDirection: 'row', justifyContent: 'space-evenly', padding: 15, borderTopWidth: 1, borderTopColor: '#eee' },
-    
-    // --- ANIMATED BAR STYLES ---
     barWrapper: { alignItems: 'center', width: 60, marginHorizontal: 8, height: 280, justifyContent: 'flex-end' },
     barLabelTop: { fontSize: 10, fontWeight: 'bold', color: '#333', marginBottom: 4 },
     barTrack: { width: 30, height: 220, backgroundColor: '#F0F0F0', borderRadius: 0, justifyContent: 'flex-end', overflow: 'hidden' },

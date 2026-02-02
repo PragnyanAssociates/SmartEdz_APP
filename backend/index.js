@@ -9900,8 +9900,9 @@ app.put('/api/library/digital/:id', verifyToken, isAdmin, libraryUpload.fields([
 
 
 // ==========================================================
-// --- STUDENT FEEDBACK API ROUTES ---
+// --- STUDENT FEEDBACK API ROUTES (FIXED) ---
 // ==========================================================
+
 
 // 1. Get Distinct Classes
 app.get('/api/feedback/classes', async (req, res) => {
@@ -9909,6 +9910,7 @@ app.get('/api/feedback/classes', async (req, res) => {
         const [rows] = await db.query("SELECT DISTINCT class_group FROM timetables ORDER BY class_group");
         res.json(rows.map(r => r.class_group));
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: 'Error fetching classes' });
     }
 });
@@ -9927,6 +9929,7 @@ app.get('/api/feedback/subjects', async (req, res) => {
         const [rows] = await db.query(sql, params);
         res.json(rows.map(r => r.subject_name));
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: 'Error fetching subjects' });
     }
 });
@@ -9935,10 +9938,14 @@ app.get('/api/feedback/subjects', async (req, res) => {
 app.get('/api/feedback/teachers', async (req, res) => {
     const { class_group, subject } = req.query;
     try {
-        const sql = `SELECT DISTINCT u.id, u.full_name FROM timetables t JOIN users u ON t.teacher_id = u.id WHERE t.class_group = ? AND t.subject_name = ?`;
+        const sql = `SELECT DISTINCT u.id, u.full_name 
+                     FROM timetables t 
+                     JOIN users u ON t.teacher_id = u.id 
+                     WHERE t.class_group = ? AND t.subject_name = ?`;
         const [rows] = await db.query(sql, [class_group, subject]);
         res.json(rows);
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: 'Error fetching teachers' });
     }
 });
@@ -9950,23 +9957,20 @@ app.get('/api/teacher-classes/:teacherId', async (req, res) => {
         const [rows] = await db.query("SELECT DISTINCT class_group FROM timetables WHERE teacher_id = ? ORDER BY class_group", [teacherId]);
         res.json(rows.map(r => r.class_group));
     } catch (err) {
+        console.error(err);
         res.status(500).json({ message: 'Error fetching classes' });
     }
 });
 
-// 5. Get Students + Feedback (Updated for Analytics)
+// 5. Get Students + Feedback (FIXED LOGIC)
 app.get('/api/feedback/students', async (req, res) => {
     const { class_group, teacher_id, mode, subject } = req.query;
     try {
         let sql = "";
         let params = [];
 
-        // --- ANALYTICS / COMPARE MODE ---
+        // --- A. ANALYTICS / COMPARE MODE ---
         if (mode === 'analytics') {
-            // Logic: Get average of status_marks. 
-            // If subject is 'All Subjects', average everything for that student in that class.
-            // If subject is specific, filter by subject_name.
-            
             let subjectFilter = "";
             let sqlParams = [class_group];
 
@@ -9987,7 +9991,7 @@ app.get('/api/feedback/students', async (req, res) => {
             
             params = sqlParams;
         } 
-        // --- OVERALL LIST VIEW (All Subjects Mode) ---
+        // --- B. OVERALL LIST VIEW (All Subjects) ---
         else if (mode === 'overall') {
             sql = `
                 SELECT u.id as student_id, u.full_name, p.roll_no, 
@@ -10002,13 +10006,18 @@ app.get('/api/feedback/students', async (req, res) => {
                 GROUP BY u.id ORDER BY CAST(p.roll_no AS UNSIGNED) ASC`;
             params = [class_group];
         } 
-        // --- TEACHER EDIT VIEW ---
+        // --- C. TEACHER / SPECIFIC SUBJECT EDIT VIEW ---
         else {
+            // FIXED: We strictly filter by subject_name here.
+            // With the DB update, this will now correctly find the row for 'Social'.
             sql = `
-                SELECT u.id as student_id, u.full_name, p.roll_no, f.status_marks, f.remarks_category
+                SELECT u.id as student_id, u.full_name, p.roll_no, 
+                f.status_marks, f.remarks_category, f.subject_name
                 FROM users u
                 LEFT JOIN user_profiles p ON u.id = p.user_id
-                LEFT JOIN student_feedback f ON u.id = f.student_id AND f.teacher_id = ? AND f.subject_name = ?
+                LEFT JOIN student_feedback f ON u.id = f.student_id 
+                     AND f.teacher_id = ? 
+                     AND f.subject_name = ?
                 WHERE u.role = 'student' AND u.class_group = ?
                 ORDER BY CAST(p.roll_no AS UNSIGNED) ASC`;
             params = [teacher_id, subject, class_group];
@@ -10016,11 +10025,11 @@ app.get('/api/feedback/students', async (req, res) => {
 
         const [rows] = await db.query(sql, params);
         
-        // Post-process for analytics to add percentage
+        // Post-process for analytics
         if (mode === 'analytics') {
             const result = rows.map(r => ({
                 ...r,
-                avg_rating: parseFloat(r.avg_rating), // Ensure number
+                avg_rating: parseFloat(r.avg_rating),
                 percentage: r.avg_rating > 0 ? ((r.avg_rating / 5) * 100).toFixed(1) : 0
             }));
             return res.json(result);
@@ -10033,7 +10042,7 @@ app.get('/api/feedback/students', async (req, res) => {
     }
 });
 
-// 6. Save Feedback (Unchanged)
+// 6. Save Feedback (FIXED)
 app.post('/api/feedback', async (req, res) => {
     const { teacher_id, class_group, subject_name, feedback_data } = req.body;
     
@@ -10045,11 +10054,19 @@ app.post('/api/feedback', async (req, res) => {
     try {
         await connection.beginTransaction();
         for (const item of feedback_data) {
+            // Only insert/update if there is actual data (marks or remarks)
             if (item.status_marks || item.remarks_category) {
                 const sql = `
                     INSERT INTO student_feedback (student_id, teacher_id, class_group, subject_name, status_marks, remarks_category)
                     VALUES (?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE status_marks = VALUES(status_marks), remarks_category = VALUES(remarks_category)`;
+                    ON DUPLICATE KEY UPDATE 
+                        status_marks = VALUES(status_marks), 
+                        remarks_category = VALUES(remarks_category)
+                    `; 
+                    // Note: We rely on the new UNIQUE KEY (student, teacher, subject)
+                    // so we don't need to update subject_name in ON DUPLICATE, 
+                    // because the INSERT ensures the subject is correct for this row.
+
                 await connection.query(sql, [
                     item.student_id, teacher_id, class_group, subject_name, item.status_marks, item.remarks_category
                 ]);
@@ -10059,6 +10076,7 @@ app.post('/api/feedback', async (req, res) => {
         res.json({ message: 'Saved successfully' });
     } catch (err) {
         await connection.rollback();
+        console.error("Save Error:", err);
         res.status(500).json({ message: 'Error saving feedback' });
     } finally {
         connection.release();
