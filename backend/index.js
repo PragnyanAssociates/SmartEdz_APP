@@ -9968,7 +9968,7 @@ app.get('/api/teacher-classes/:teacherId', async (req, res) => {
     }
 });
 
-// 5. Get Students + Feedback (Updated for Analytics & Subject Filtering)
+// 5. Get Students + Feedback (Fixed Parameter Order for Analytics)
 app.get('/api/feedback/students', async (req, res) => {
     const { class_group, teacher_id, mode, subject } = req.query;
 
@@ -9978,24 +9978,7 @@ app.get('/api/feedback/students', async (req, res) => {
 
         // --- ANALYTICS MODE (For Compare Graph) ---
         if (mode === 'analytics') {
-            // Base query: Get Student Info
-            let whereClause = "u.role = 'student' AND u.class_group = ?";
-            params = [class_group];
-
-            // Filter by Subject (Find teachers for this subject)
-            // If subject is NOT 'All Subjects', we only count feedback from teachers teaching that subject
-            let teacherFilter = "";
-            if (subject && subject !== 'All Subjects') {
-                // We need to filter feedback f where f.teacher_id matches teachers teaching this subject
-                teacherFilter = `
-                    AND f.teacher_id IN (
-                        SELECT DISTINCT teacher_id FROM timetables 
-                        WHERE class_group = ? AND subject_name = ?
-                    )
-                `;
-                params.push(class_group, subject);
-            }
-
+            // 1. Start SQL Query
             sql = `
                 SELECT 
                     u.id as student_id, 
@@ -10004,14 +9987,39 @@ app.get('/api/feedback/students', async (req, res) => {
                     IFNULL(AVG(f.status_marks), 0) as avg_rating
                 FROM users u
                 LEFT JOIN user_profiles p ON u.id = p.user_id
-                LEFT JOIN student_feedback f ON u.id = f.student_id ${teacherFilter}
-                WHERE ${whereClause}
-                GROUP BY u.id
-                ORDER BY CAST(p.roll_no AS UNSIGNED) ASC
             `;
+
+            // 2. Prepare Teacher Filter (Subquery) parameters
+            let teacherFilter = "";
+            let joinParams = [];
+
+            if (subject && subject !== 'All Subjects') {
+                // If specific subject: Filter feedback to only include teachers of that subject
+                teacherFilter = `
+                    AND f.teacher_id IN (
+                        SELECT DISTINCT teacher_id FROM timetables 
+                        WHERE class_group = ? AND subject_name = ?
+                    )
+                `;
+                // IMPORTANT: These params correspond to the ? inside teacherFilter
+                joinParams.push(class_group, subject);
+            }
+
+            // 3. Append Join with Filter
+            sql += ` LEFT JOIN student_feedback f ON u.id = f.student_id ${teacherFilter} `;
+
+            // 4. Append WHERE Clause
+            sql += ` WHERE u.role = 'student' AND u.class_group = ? `;
+            
+            // 5. Append Grouping
+            sql += ` GROUP BY u.id ORDER BY CAST(p.roll_no AS UNSIGNED) ASC `;
+
+            // 6. Combine Parameters in correct order: [Join Params, Where Params]
+            params = [...joinParams, class_group];
+
         } 
         
-        // --- EXISTING MODES (Overall / Individual) ---
+        // --- OVERALL MODE (Aggregated View) ---
         else if (mode === 'overall') {
             sql = `
                 SELECT 
@@ -10041,8 +10049,10 @@ app.get('/api/feedback/students', async (req, res) => {
             `;
             params = [class_group];
 
-        } else {
-            // Individual Teacher View
+        } 
+        
+        // --- INDIVIDUAL TEACHER MODE ---
+        else {
             sql = `
                 SELECT 
                     u.id as student_id, 
@@ -10063,7 +10073,7 @@ app.get('/api/feedback/students', async (req, res) => {
 
         const [rows] = await db.query(sql, params);
 
-        // For analytics, format percentage
+        // Format for analytics (calculate percentages)
         if (mode === 'analytics') {
             const formatted = rows.map(r => ({
                 ...r,
