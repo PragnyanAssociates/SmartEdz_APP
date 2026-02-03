@@ -28,13 +28,18 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 
 const ROOT_STORAGE_PATH = '/data/uploads'; 
 const PRE_ADMISSIONS_SUBPATH = 'preadmissions'; // Subfolder for organization
 const PRE_ADMISSIONS_ABSOLUTE_PATH = require('path').join(ROOT_STORAGE_PATH, PRE_ADMISSIONS_SUBPATH);
+
+// Create directories if they don't exist (Critical for Railway Persistent Volumes)
+if (!fs.existsSync(ROOT_STORAGE_PATH)) {
+    fs.mkdirSync(ROOT_STORAGE_PATH, { recursive: true });
+}
 
 
 app.use('/uploads', express.static('/data/uploads'));
@@ -88,39 +93,40 @@ app.get('/api/image/:filename', (req, res) => {
 // ==========================================================
 // --- MULTER & DB SETUP (Your existing code, unchanged) ---
 // ==========================================================
+// We added a random number to filenames to prevent overwriting 
+// if multiple devices upload at the exact same millisecond.
+
+const generateUniqueFilename = (originalName, prefix) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    return `${prefix}-${uniqueSuffix}${path.extname(originalName)}`;
+};
+
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => { cb(null, '/data/uploads'); }, // <-- FIXED
+    destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => {
-        cb(null, `profile-${Date.now()}${path.extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, 'profile'));
     }
 });
 const upload = multer({ storage: storage });
 
 const galleryStorage = multer.diskStorage({
-    destination: (req, file, cb) => { cb(null, '/data/uploads'); }, // <-- FIXED
+    destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => {
-        cb(null, `gallery-media-${Date.now()}${path.extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, 'gallery-media'));
     }
 });
 const galleryUpload = multer({ storage: galleryStorage });
 
-// ★★★★★ NEW: Multer Configuration for Recorded Class Videos ★★★★★
 const videoStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // We use the same destination as your other uploads for consistency
-        cb(null, '/data/uploads'); 
-    },
+    destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => {
-        // A unique filename pattern for recorded videos
-        cb(null, `recorded-class-${Date.now()}${path.extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, 'recorded-class'));
     }
 });
-
 const videoUpload = multer({ 
     storage: videoStorage,
-    limits: { fileSize: 200 * 1024 * 1024 }, // Set a 200MB file size limit (adjust as needed)
+    limits: { fileSize: 200 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        // Ensure only video files are uploaded
         if (file.mimetype.startsWith('video/')) {
             cb(null, true);
         } else {
@@ -133,8 +139,12 @@ const videoUpload = multer({
 const db = mysql.createPool({
     uri: process.env.DATABASE_URL,
     waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+    connectionLimit: 50,
+    queueLimit: 0,
+     enableKeepAlive: true, // Critical for cloud hosting to prevent connection drops
+    keepAliveInitialDelay: 0,
+    multipleStatements: true,
+    timezone: '+00:00'
 });
 
 
@@ -146,7 +156,7 @@ const db = mysql.createPool({
 // This function verifies the JWT sent from the app to protect routes.
 const verifyToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Expects "Bearer TOKEN"
+    const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
         return res.status(401).json({ message: 'No token provided, authorization denied.' });
@@ -156,13 +166,11 @@ const verifyToken = (req, res, next) => {
         if (err) {
             return res.status(403).json({ message: 'Token is not valid.' });
         }
-        // The decoded token payload (id, role, etc.) is attached to the request object.
         req.user = user;
         next();
     });
 };
 
-// This function checks if the verified user has the 'admin' role.
 const isAdmin = (req, res, next) => {
     if (req.user && req.user.role === 'admin') {
         next();
@@ -171,14 +179,10 @@ const isAdmin = (req, res, next) => {
     }
 };
 
-// ★★★ THIS IS THE MISSING FUNCTION THAT WAS ADDED ★★★
 const isTeacherOrAdmin = (req, res, next) => {
-    // This middleware runs AFTER verifyToken, so req.user is available.
     if (req.user && (req.user.role === 'admin' || req.user.role === 'teacher')) {
-        // If the user is an admin or a teacher, allow them to proceed.
         next();
     } else {
-        // Otherwise, deny access.
         res.status(403).json({ message: 'Access denied. Admin or Teacher role required.' });
     }
 };
@@ -191,26 +195,23 @@ const isTeacherOrAdmin = (req, res, next) => {
 const createNotification = async (dbOrConnection, recipientId, senderName, title, message, link = null) => {
     try {
         const query = 'INSERT INTO notifications (recipient_id, sender_name, title, message, link) VALUES (?, ?, ?, ?, ?)';
-        // Use the passed-in connection or the main db pool
         await dbOrConnection.query(query, [recipientId, senderName, title, message, link]);
-        console.log(`>>> Notification created for user ID: ${recipientId}`); // Debug log
     } catch (error) {
-        console.error(`[NOTIFICATION ERROR] Failed to create notification for user ${recipientId}:`, error);
-        throw error; // Re-throw the error to cause a transaction rollback
+        console.error(`[NOTIFICATION ERROR] User ${recipientId}:`, error);
+        // Do not throw error here, so main transaction doesn't fail just because of a notification
     }
 };
 
 const createBulkNotifications = async (dbOrConnection, recipientIds, senderName, title, message, link = null) => {
     if (!recipientIds || recipientIds.length === 0) return;
     try {
+        // Dedup ids
+        const uniqueIds = [...new Set(recipientIds)];
         const query = 'INSERT INTO notifications (recipient_id, sender_name, title, message, link) VALUES ?';
-        const values = recipientIds.map(id => [id, senderName, title, message, link]);
-        // Use the passed-in connection or the main db pool
+        const values = uniqueIds.map(id => [id, senderName, title, message, link]);
         await dbOrConnection.query(query, [values]);
-        console.log(`>>> Bulk notifications created for ${recipientIds.length} users.`); // Debug log
     } catch (error) {
-        console.error('[NOTIFICATION ERROR] Failed to create bulk notifications:', error);
-        throw error; // Re-throw the error to cause a transaction rollback
+        console.error('[NOTIFICATION ERROR] Bulk:', error);
     }
 };
 
@@ -220,17 +221,10 @@ const createBulkNotifications = async (dbOrConnection, recipientIds, senderName,
 // ==========================================================
 // This keeps ad-related uploads separate from your other multer configs.
 const adsStorage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // We'll use your existing 'uploads' directory
-        cb(null, '/data/uploads')
-    },
+    destination: (req, file, cb) => { cb(null, '/data/uploads') },
     filename: (req, file, cb) => {
-        // Create a unique filename for ad images and payment proofs
-        let prefix = 'ad-image';
-        if (file.fieldname === 'payment_screenshot') {
-            prefix = 'ad-payment-proof';
-        }
-        cb(null, `${prefix}-${Date.now()}${path.extname(file.originalname)}`);
+        let prefix = file.fieldname === 'payment_screenshot' ? 'ad-payment-proof' : 'ad-image';
+        cb(null, generateUniqueFilename(file.originalname, prefix));
     }
 });
 const adsUpload = multer({ storage: adsStorage });
@@ -4494,14 +4488,11 @@ app.put('/api/admin/suggestion/status', async (req, res) => {
 
 // 1. SINGLE, UNIFIED MULTER SETUP FOR BOTH MODULES
 const paymentStorage = multer.diskStorage({
-    destination: './public/uploads/', // Ensure you have a /public/uploads directory
+    destination: './public/uploads/',
     filename: function(req, file, cb){
-        // Give files a clear prefix based on what they are for
-        let prefix = 'file';
-        if (file.fieldname === 'qrCodeImage') prefix = 'qr';
-        if (file.fieldname === 'screenshot') prefix = 'proof'; // Used by both modules
-        
-        cb(null, `${prefix}-${Date.now()}${path.extname(file.originalname)}`);
+        let prefix = file.fieldname === 'qrCodeImage' ? 'qr' : 'file';
+        if (file.fieldname === 'screenshot') prefix = 'proof';
+        cb(null, generateUniqueFilename(file.originalname, prefix));
     }
 });
 const paymentUpload = multer({ storage: paymentStorage });
@@ -4815,7 +4806,7 @@ app.put('/api/admin/sponsorship/verify-payment/:paymentId', async (req, res) => 
 const kitchenStorage = multer.diskStorage({
     destination: './public/uploads/',
     filename: function(req, file, cb){
-        cb(null, `kitchen-item-${Date.now()}${path.extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, 'kitchen-item'));
     }
 });
 const kitchenUpload = multer({ storage: kitchenStorage });
@@ -5400,19 +5391,16 @@ app.post('/api/admin/ad-payment-details', [verifyToken, isAdmin], paymentUpload.
 // This uses the 'multer' and 'path' constants already defined in your server file.
 const chatStorage = multer.diskStorage({
     destination: (req, file, cb) => { cb(null, '/data/uploads'); },
-    filename: (req, file, cb) => { cb(null, `chat-media-${Date.now()}${path.extname(file.originalname)}`); }
+    filename: (req, file, cb) => { 
+        cb(null, generateUniqueFilename(file.originalname, 'chat-media')); 
+    }
 });
 const chatUpload = multer({
     storage: chatStorage,
     fileFilter: (req, file, cb) => {
-        // [FIX 1] Expanded regex to include common document types.
         const allowedTypes = /jpeg|jpg|png|gif|mp4|mov|mkv|mp3|m4a|wav|aac|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|rar/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        
-        // Relying on extname is more robust for various document mimetypes.
-        if (extname) {
-            return cb(null, true);
-        }
+        if (extname) { return cb(null, true); }
         cb(new Error('File type not supported: ' + file.originalname));
     }
 });
@@ -6050,17 +6038,12 @@ app.get('/api/subjects/all-unique', verifyToken, async (req, res) => {
 // Add a dedicated multer storage config for alumni photos
 const alumniStorage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Use the new absolute storage path
-        const uploadPath = ALUMNI_STORAGE_PATH; 
-        
-        // Ensure the directory exists (important for absolute paths in containers/servers)
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
+        const uploadPath = '/data/uploads/alumni'; // Ensure this path exists or matches logic
+        if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
         cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
-        cb(null, `alumni-pic-${Date.now()}${path.extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, 'alumni-pic'));
     }
 });
 const alumniUpload = multer({ storage: alumniStorage });
@@ -6248,20 +6231,18 @@ app.delete('/api/alumni/:id', async (req, res) => {
 // ==========================================================
 
 // Multer storage config for pre-admission photos
-const preAdmissionsStorage = require('multer').diskStorage({
+const preAdmissionsStorage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadPath = PRE_ADMISSIONS_ABSOLUTE_PATH; // Use absolute dedicated path
-        // Ensure the directory exists
-        if (!require('fs').existsSync(uploadPath)) {
-            require('fs').mkdirSync(uploadPath, { recursive: true });
+        if (!fs.existsSync(PRE_ADMISSIONS_ABSOLUTE_PATH)) {
+            fs.mkdirSync(PRE_ADMISSIONS_ABSOLUTE_PATH, { recursive: true });
         }
-        cb(null, uploadPath);
+        cb(null, PRE_ADMISSIONS_ABSOLUTE_PATH);
     },
     filename: (req, file, cb) => {
-        cb(null, `preadmission-photo-${Date.now()}${require('path').extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, 'preadmission-photo'));
     }
 });
-const preAdmissionsUpload = require('multer')({ storage: preAdmissionsStorage });
+const preAdmissionsUpload = multer({ storage: preAdmissionsStorage });
 
 // GET all pre-admission records (NOW WITH SEARCH AND YEAR FILTER)
 app.get('/api/preadmissions', async (req, res) => {
@@ -7598,16 +7579,13 @@ app.get('/api/students/:id', async (req, res) => {
 const voucherStorage = multer.diskStorage({
     destination: (req, file, cb) => {
         const uploadPath = '/data/uploads';
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
+        if (!fs.existsSync(uploadPath)) { fs.mkdirSync(uploadPath, { recursive: true }); }
         cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
-        cb(null, `voucher-proof-${Date.now()}${path.extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, 'voucher-proof'));
     }
 });
-
 const voucherUpload = multer({ 
     storage: voucherStorage,
     limits: { fileSize: 10 * 1024 * 1024 }
@@ -8512,11 +8490,9 @@ app.get('/api/transport/my-status', verifyToken, async (req, res) => {
 const vehicleStorage = multer.diskStorage({
     destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        cb(null, `vehicle-doc-${Date.now()}${ext}`);
+        cb(null, generateUniqueFilename(file.originalname, 'vehicle-doc'));
     }
 });
-
 const vehicleUpload = multer({ 
     storage: vehicleStorage,
     limits: { fileSize: 10 * 1024 * 1024 },
@@ -9431,14 +9407,10 @@ const libraryStorage = multer.diskStorage({
     },
     filename: (req, file, cb) => {
         const prefix = file.mimetype === 'application/pdf' ? 'ebook' : 'cover';
-        cb(null, `lib-${prefix}-${Date.now()}${path.extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, `lib-${prefix}`));
     }
 });
-
-const libraryUpload = multer({ 
-    storage: libraryStorage, 
-    limits: { fileSize: 50 * 1024 * 1024 } 
-});
+const libraryUpload = multer({ storage: libraryStorage, limits: { fileSize: 50 * 1024 * 1024 } });
 
 
 // --- 1. Library BOOKs MANAGEMENT ROUTES ---
@@ -10261,12 +10233,9 @@ app.get('/api/admin/teacher-feedback', async (req, res) => {
 // ==========================================================
 
 const proofStorage = multer.diskStorage({
-    destination: (req, file, cb) => { 
-        // Make sure this folder exists: /data/uploads
-        cb(null, '/data/uploads'); 
-    },
+    destination: (req, file, cb) => { cb(null, '/data/uploads'); },
     filename: (req, file, cb) => {
-        cb(null, `fee-proof-${Date.now()}${path.extname(file.originalname)}`);
+        cb(null, generateUniqueFilename(file.originalname, 'fee-proof'));
     }
 });
 const proofUpload = multer({ storage: proofStorage });
